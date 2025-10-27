@@ -1,0 +1,185 @@
+{% extends 'signals/base.html' %}
+
+{% block extra_css %}
+<style>
+    .history-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+    }
+
+    .history-header h2 {
+        color: #333;
+        font-size: 2em;
+    }
+
+    .filter-tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 30px;
+    }
+
+    .filter-tab {
+        padding: 10px 20px;
+        background: #f8f9fa;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        text-decoration: none;
+        color: #666;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .filter-tab:hover {
+        border-color: #667eea;
+        color: #667eea;
+    }
+
+    .filter-tab.active {
+        background: #667eea;
+        border-color: #667eea;
+        color: white;
+    }
+
+    .signals-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .signals-table th {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px;
+        text-align: left;
+        font-weight: 600;
+    }
+
+    .signals-table th:first-child {
+        border-top-left-radius: 10px;
+    }
+
+    .signals-table th:last-child {
+        border-top-right-radius: 10px;
+    }
+
+    .signals-table td {
+        padding: 15px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .signals-table tr:hover {
+        background: #f8f9fa;
+    }
+
+    .badge {
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 0.85em;
+        font-weight: 600;
+        display: inline-block;
+    }
+
+    .badge-entry {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .badge-stop_loss {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .badge-take_profit {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+
+    .info-cell {
+        max-width: 300px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .no-signals {
+        text-align: center;
+        padding: 60px 20px;
+        color: #666;
+    }
+
+    .no-signals-icon {
+        font-size: 4em;
+        margin-bottom: 20px;
+    }
+
+    @media (max-width: 768px) {
+        .signals-table {
+            font-size: 0.9em;
+        }
+        
+        .signals-table th,
+        .signals-table td {
+            padding: 10px;
+        }
+        
+        .info-cell {
+            max-width: 150px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="history-header">
+    <h2>📈 Signal History</h2>
+</div>
+
+<div class="filter-tabs">
+    <a href="{% url 'signals_history' %}" class="filter-tab {% if not filter_type %}active{% endif %}">
+        All Signals
+    </a>
+    <a href="{% url 'signals_history' %}?type=entry" class="filter-tab {% if filter_type == 'entry' %}active{% endif %}">
+        Entry Signals
+    </a>
+    <a href="{% url 'signals_history' %}?type=stop_loss" class="filter-tab {% if filter_type == 'stop_loss' %}active{% endif %}">
+        Stop Loss
+    </a>
+    <a href="{% url 'signals_history' %}?type=take_profit" class="filter-tab {% if filter_type == 'take_profit' %}active{% endif %}">
+        Take Profit
+    </a>
+</div>
+
+{% if signals %}
+<table class="signals-table">
+    <thead>
+        <tr>
+            <th>Ticker</th>
+            <th>Signal Type</th>
+            <th>Contract Information</th>
+            <th>Extra Information</th>
+            <th>Timestamp</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for signal in signals %}
+        <tr>
+            <td><strong>{{ signal.ticker }}</strong></td>
+            <td><span class="badge badge-{{ signal.signal_type }}">{{ signal.get_signal_type_display }}</span></td>
+            <td class="info-cell" title="{{ signal.contract_info }}">{{ signal.contract_info }}</td>
+            <td class="info-cell" title="{{ signal.extra_info }}">{{ signal.extra_info|default:"—" }}</td>
+            <td>{{ signal.created_at|date:"M d, Y H:i" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="no-signals">
+    <div class="no-signals-icon">📭</div>
+    <h3>No Signals Found</h3>
+    <p>Start submitting signals to see them here.</p>
+    <a href="{% url 'dashboard' %}" style="display: inline-block; margin-top: 20px; color: #667eea; font-weight: 600;">Go to Dashboard →</a>
+</div>
+{% endif %}
+{% endblock %}
+

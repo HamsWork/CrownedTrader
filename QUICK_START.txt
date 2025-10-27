@@ -1,0 +1,61 @@
+╔══════════════════════════════════════════════════════════════╗
+║     👑 CROWNED TRADER DASHBOARD - QUICK START                ║
+╚══════════════════════════════════════════════════════════════╝
+
+📦 INSTALLATION (3 commands):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. pip install -r requirements.txt
+  2. python manage.py migrate
+  3. python manage.py runserver
+
+
+📝 CREATE .env FILE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Create a file named .env in this directory with:
+  
+  DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_URL
+
+
+🎯 GET DISCORD WEBHOOK:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. Discord Server → Server Settings
+  2. Integrations → Webhooks → New Webhook
+  3. Copy the webhook URL
+  4. Paste into .env file
+
+
+🚀 ALTERNATIVE QUICK START:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  python run.py  (Interactive setup helper)
+
+
+🌐 ACCESS PAGES:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Dashboard:    http://localhost:8000/
+  History:      http://localhost:8000/history/
+  Admin:        http://localhost:8000/admin/
+
+
+✨ FEATURES:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ✓ Modern gradient UI design
+  ✓ Signal submission form
+  ✓ Automatic Discord notifications
+  ✓ Signal history with filtering
+  ✓ Admin panel access
+  ✓ Database persistence
+
+
+📚 DOCUMENTATION:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  README.md      - Full documentation
+  SETUP_GUIDE.md - Detailed setup instructions
+
+
