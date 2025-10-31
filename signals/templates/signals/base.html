@@ -120,8 +120,8 @@
 
         <div class="nav">
             <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">📊 Dashboard</a>
-            <a href="{% url 'signals_history' %}" class="{% if request.resolver_match.url_name == 'signals_history' %}active{% endif %}">📈 Signal History</a>
-            <a href="/admin/" target="_blank">⚙️ Admin Panel</a>
+            <!-- <a href="{% url 'signals_history' %}" class="{% if request.resolver_match.url_name == 'signals_history' %}active{% endif %}">📈 Signal History</a> -->
+            <!-- <a href="/admin/" target="_blank">⚙️ Admin Panel</a> -->
         </div>
 
         {% if messages %}
@@ -139,7 +139,7 @@
         </div>
 
         <div class="footer">
-            <p>&copy; 2024 Crowned Trader Dashboard | Built with Django</p>
+            <p>&copy; 2025 Crowned Trader Dashboard | Built by Hams</p>
         </div>
     </div>
 

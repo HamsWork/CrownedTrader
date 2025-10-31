@@ -10,22 +10,41 @@ pip install -r requirements.txt
 
 ## Step 2: Create Environment File
 
-Create a file named `.env` in the project root with your Discord webhook URL:
+Create a file named `.env` in the project root with your Discord bot configuration:
 
 ```env
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_URL
+DISCORD_BOT_TOKEN=YOUR_BOT_TOKEN
+DISCORD_CHANNEL_ID=YOUR_CHANNEL_ID
 ```
 
-### How to Get a Discord Webhook URL:
+### How to Get a Discord Bot Token:
 
-1. Open your Discord server
-2. Go to **Server Settings** (right-click on server → Server Settings)
-3. Click on **Integrations** in the left sidebar
-4. Click on **Webhooks** → **New Webhook**
-5. Give it a name (e.g., "Trading Signals")
-6. Choose a channel where signals will be posted
-7. Click **Copy Webhook URL**
-8. Paste it into your `.env` file
+1. Go to https://discord.com/developers/applications
+2. Create a new application or select an existing one
+3. Go to **Bot** section in the left sidebar
+4. Click **Reset Token** or **Create Bot** if it's a new application
+5. Copy the bot token
+6. Under **Privileged Gateway Intents**, enable **Message Content Intent**
+7. Scroll down and save changes
+
+### How to Invite Bot to Your Server:
+
+1. Go to **OAuth2** → **URL Generator** in the left sidebar
+2. Under **Scopes**, select `bot`
+3. Under **Bot Permissions**, select:
+   - Send Messages
+   - Embed Links
+   - Read Message History
+4. Copy the generated URL and open it in your browser
+5. Select your server and authorize the bot
+
+### How to Get Channel ID:
+
+1. In Discord, go to **User Settings** → **Advanced**
+2. Enable **Developer Mode**
+3. Right-click on the channel where you want to receive signals
+4. Click **Copy ID** (this is your channel ID)
+5. Paste it into your `.env` file
 
 ## Step 3: Run Database Migrations
 
@@ -69,9 +88,11 @@ Open your browser and go to:
 ### "No module named 'dotenv'"
 Run: `pip install python-dotenv`
 
-### Discord webhook not working
-- Verify your webhook URL is correct in the `.env` file
-- Make sure the webhook hasn't been deleted from Discord
+### Discord bot not working
+- Verify your bot token and channel ID are correct in the `.env` file
+- Make sure the bot has been invited to your server and has proper permissions
+- Ensure Message Content Intent is enabled in the bot settings
+- Check that the bot has permission to send messages in the channel
 - Check the server console for error messages
 
 ### Database errors

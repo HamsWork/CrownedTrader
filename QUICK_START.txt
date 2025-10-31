@@ -15,16 +15,21 @@
 
   Create a file named .env in this directory with:
   
-  DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_URL
+  DISCORD_BOT_TOKEN=YOUR_BOT_TOKEN
+  DISCORD_CHANNEL_ID=YOUR_CHANNEL_ID
 
 
-🎯 GET DISCORD WEBHOOK:
+🎯 GET DISCORD BOT TOKEN:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  1. Discord Server → Server Settings
-  2. Integrations → Webhooks → New Webhook
-  3. Copy the webhook URL
-  4. Paste into .env file
+  1. Go to https://discord.com/developers/applications
+  2. Create a new application or select existing one
+  3. Go to "Bot" section → Create/Reset Token
+  4. Copy the bot token
+  5. Enable "Message Content Intent" in Privileged Gateway Intents
+  6. Invite bot to your server with message permissions
+  7. Get channel ID (enable Developer Mode in Discord → right-click channel)
+  8. Paste into .env file
 
 
 🚀 ALTERNATIVE QUICK START:

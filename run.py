@@ -10,10 +10,12 @@ def check_env_file():
         print("⚠️  No .env file found!")
         print("\nCreating .env file template...")
         
-        webhook_url = input("Enter your Discord webhook URL (or press Enter to skip): ").strip()
+        bot_token = input("Enter your Discord bot token (or press Enter to skip): ").strip()
+        channel_id = input("Enter your Discord channel ID (or press Enter to skip): ").strip()
         
-        env_content = "# Discord Webhook Configuration\n"
-        env_content += f"DISCORD_WEBHOOK_URL={webhook_url}\n"
+        env_content = "# Discord Bot Configuration\n"
+        env_content += f"DISCORD_BOT_TOKEN={bot_token}\n"
+        env_content += f"DISCORD_CHANNEL_ID={channel_id}\n"
         env_content += "\n# Django Settings (optional)\n"
         env_content += "DEBUG=True\n"
         env_content += "# SECRET_KEY=your-secret-key-here\n"
@@ -21,10 +23,10 @@ def check_env_file():
         with open('.env', 'w') as f:
             f.write(env_content)
         
-        if webhook_url:
-            print("✅ .env file created with Discord webhook URL!")
+        if bot_token and channel_id:
+            print("✅ .env file created with Discord bot configuration!")
         else:
-            print("✅ .env file created. Don't forget to add your Discord webhook URL!")
+            print("✅ .env file created. Don't forget to add your Discord bot token and channel ID!")
     else:
         print("✅ .env file found")
 

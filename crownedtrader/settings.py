@@ -22,7 +22,8 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-your-secret-key-chang
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '162.218.114.93']
+CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1:8000', 'http://localhost:8000', 'http://162.218.114.93:8000']
 
 
 # Application definition
@@ -115,8 +116,13 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-# Discord Webhook URL - Load from environment variable
+# Discord Configuration - Load from environment variables
+# Option 1: Webhook URL (recommended - simpler, no permissions needed)
 DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL', '')
+
+# Option 2: Bot Token (requires bot permissions)
+DISCORD_BOT_TOKEN = os.environ.get('DISCORD_BOT_TOKEN', '')
+DISCORD_CHANNEL_ID = os.environ.get('DISCORD_CHANNEL_ID', '')
 
 # Additional settings
 STATIC_ROOT = BASE_DIR / 'staticfiles'

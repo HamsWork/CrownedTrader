@@ -6,7 +6,7 @@ A modern Django web dashboard for managing and submitting trading signals with a
 
 - 📊 **Modern Dashboard Interface** - Clean, professional UI with gradient design
 - 🚨 **Signal Management** - Submit trading signals with ticker, contract info, and signal type
-- 🔔 **Discord Integration** - Automatic webhook notifications to Discord channels
+- 🔔 **Discord Integration** - Automatic bot notifications to Discord channels
 - 📈 **Signal History** - View and filter all submitted signals
 - 🎯 **Signal Types**:
   - Entry signals
@@ -20,12 +20,27 @@ A modern Django web dashboard for managing and submitting trading signals with a
    pip install -r requirements.txt
    ```
 
-2. **Set Up Discord Webhook**
-   - Create a webhook in your Discord server (Server Settings > Integrations > Webhooks)
+2. **Set Up Discord Integration** (Choose one method)
+
+   **Method 1: Webhook (Recommended - Easier)**
+   - Go to Discord channel settings → Integrations → Create Webhook
    - Copy the webhook URL
    - Create a `.env` file in the project root:
      ```env
-     DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_URL
+     DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN
+     ```
+   - See `DISCORD_WEBHOOK_SETUP.md` for detailed instructions
+
+   **Method 2: Bot Token (Alternative)**
+   - Create a Discord application at https://discord.com/developers/applications
+   - Create a bot and copy the token
+   - Enable Message Content Intent in bot settings
+   - Invite the bot to your server with send message permissions
+   - Get your channel ID (enable Developer Mode, right-click channel → Copy ID)
+   - Create a `.env` file in the project root:
+     ```env
+     DISCORD_BOT_TOKEN=YOUR_BOT_TOKEN
+     DISCORD_CHANNEL_ID=YOUR_CHANNEL_ID
      ```
 
 3. **Run Migrations**
@@ -69,7 +84,7 @@ A modern Django web dashboard for managing and submitting trading signals with a
 
 ## Configuration
 
-### Discord Webhook Format
+### Discord Bot Messages
 
 The dashboard sends embeds to Discord with the following structure:
 - **Title**: New Trading Signal
@@ -82,8 +97,14 @@ The dashboard sends embeds to Discord with the following structure:
 ### Environment Variables
 
 ```env
-# Required - Discord webhook URL
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_URL
+# Discord Configuration - Choose ONE method:
+
+# Method 1: Webhook (Recommended)
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN
+
+# Method 2: Bot Token (Alternative)
+# DISCORD_BOT_TOKEN=YOUR_BOT_TOKEN
+# DISCORD_CHANNEL_ID=YOUR_CHANNEL_ID
 
 # Optional - Django secret key for production
 SECRET_KEY=your-secret-key-here

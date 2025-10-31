@@ -39,6 +39,13 @@
         resize: vertical;
     }
 
+    .form-checkbox {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        margin-top: 5px;
+    }
+
     .btn-submit {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -140,25 +147,10 @@
 <div class="form-container">
     <h2 style="color: #333; margin-bottom: 30px; font-size: 2em;">📝 Submit New Signal</h2>
     
-    <form method="post">
+    <form method="post" id="signalForm">
         {% csrf_token %}
         
-        <div class="form-group">
-            <label for="{{ form.ticker.id_for_label }}">Ticker Symbol *</label>
-            {{ form.ticker }}
-            {% if form.ticker.errors %}
-                <div style="color: #dc3545; margin-top: 5px; font-size: 0.9em;">{{ form.ticker.errors }}</div>
-            {% endif %}
-        </div>
-
-        <div class="form-group">
-            <label for="{{ form.contract_info.id_for_label }}">Contract Information *</label>
-            {{ form.contract_info }}
-            {% if form.contract_info.errors %}
-                <div style="color: #dc3545; margin-top: 5px; font-size: 0.9em;">{{ form.contract_info.errors }}</div>
-            {% endif %}
-        </div>
-
+        <!-- Signal Type FIRST -->
         <div class="form-group">
             <label for="{{ form.signal_type.id_for_label }}">Signal Type *</label>
             {{ form.signal_type }}
@@ -167,13 +159,21 @@
             {% endif %}
         </div>
 
-        <div class="form-group">
-            <label for="{{ form.extra_info.id_for_label }}">Extra Information</label>
-            {{ form.extra_info }}
-            {% if form.extra_info.errors %}
-                <div style="color: #dc3545; margin-top: 5px; font-size: 0.9em;">{{ form.extra_info.errors }}</div>
-            {% endif %}
-        </div>
+        <!-- Dynamic Form Fields Container -->
+        <div id="dynamicFields"></div>
+
+        <!-- Hidden field for data -->
+        <input type="hidden" name="data" id="id_data" value="{}" />
+        {% if form.data.errors %}
+            <div style="color: #dc3545; margin-top: 10px; margin-bottom: 10px; padding: 10px; background-color: #f8d7da; border-radius: 5px; font-size: 0.9em;">
+                {{ form.data.errors }}
+            </div>
+        {% endif %}
+        {% if form.non_field_errors %}
+            <div style="color: #dc3545; margin-top: 10px; margin-bottom: 10px; padding: 10px; background-color: #f8d7da; border-radius: 5px; font-size: 0.9em;">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
 
         <div style="text-align: center; margin-top: 30px;">
             <button type="submit" class="btn-submit">🚀 Submit Signal</button>
@@ -186,17 +186,17 @@
         {% for signal in recent_signals %}
         <div class="signal-card">
             <div class="signal-header">
-                <span class="signal-ticker">{{ signal.ticker }}</span>
-                <span class="signal-badge badge-{{ signal.signal_type }}">
-                    {{ signal.get_signal_type_display }}
+                <span class="signal-ticker">{{ signal.data.ticker }}</span>
+                <span class="signal-badge badge-{{ signal.signal_type.name|lower|slugify }}">
+                    {{ signal.signal_type.name }}
                 </span>
             </div>
             <div class="signal-info">
-                <strong>Contract:</strong> {{ signal.contract_info|truncatewords:15 }}
+                <strong>Strike:</strong> {{ signal.data.strike }} | <strong>Expiration:</strong> {{ signal.data.expiration }}
             </div>
-            {% if signal.extra_info %}
+            {% if signal.data.extra_info %}
             <div class="signal-info">
-                <strong>Extra:</strong> {{ signal.extra_info|truncatewords:20 }}
+                <strong>Extra:</strong> {{ signal.data.extra_info|truncatewords:20 }}
             </div>
             {% endif %}
             <div class="signal-time">{{ signal.created_at|date:"M d, Y H:i" }}</div>
@@ -205,5 +205,172 @@
     </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Store signal types data
+const signalTypesData = {
+    {% for st in signal_types_data %}
+    {{ st.id }}: {{ st.variables|safe }},
+    {% endfor %}
+};
+
+// Map variable types to input field types
+function getInputType(variableType) {
+    const typeMap = {
+        'string': 'text',
+        'number': 'number',
+        'float': 'number',
+        'date': 'date',
+        'text': 'textarea',
+        'boolean': 'checkbox'
+    };
+    return typeMap[variableType] || 'text';
+}
+
+// Get label from variable or fall back to default
+function getLabel(variable) {
+    // If variable has a label property, use it
+    if (variable.label) {
+        return variable.label;
+    }
+    // Otherwise, capitalize the name
+    const name = variable.name || variable;
+    return name.charAt(0).toUpperCase() + name.slice(1).replace(/_/g, ' ');
+}
+
+// Create dynamic form fields based on signal type
+function createDynamicFields(signalTypeId) {
+    const dynamicFieldsContainer = document.getElementById('dynamicFields');
+    dynamicFieldsContainer.innerHTML = '';
+    
+    const variables = signalTypesData[signalTypeId];
+    if (!variables) {
+        return;
+    }
+    
+    variables.forEach(variable => {
+        const formGroup = document.createElement('div');
+        formGroup.className = 'form-group';
+        
+        const label = document.createElement('label');
+        const isRequired = variable.required !== false && variable.name !== 'extra_info';
+        label.textContent = getLabel(variable) + (isRequired ? ' *' : '');
+        label.setAttribute('for', `id_${variable.name}`);
+        
+        let input;
+        
+        // Handle select type (dropdown)
+        if (variable.type === 'select' && variable.options) {
+            input = document.createElement('select');
+            input.className = 'form-select';
+            
+            // Add options directly (no default placeholder)
+            variable.options.forEach(option => {
+                const optionElement = document.createElement('option');
+                optionElement.value = option;
+                optionElement.textContent = option;
+                if (variable.default && option === variable.default) {
+                    optionElement.selected = true;
+                }
+                input.appendChild(optionElement);
+            });
+        } else {
+            const inputType = getInputType(variable.type);
+            
+            if (inputType === 'textarea') {
+                input = document.createElement('textarea');
+                input.className = 'form-textarea';
+                input.rows = 3;
+                // input.placeholder = 'Additional information (optional)';
+            } else if (inputType === 'checkbox') {
+                // Handle boolean/checkbox
+                input = document.createElement('input');
+                input.type = 'checkbox';
+                input.className = 'form-checkbox';
+                input.checked = variable.default || false;
+            } else {
+                input = document.createElement('input');
+                input.className = 'form-input';
+                input.type = inputType;
+                
+                // For float inputs, add step attribute to allow decimals
+                if (variable.type === 'float') {
+                    input.step = '0.01';
+                }
+                
+                // Add placeholders
+                const placeholders = {
+                    'ticker': 'Enter ticker (e.g., AAPL, TSLA)',
+                    'strike': 'Enter strike price (e.g., 150.50)',
+                    'expiration': 'Enter expiration date (e.g., 2025-11-20)',
+                    'price': 'Enter price (e.g., 1.25)',
+                    'entry_price': 'Enter entry price (e.g., 1.25)',
+                    'exit_price': 'Enter exit price (e.g., 1.50)',
+                    'pnl_percent': 'Enter P&L % (e.g., 20.5)'
+                };
+                input.placeholder = placeholders[variable.name] || '';
+            }
+        }
+        
+        input.id = `id_${variable.name}`;
+        input.name = variable.name;
+        
+        formGroup.appendChild(label);
+        formGroup.appendChild(input);
+        dynamicFieldsContainer.appendChild(formGroup);
+    });
+}
+
+// Handle signal type change
+document.addEventListener('DOMContentLoaded', function() {
+    const signalTypeSelect = document.querySelector('select[name="signal_type"]');
+    const form = document.getElementById('signalForm');
+    
+    if (signalTypeSelect) {
+        // Initial load - always create fields for the first/default value
+        const defaultValue = signalTypeSelect.value || Object.keys(signalTypesData)[0];
+        if (defaultValue) {
+            signalTypeSelect.value = defaultValue;
+            createDynamicFields(defaultValue);
+        }
+        
+        // Handle change
+        signalTypeSelect.addEventListener('change', function() {
+            createDynamicFields(this.value);
+        });
+        
+        // Handle form submission
+        form.addEventListener('submit', function(e) {
+            // Collect all dynamic field values into a JSON object
+            const signalData = {};
+            const dynamicInputs = document.querySelectorAll('#dynamicFields input, #dynamicFields textarea, #dynamicFields select');
+            
+            dynamicInputs.forEach(input => {
+                // Handle checkbox
+                if (input.type === 'checkbox') {
+                    signalData[input.name] = input.checked ? 'true' : 'false';
+                } else {
+                    signalData[input.name] = input.value;
+                }
+            });
+            
+            // Set the data field value
+            const dataInput = form.querySelector('input[name="data"]');
+            if (dataInput) {
+                dataInput.value = JSON.stringify(signalData);
+            } else {
+                // If data field doesn't exist, add it to the form
+                const hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = 'data';
+                hiddenInput.value = JSON.stringify(signalData);
+                form.appendChild(hiddenInput);
+            }
+        });
+    }
+});
+</script>
 {% endblock %}
 

@@ -156,7 +156,8 @@
         <tr>
             <th>Ticker</th>
             <th>Signal Type</th>
-            <th>Contract Information</th>
+            <th>Strike</th>
+            <th>Expiration</th>
             <th>Extra Information</th>
             <th>Timestamp</th>
         </tr>
@@ -164,10 +165,11 @@
     <tbody>
         {% for signal in signals %}
         <tr>
-            <td><strong>{{ signal.ticker }}</strong></td>
-            <td><span class="badge badge-{{ signal.signal_type }}">{{ signal.get_signal_type_display }}</span></td>
-            <td class="info-cell" title="{{ signal.contract_info }}">{{ signal.contract_info }}</td>
-            <td class="info-cell" title="{{ signal.extra_info }}">{{ signal.extra_info|default:"—" }}</td>
+            <td><strong>{{ signal.data.ticker }}</strong></td>
+            <td><span class="badge badge-{{ signal.signal_type.name|lower|slugify }}">{{ signal.signal_type.name }}</span></td>
+            <td>{{ signal.data.strike }}</td>
+            <td>{{ signal.data.expiration }}</td>
+            <td class="info-cell" title="{{ signal.data.extra_info }}">{{ signal.data.extra_info|default:"—" }}</td>
             <td>{{ signal.created_at|date:"M d, Y H:i" }}</td>
         </tr>
         {% endfor %}
