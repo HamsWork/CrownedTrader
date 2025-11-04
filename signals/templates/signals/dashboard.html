@@ -18,6 +18,19 @@
         font-weight: 600;
         font-size: 1.05em;
     }
+    
+    /* For checkbox inputs, adjust label display */
+    .form-group:has(.form-checkbox) {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .form-group:has(.form-checkbox) label {
+        margin-bottom: 0;
+        font-weight: normal;
+        cursor: pointer;
+    }
 
     .form-input, .form-textarea, .form-select {
         width: 100%;
@@ -43,7 +56,6 @@
         width: 20px;
         height: 20px;
         cursor: pointer;
-        margin-top: 5px;
     }
 
     .btn-submit {
@@ -255,11 +267,13 @@ function createDynamicFields(signalTypeId) {
         formGroup.className = 'form-group';
         
         const label = document.createElement('label');
-        const isRequired = variable.required !== false && variable.name !== 'extra_info';
+        const isRequired = variable.required === true;
         label.textContent = getLabel(variable) + (isRequired ? ' *' : '');
         label.setAttribute('for', `id_${variable.name}`);
         
         let input;
+        
+        const inputType = getInputType(variable.type);
         
         // Handle select type (dropdown)
         if (variable.type === 'select' && variable.options) {
@@ -277,8 +291,6 @@ function createDynamicFields(signalTypeId) {
                 input.appendChild(optionElement);
             });
         } else {
-            const inputType = getInputType(variable.type);
-            
             if (inputType === 'textarea') {
                 input = document.createElement('textarea');
                 input.className = 'form-textarea';
@@ -317,9 +329,63 @@ function createDynamicFields(signalTypeId) {
         input.id = `id_${variable.name}`;
         input.name = variable.name;
         
-        formGroup.appendChild(label);
-        formGroup.appendChild(input);
+        // Add HTML5 required attribute if field is required
+        if (isRequired) {
+            input.required = true;
+            // Store that it was originally required for restoration
+            input.setAttribute('data-originally-required', 'true');
+        }
+        
+        // Add hint as placeholder if provided (overrides default placeholders)
+        if (variable.hint && input.type !== 'checkbox') {
+            input.placeholder = variable.hint;
+        }
+        
+        // Add data attribute for conditional visibility based on is_shares
+        if (variable.name === 'strike' || variable.name === 'expiration' || variable.name === 'option_type') {
+            formGroup.setAttribute('data-requires-options', 'true');
+        }
+        
+        // For checkboxes, append input first then label
+        if (variable.type === 'boolean' || inputType === 'checkbox') {
+            formGroup.appendChild(input);
+            formGroup.appendChild(label);
+        } else {
+            formGroup.appendChild(label);
+            formGroup.appendChild(input);
+        }
         dynamicFieldsContainer.appendChild(formGroup);
+    });
+    
+    // Set up is_shares checkbox handler
+    const isSharesCheckbox = document.getElementById('id_is_shares');
+    if (isSharesCheckbox) {
+        isSharesCheckbox.addEventListener('change', function() {
+            toggleOptionFields(this.checked);
+        });
+        // Initialize on page load
+        toggleOptionFields(isSharesCheckbox.checked);
+    }
+}
+
+// Toggle visibility of option-related fields based on is_shares checkbox
+function toggleOptionFields(isShares) {
+    const optionFields = document.querySelectorAll('[data-requires-options="true"]');
+    optionFields.forEach(field => {
+        if (isShares) {
+            field.style.display = 'none';
+            const input = field.querySelector('input, select');
+            if (input) {
+                input.removeAttribute('required');
+                input.value = '';
+            }
+        } else {
+            field.style.display = 'block';
+            const input = field.querySelector('input, select');
+            if (input && input.hasAttribute('data-originally-required')) {
+                input.setAttribute('required', true);
+            }
+        }
     });
 }
 
@@ -343,10 +409,65 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Handle form submission
         form.addEventListener('submit', function(e) {
+            // Get current signal type and its variables
+            const currentSignalTypeId = signalTypeSelect.value;
+            const currentVariables = signalTypesData[currentSignalTypeId] || [];
+            
+            // Validate required fields
+            const dynamicInputs = document.querySelectorAll('#dynamicFields input, #dynamicFields textarea, #dynamicFields select');
+            const errors = [];
+            
+            // Check if is_shares is checked
+            const isSharesCheckbox = document.getElementById('id_is_shares');
+            const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+            
+            dynamicInputs.forEach(input => {
+                // Skip validation if field is hidden due to is_shares
+                if (input.closest('[data-requires-options="true"]') && isShares) {
+                    return;
+                }
+                
+                // Find the variable definition for this input
+                const variable = currentVariables.find(v => v.name === input.name);
+                
+                // Check if field is required
+                if (variable && variable.required === true) {
+                    let isEmpty = false;
+                    
+                    // Check if field is empty based on type
+                    if (input.type === 'checkbox') {
+                        isEmpty = !input.checked;
+                    } else {
+                        isEmpty = !input.value || input.value.trim() === '';
+                    }
+                    
+                    if (isEmpty) {
+                        errors.push(variable.label || variable.name);
+                        // Add error styling to the field
+                        input.style.borderColor = '#dc3545';
+                        const formGroup = input.closest('.form-group');
+                        if (formGroup) {
+                            formGroup.style.marginBottom = '10px';
+                        }
+                    } else {
+                        // Remove error styling if field is valid
+                        input.style.borderColor = '';
+                    }
+                } else {
+                    // Remove error styling for non-required fields
+                    input.style.borderColor = '';
+                }
+            });
+            
+            // Show errors if any and prevent submission
+            if (errors.length > 0) {
+                e.preventDefault();
+                alert('Please fill in the following required fields:\n' + errors.map(e => '  • ' + e).join('\n'));
+                return false;
+            }
+            
             // Collect all dynamic field values into a JSON object
             const signalData = {};
-            const dynamicInputs = document.querySelectorAll('#dynamicFields input, #dynamicFields textarea, #dynamicFields select');
-            
             dynamicInputs.forEach(input => {
                 // Handle checkbox
                 if (input.type === 'checkbox') {
@@ -368,6 +489,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 hiddenInput.value = JSON.stringify(signalData);
                 form.appendChild(hiddenInput);
             }
+            
+            // Let form submit naturally if validation passes
         });
     }
 });

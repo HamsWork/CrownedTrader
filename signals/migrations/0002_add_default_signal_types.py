@@ -12,17 +12,15 @@ def create_default_signal_types(apps, schema_editor):
             'name': 'Trade Alert',
             'variables': [
                 {'name': 'ticker', 'type': 'string', 'label': 'Ticker Symbol', 'required': True},
-                # {'name': 'is_shares', 'type': 'boolean', 'label': 'Is Shares'},
+                {'name': 'is_shares', 'type': 'boolean', 'label': 'Is Shares', 'required': False},
                 {'name': 'strike', 'type': 'float', 'label': 'Strike', 'required': True},
                 {'name': 'expiration', 'type': 'date', 'label': 'Expiration', 'required': True},
                 {'name': 'option_type', 'type': 'select', 'options': ['PUT', 'CALL'], 'default': 'CALL', 'label': 'Option Type', 'required': True},
                 {'name': 'price', 'type': 'float', 'label': 'Price', 'required': True},
-                {'name': 'targets', 'type': 'text', 'label': 'Targets', 'required': True},
-                {'name': 'stop_loss', 'type': 'text', 'label': 'Stop Loss', 'required': True},
-                {'name': 'trade_detail', 'type': 'text', 'label': 'Trade Detail', 'hint': (
-                        'Take Profit (1): At 20% take off 50% of position and tighten up stop loss to slightly above break even\n'
-                        'Take Profit (2): At 30% take off 50% of remaining position and set a 15% trailing stop loss for the remaining runners.\n'
-                    )}
+                {'name': 'targets', 'type': 'text', 'label': 'Targets', 'required': True, 'hint': 'Enter Targets (e.g. $29.22 (+20.0%), $31.66 (+30.0%), $34.09 (+40.0%))'},
+                {'name': 'stop_loss', 'type': 'text', 'label': 'Stop Loss', 'required': True, 'hint': 'Enter Stop Loss (e.g. $17.04 (-30%))'},
+                {'name': 'trade_detail', 'type': 'text', 'label': 'Trade Detail', 'hint': 'Enter Trade Detail (e.g.\n Take Profit (1): At 20% take off 50% of position and tighten up stop loss to slightly above break even\nTake Profit (2): At 30% take off 50% of remaining position and set a 15% trailing stop loss for the remaining runners.)'},
+                {'name': 'risk_management', 'type': 'text', 'label': 'Risk Management', 'hint': 'Enter Risk Management (e.g.\n 1. Avoid holding 0DTE/1DTE past 3PM ET unless momentum is explosive\n2. Control Position Size\n3. Do your own due diligence. This is not a suggestion to buy, sell or hold)'},
             ],
             'title_template': '🚨 {{ticker}} Swing Trade Alert',
             'description_template': (
@@ -84,7 +82,7 @@ def create_default_signal_types(apps, schema_editor):
                 
                 {
                     'name': '💰 **Take Profit Plan**',
-                    'value': ,
+                    'value': '{{trade_detail}}',
                     'inline': False
                 },
                 {
@@ -94,11 +92,7 @@ def create_default_signal_types(apps, schema_editor):
                 },
                 {
                     'name': '⚠️ Risk Management',
-                    'value': (
-                        "1. Avoid holding 0DTE/1DTE past 3PM ET unless momentum is explosive\n"
-                        "2. Control Position Size\n"
-                        "3. Do your own due diligence. This is not a suggestion to buy, sell or hold"
-                    ),
+                    'value': '{{risk_management}}',
                     'inline': False
                 },
             ],
@@ -106,14 +100,15 @@ def create_default_signal_types(apps, schema_editor):
         {
             'name': 'Stop Loss',
             'variables': [
-                {'name': 'ticker', 'type': 'string', 'label': 'Ticker Symbol'},
-                {'name': 'strike', 'type': 'float', 'label': 'Strike'},
-                {'name': 'expiration', 'type': 'date', 'label': 'Expiration'},
-                {'name': 'option_type', 'type': 'select', 'options': ['PUT', 'CALL'], 'default': 'CALL', 'label': 'Option Type'},
-                {'name': 'price', 'type': 'float', 'label': 'Price'},
-                {'name': 'entry_price', 'type': 'float', 'label': 'Entry Price'},
-                {'name': 'exit_price', 'type': 'float', 'label': 'Exit Price'},
-                {'name': 'pnl_percent', 'type': 'float', 'label': 'P&L %'},
+                {'name': 'ticker', 'type': 'string', 'label': 'Ticker Symbol', 'required': True},
+                {'name': 'is_shares', 'type': 'boolean', 'label': 'Is Shares', 'required': False},
+                {'name': 'strike', 'type': 'float', 'label': 'Strike', 'required': True},
+                {'name': 'expiration', 'type': 'date', 'label': 'Expiration', 'required': True},
+                {'name': 'option_type', 'type': 'select', 'options': ['PUT', 'CALL'], 'default': 'CALL', 'label': 'Option Type', 'required': True},
+                {'name': 'price', 'type': 'float', 'label': 'Price', 'required': True},
+                {'name': 'entry_price', 'type': 'float', 'label': 'Entry Price', 'required': True},
+                {'name': 'exit_price', 'type': 'float', 'label': 'Exit Price', 'required': True},
+                {'name': 'pnl_percent', 'type': 'float', 'label': 'P&L %', 'required': True},
             ],
             'title_template': '🛑 {{ticker}} Stop Loss HIT',
             'description_template': '🔴 **Trade Performance:**',
@@ -179,14 +174,15 @@ def create_default_signal_types(apps, schema_editor):
         {
             'name': 'Take Profit',
             'variables': [
-                {'name': 'ticker', 'type': 'string', 'label': 'Ticker Symbol'},
-                {'name': 'strike', 'type': 'float', 'label': 'Strike'},
-                {'name': 'expiration', 'type': 'date', 'label': 'Expiration'},
-                {'name': 'option_type', 'type': 'select', 'options': ['PUT', 'CALL'], 'default': 'CALL', 'label': 'Option Type'},
-                {'name': 'price', 'type': 'float', 'label': 'Price'},
-                {'name': 'entry_price', 'type': 'float', 'label': 'Entry Price'},
-                {'name': 'exit_price', 'type': 'float', 'label': 'Exit Price'},
-                {'name': 'pnl_percent', 'type': 'float', 'label': 'Profit %'},
+                {'name': 'ticker', 'type': 'string', 'label': 'Ticker Symbol', 'required': True},
+                {'name': 'is_shares', 'type': 'boolean', 'label': 'Is Shares', 'required': False},
+                {'name': 'strike', 'type': 'float', 'label': 'Strike', 'required': True},
+                {'name': 'expiration', 'type': 'date', 'label': 'Expiration', 'required': True},
+                {'name': 'option_type', 'type': 'select', 'options': ['PUT', 'CALL'], 'default': 'CALL', 'label': 'Option Type', 'required': True},
+                {'name': 'price', 'type': 'float', 'label': 'Price', 'required': True},
+                {'name': 'entry_price', 'type': 'float', 'label': 'Entry Price', 'required': True},
+                {'name': 'exit_price', 'type': 'float', 'label': 'Exit Price', 'required': True},
+                {'name': 'pnl_percent', 'type': 'float', 'label': 'Profit %', 'required': True},
             ],
             'title_template': '🎯 {{ticker}} Take Profit HIT',
             'description_template': '**🟢 Trade Performance:**',

@@ -1,0 +1,351 @@
+{% extends 'signals/base.html' %}
+
+{% block title %}User Management - Crowned Trader Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .management-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+
+    .management-header h2 {
+        color: #333;
+        font-size: 2em;
+        margin: 0;
+    }
+
+    .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1em;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.3s;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .search-box {
+        margin-bottom: 20px;
+        display: flex;
+        gap: 10px;
+    }
+
+    .search-box input {
+        flex: 1;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 1em;
+    }
+
+    .search-box input:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+
+    .search-box button {
+        padding: 12px 24px;
+        background: #667eea;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 1em;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .users-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .users-table thead {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .users-table th,
+    .users-table td {
+        padding: 15px;
+        text-align: left;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .users-table tbody tr:hover {
+        background: #f5f5f5;
+    }
+
+    .users-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.85em;
+        font-weight: 600;
+    }
+
+    .badge-success {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .badge-danger {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .badge-warning {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .badge-info {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 8px;
+    }
+
+    .btn-sm {
+        padding: 6px 12px;
+        font-size: 0.85em;
+    }
+
+    .btn-edit {
+        background: #28a745;
+        color: white;
+    }
+
+    .btn-delete {
+        background: #dc3545;
+        color: white;
+    }
+
+    .btn-edit:hover {
+        background: #218838;
+    }
+
+    .btn-delete:hover {
+        background: #c82333;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+    }
+
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-top: 30px;
+        padding: 20px;
+    }
+
+    .pagination a,
+    .pagination span {
+        padding: 8px 15px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        text-decoration: none;
+        color: #333;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .pagination a:hover {
+        border-color: #667eea;
+        color: #667eea;
+    }
+
+    .pagination .current {
+        background: #667eea;
+        border-color: #667eea;
+        color: white;
+    }
+
+    .pagination .disabled {
+        color: #ccc;
+        cursor: not-allowed;
+        border-color: #f0f0f0;
+    }
+
+    .pagination-info {
+        text-align: center;
+        margin-top: 10px;
+        color: #666;
+        font-size: 0.9em;
+    }
+
+    @media (max-width: 768px) {
+        .pagination {
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .pagination a,
+        .pagination span {
+            padding: 6px 10px;
+            font-size: 0.9em;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="management-header">
+    <h2>👥 User Management</h2>
+    <a href="{% url 'user_create' %}" class="btn btn-primary">➕ Create New User</a>
+</div>
+
+<div class="search-box">
+    <form method="get" action="{% url 'user_management' %}">
+        <input type="text" name="search" placeholder="Search users by username, email, or Discord channel..." value="{{ search_query }}">
+        <button type="submit">Search</button>
+    </form>
+</div>
+
+{% if users %}
+<table class="users-table">
+    <thead>
+        <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Discord Channel Name</th>
+            <th>Status</th>
+            <th>Role</th>
+            <th>Date Joined</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in users %}
+        <tr>
+            <td><strong>{{ user.username }}</strong></td>
+            <td>{{ user.email|default:"—" }}</td>
+            <td>
+                {% if user.profile.discord_channel_name %}
+                    {{ user.profile.discord_channel_name }}
+                {% else %}
+                    —
+                {% endif %}
+            </td>
+            <td>
+                {% if user.is_active %}
+                    <span class="badge badge-success">Active</span>
+                {% else %}
+                    <span class="badge badge-danger">Inactive</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if user.is_superuser %}
+                    <span class="badge badge-warning">Superuser</span>
+                {% elif user.is_staff %}
+                    <span class="badge badge-info">Staff</span>
+                {% else %}
+                    <span class="badge badge-success">User</span>
+                {% endif %}
+            </td>
+            <td>{{ user.date_joined|date:"M d, Y" }}</td>
+            <td>
+                <div class="action-buttons">
+                    <a href="{% url 'user_edit' user.id %}" class="btn btn-sm btn-edit">Edit</a>
+                    {% if user.id != request.user.id %}
+                    <a href="{% url 'user_delete' user.id %}" class="btn btn-sm btn-delete" onclick="return confirm('Are you sure you want to delete user {{ user.username }}?');">Delete</a>
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if page_obj.has_other_pages %}
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}">&laquo; First</a>
+        <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}">Previous</a>
+    {% else %}
+        <span class="disabled">&laquo; First</span>
+        <span class="disabled">Previous</span>
+    {% endif %}
+
+    {% if page_obj.paginator.num_pages > 20 %}
+        {# Show only current page and surrounding pages if too many pages #}
+        {% if page_obj.number > 3 %}
+            <a href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}">1</a>
+            {% if page_obj.number > 4 %}<span>...</span>{% endif %}
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+            {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+                {% if page_obj.number == num %}
+                    <span class="current">{{ num }}</span>
+                {% else %}
+                    <a href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}">{{ num }}</a>
+                {% endif %}
+            {% endif %}
+        {% endfor %}
+        {% if page_obj.number|add:'3' <= page_obj.paginator.num_pages %}
+            {% if page_obj.number|add:'3' < page_obj.paginator.num_pages %}<span>...</span>{% endif %}
+            <a href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}">{{ page_obj.paginator.num_pages }}</a>
+        {% endif %}
+    {% else %}
+        {# Show all pages if manageable number #}
+        {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+                <span class="current">{{ num }}</span>
+            {% else %}
+                <a href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}">{{ num }}</a>
+            {% endif %}
+        {% endfor %}
+    {% endif %}
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}">Next</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}">Last &raquo;</a>
+    {% else %}
+        <span class="disabled">Next</span>
+        <span class="disabled">Last &raquo;</span>
+    {% endif %}
+</div>
+<div class="pagination-info">
+    Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ page_obj.paginator.count }} users
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+    <p>No users found{% if search_query %} matching "{{ search_query }}"{% endif %}.</p>
+</div>
+{% endif %}
+{% endblock %}
+

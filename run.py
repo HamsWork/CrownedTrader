@@ -41,10 +41,11 @@ def main():
     print("\n🚀 Starting Django development server...\n")
     print("📍 Access the dashboard at: http://localhost:8000/")
     print("📍 Admin panel at: http://localhost:8000/admin/")
+    print("📍 Network access at: http://0.0.0.0:8000/")
     print("\n" + "="*50 + "\n")
     
-    # Run Django
-    os.system('python manage.py runserver')
+    # Run Django on all interfaces (0.0.0.0) to allow network access
+    os.system('python manage.py runserver 0.0.0.0:8000')
 
 if __name__ == '__main__':
     main()

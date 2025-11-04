@@ -113,6 +113,50 @@
         margin-bottom: 20px;
     }
 
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-top: 30px;
+        padding: 20px;
+    }
+
+    .pagination a,
+    .pagination span {
+        padding: 8px 15px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        text-decoration: none;
+        color: #333;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .pagination a:hover {
+        border-color: #667eea;
+        color: #667eea;
+    }
+
+    .pagination .current {
+        background: #667eea;
+        border-color: #667eea;
+        color: white;
+    }
+
+    .pagination .disabled {
+        color: #ccc;
+        cursor: not-allowed;
+        border-color: #f0f0f0;
+    }
+
+    .pagination-info {
+        text-align: center;
+        margin-top: 10px;
+        color: #666;
+        font-size: 0.9em;
+    }
+
     @media (max-width: 768px) {
         .signals-table {
             font-size: 0.9em;
@@ -125,6 +169,17 @@
         
         .info-cell {
             max-width: 150px;
+        }
+
+        .pagination {
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .pagination a,
+        .pagination span {
+            padding: 6px 10px;
+            font-size: 0.9em;
         }
     }
 </style>
@@ -175,6 +230,60 @@
         {% endfor %}
     </tbody>
 </table>
+
+{% if page_obj.has_other_pages %}
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1{% if filter_type %}&type={{ filter_type }}{% endif %}">&laquo; First</a>
+        <a href="?page={{ page_obj.previous_page_number }}{% if filter_type %}&type={{ filter_type }}{% endif %}">Previous</a>
+    {% else %}
+        <span class="disabled">&laquo; First</span>
+        <span class="disabled">Previous</span>
+    {% endif %}
+
+    {% if page_obj.paginator.num_pages > 20 %}
+        {# Show only current page and surrounding pages if too many pages #}
+        {% if page_obj.number > 3 %}
+            <a href="?page=1{% if filter_type %}&type={{ filter_type }}{% endif %}">1</a>
+            {% if page_obj.number > 4 %}<span>...</span>{% endif %}
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+            {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+                {% if page_obj.number == num %}
+                    <span class="current">{{ num }}</span>
+                {% else %}
+                    <a href="?page={{ num }}{% if filter_type %}&type={{ filter_type }}{% endif %}">{{ num }}</a>
+                {% endif %}
+            {% endif %}
+        {% endfor %}
+        {% if page_obj.number|add:'3' <= page_obj.paginator.num_pages %}
+            {% if page_obj.number|add:'3' < page_obj.paginator.num_pages %}<span>...</span>{% endif %}
+            <a href="?page={{ page_obj.paginator.num_pages }}{% if filter_type %}&type={{ filter_type }}{% endif %}">{{ page_obj.paginator.num_pages }}</a>
+        {% endif %}
+    {% else %}
+        {# Show all pages if manageable number #}
+        {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+                <span class="current">{{ num }}</span>
+            {% else %}
+                <a href="?page={{ num }}{% if filter_type %}&type={{ filter_type }}{% endif %}">{{ num }}</a>
+            {% endif %}
+        {% endfor %}
+    {% endif %}
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}{% if filter_type %}&type={{ filter_type }}{% endif %}">Next</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}{% if filter_type %}&type={{ filter_type }}{% endif %}">Last &raquo;</a>
+    {% else %}
+        <span class="disabled">Next</span>
+        <span class="disabled">Last &raquo;</span>
+    {% endif %}
+</div>
+<div class="pagination-info">
+    Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ page_obj.paginator.count }} signals
+</div>
+{% endif %}
+
 {% else %}
 <div class="no-signals">
     <div class="no-signals-icon">📭</div>

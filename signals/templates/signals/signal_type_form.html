@@ -1,0 +1,566 @@
+{% extends 'signals/base.html' %}
+
+{% block title %}{% if form_type == 'create' %}Create Signal Type{% else %}Edit Signal Type{% endif %} - Crowned Trader Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
+    .form-header {
+        margin-bottom: 30px;
+        text-align: center;
+    }
+
+    .form-header h2 {
+        color: #333;
+        font-size: 2em;
+        margin: 0;
+    }
+
+    .form-section {
+        background: #f8f9fa;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 25px;
+    }
+
+    .form-section-title {
+        color: #333;
+        font-size: 1.3em;
+        font-weight: 600;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #ddd;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #333;
+        font-weight: 600;
+    }
+
+    .form-input, .form-textarea, .form-select {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 1em;
+        font-family: inherit;
+        transition: border-color 0.3s;
+    }
+
+    .form-input:focus, .form-textarea:focus, .form-select:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+
+    .form-textarea {
+        resize: vertical;
+        min-height: 80px;
+    }
+
+    .form-group small {
+        display: block;
+        margin-top: 5px;
+        color: #666;
+        font-size: 0.9em;
+    }
+
+    .color-input-group {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+
+    .color-input-group input[type="color"] {
+        width: 60px;
+        height: 50px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+
+    .color-input-group input[type="text"] {
+        flex: 1;
+    }
+
+    .dynamic-list {
+        margin-top: 15px;
+    }
+
+    .dynamic-item {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        position: relative;
+    }
+
+    .dynamic-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+
+    .dynamic-item-title {
+        font-weight: 600;
+        color: #333;
+        font-size: 1.1em;
+    }
+
+    .btn-remove {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9em;
+        font-weight: 600;
+    }
+
+    .btn-remove:hover {
+        background: #c82333;
+    }
+
+    .btn-add {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1em;
+        font-weight: 600;
+        margin-top: 10px;
+    }
+
+    .btn-add:hover {
+        background: #218838;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
+    .form-row.full-width {
+        grid-template-columns: 1fr;
+    }
+
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+    }
+
+    .checkbox-group label {
+        margin: 0;
+        cursor: pointer;
+        font-weight: normal;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 15px;
+        margin-top: 30px;
+        justify-content: center;
+    }
+
+    .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1em;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.3s;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-secondary:hover {
+        background: #5a6268;
+    }
+
+    .error-message {
+        color: #dc3545;
+        font-size: 0.9em;
+        margin-top: 5px;
+    }
+
+    .help-text {
+        background: #e7f3ff;
+        border-left: 4px solid #667eea;
+        padding: 12px;
+        border-radius: 4px;
+        margin-top: 10px;
+        font-size: 0.9em;
+        color: #004085;
+    }
+
+    .help-text code {
+        background: rgba(0, 0, 0, 0.05);
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: 'Courier New', monospace;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="form-header">
+        <h2>{% if form_type == 'create' %}➕ Create Signal Type{% else %}✏️ Edit Signal Type{% endif %}</h2>
+    </div>
+
+    <form method="post" id="signalTypeForm">
+        {% csrf_token %}
+        
+        <!-- Basic Information -->
+        <div class="form-section">
+            <h3 class="form-section-title">Basic Information</h3>
+            
+            <div class="form-group">
+                <label for="{{ form.name.id_for_label }}">Name *</label>
+                {{ form.name }}
+                {% if form.name.errors %}
+                    <div class="error-message">{{ form.name.errors }}</div>
+                {% endif %}
+                <small>Unique name for this signal type (e.g., "Trade Alert", "Stop Loss")</small>
+            </div>
+
+            <div class="form-group">
+                <label for="{{ form.color.id_for_label }}">Color</label>
+                <div class="color-input-group">
+                    <input type="color" id="colorPicker" value="{{ form.color.value|default:'#000000' }}" onchange="document.getElementById('id_color').value = this.value">
+                    {{ form.color }}
+                </div>
+                {% if form.color.errors %}
+                    <div class="error-message">{{ form.color.errors }}</div>
+                {% endif %}
+                <small>Color for Discord embed (hex format)</small>
+            </div>
+        </div>
+
+        <!-- Variables Section -->
+        <div class="form-section">
+            <h3 class="form-section-title">Variables</h3>
+            <div class="help-text">
+                Variables are the data fields that users will fill in when creating a signal. 
+                Use <code>{{variable_name}}</code> syntax in templates to reference these variables.
+            </div>
+            <div id="variablesContainer" class="dynamic-list"></div>
+            <button type="button" class="btn-add" onclick="addVariable()">➕ Add Variable</button>
+            {{ form.variables_json }}
+        </div>
+
+        <!-- Templates Section -->
+        <div class="form-section">
+            <h3 class="form-section-title">Templates</h3>
+            
+            <div class="form-group">
+                <label for="{{ form.title_template.id_for_label }}">Title Template *</label>
+                {{ form.title_template }}
+                {% if form.title_template.errors %}
+                    <div class="error-message">{{ form.title_template.errors }}</div>
+                {% endif %}
+                <small>Template for Discord embed title (e.g., "🚨 {{ticker}} Trade Alert")</small>
+            </div>
+
+            <div class="form-group">
+                <label for="{{ form.description_template.id_for_label }}">Description Template</label>
+                {{ form.description_template }}
+                {% if form.description_template.errors %}
+                    <div class="error-message">{{ form.description_template.errors }}</div>
+                {% endif %}
+                <small>Template for Discord embed description</small>
+            </div>
+
+            <div class="form-group">
+                <label for="{{ form.footer_template.id_for_label }}">Footer Template</label>
+                {{ form.footer_template }}
+                {% if form.footer_template.errors %}
+                    <div class="error-message">{{ form.footer_template.errors }}</div>
+                {% endif %}
+                <small>Template for Discord embed footer</small>
+            </div>
+        </div>
+
+        <!-- Fields Template Section -->
+        <div class="form-section">
+            <h3 class="form-section-title">Discord Embed Fields</h3>
+            <div class="help-text">
+                Define the fields that will appear in the Discord embed. Each field can have a name and value, 
+                both supporting <code>{{variable}}</code> syntax. Use empty name/value for spacers.
+            </div>
+            <div id="fieldsContainer" class="dynamic-list"></div>
+            <button type="button" class="btn-add" onclick="addField()">➕ Add Field</button>
+            {{ form.fields_template_json }}
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">💾 Save Signal Type</button>
+            <a href="{% url 'signal_types_list' %}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+let variables = [];
+let fields = [];
+
+// Initialize from form data if editing
+{% if form.variables_json.value %}
+try {
+    variables = JSON.parse('{{ form.variables_json.value|escapejs }}');
+} catch(e) {
+    variables = [];
+}
+{% endif %}
+
+{% if form.fields_template_json.value %}
+try {
+    fields = JSON.parse('{{ form.fields_template_json.value|escapejs }}');
+} catch(e) {
+    fields = [];
+}
+{% endif %}
+
+function addVariable() {
+    variables.push({
+        name: '',
+        type: 'string',
+        label: '',
+        required: false,
+        hint: '',
+        options: '',
+        default: ''
+    });
+    renderVariables();
+}
+
+function removeVariable(index) {
+    variables.splice(index, 1);
+    renderVariables();
+}
+
+function updateVariable(index, field, value) {
+    if (field === 'options') {
+        variables[index][field] = value.split(',').map(o => o.trim()).filter(o => o);
+    } else if (field === 'required') {
+        variables[index][field] = value;
+    } else {
+        variables[index][field] = value;
+    }
+    updateVariablesJSON();
+}
+
+function renderVariables() {
+    const container = document.getElementById('variablesContainer');
+    container.innerHTML = '';
+    
+    variables.forEach((var_, index) => {
+        const item = document.createElement('div');
+        item.className = 'dynamic-item';
+        item.innerHTML = `
+            <div class="dynamic-item-header">
+                <span class="dynamic-item-title">Variable ${index + 1}</span>
+                <button type="button" class="btn-remove" onclick="removeVariable(${index})">Remove</button>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Variable Name *</label>
+                    <input type="text" class="form-input" value="${var_.name || ''}" 
+                           onchange="updateVariable(${index}, 'name', this.value)" 
+                           placeholder="e.g., ticker, strike">
+                    <small>Use only letters, numbers, and underscores</small>
+                </div>
+                <div class="form-group">
+                    <label>Type *</label>
+                    <select class="form-select" onchange="updateVariable(${index}, 'type', this.value)">
+                        <option value="string" ${var_.type === 'string' ? 'selected' : ''}>String</option>
+                        <option value="float" ${var_.type === 'float' ? 'selected' : ''}>Float</option>
+                        <option value="integer" ${var_.type === 'integer' ? 'selected' : ''}>Integer</option>
+                        <option value="date" ${var_.type === 'date' ? 'selected' : ''}>Date</option>
+                        <option value="boolean" ${var_.type === 'boolean' ? 'selected' : ''}>Boolean</option>
+                        <option value="text" ${var_.type === 'text' ? 'selected' : ''}>Text</option>
+                        <option value="select" ${var_.type === 'select' ? 'selected' : ''}>Select</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Label *</label>
+                    <input type="text" class="form-input" value="${var_.label || ''}" 
+                           onchange="updateVariable(${index}, 'label', this.value)" 
+                           placeholder="e.g., Ticker Symbol">
+                </div>
+                <div class="form-group">
+                    <label>Default Value</label>
+                    <input type="text" class="form-input" value="${var_.default || ''}" 
+                           onchange="updateVariable(${index}, 'default', this.value)">
+                </div>
+            </div>
+            ${var_.type === 'select' ? `
+            <div class="form-group">
+                <label>Options * (comma-separated)</label>
+                <input type="text" class="form-input" value="${(var_.options || []).join(', ')}" 
+                       onchange="updateVariable(${index}, 'options', this.value)" 
+                       placeholder="e.g., PUT, CALL">
+            </div>
+            ` : ''}
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Hint/Help Text</label>
+                    <textarea class="form-textarea" rows="2" 
+                              onchange="updateVariable(${index}, 'hint', this.value)" 
+                              placeholder="Optional help text">${var_.hint || ''}</textarea>
+                </div>
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="required_${index}" ${var_.required ? 'checked' : ''} 
+                               onchange="updateVariable(${index}, 'required', this.checked)">
+                        <label for="required_${index}">Required Field</label>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.appendChild(item);
+    });
+    
+    if (variables.length === 0) {
+        container.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No variables added yet. Click "Add Variable" to get started.</p>';
+    }
+    
+    updateVariablesJSON();
+}
+
+function addField() {
+    fields.push({
+        name: '',
+        value: '',
+        inline: false
+    });
+    renderFields();
+}
+
+function removeField(index) {
+    fields.splice(index, 1);
+    renderFields();
+}
+
+function updateField(index, field, value) {
+    if (field === 'inline') {
+        fields[index][field] = value;
+    } else {
+        fields[index][field] = value;
+    }
+    updateFieldsJSON();
+}
+
+function renderFields() {
+    const container = document.getElementById('fieldsContainer');
+    container.innerHTML = '';
+    
+    fields.forEach((field, index) => {
+        const item = document.createElement('div');
+        item.className = 'dynamic-item';
+        item.innerHTML = `
+            <div class="dynamic-item-header">
+                <span class="dynamic-item-title">Field ${index + 1}</span>
+                <button type="button" class="btn-remove" onclick="removeField(${index})">Remove</button>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Field Name</label>
+                    <input type="text" class="form-input" value="${field.name || ''}" 
+                           onchange="updateField(${index}, 'name', this.value)" 
+                           placeholder="e.g., Ticker: {{ticker}}">
+                    <small>Can use {{variable}} syntax</small>
+                </div>
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="inline_${index}" ${field.inline ? 'checked' : ''} 
+                               onchange="updateField(${index}, 'inline', this.checked)">
+                        <label for="inline_${index}">Inline Field</label>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Field Value</label>
+                <textarea class="form-textarea" rows="3" 
+                          onchange="updateField(${index}, 'value', this.value)" 
+                          placeholder="e.g., {{price}} or static text">${field.value || ''}</textarea>
+                <small>Can use {{variable}} syntax or be empty for name-only fields</small>
+            </div>
+        `;
+        container.appendChild(item);
+    });
+    
+    if (fields.length === 0) {
+        container.innerHTML = '<p style="color: #666; text-align: center; padding: 20px;">No fields added yet. Click "Add Field" to get started.</p>';
+    }
+    
+    updateFieldsJSON();
+}
+
+function updateVariablesJSON() {
+    document.getElementById('id_variables_json').value = JSON.stringify(variables);
+}
+
+function updateFieldsJSON() {
+    document.getElementById('id_fields_template_json').value = JSON.stringify(fields);
+}
+
+// Sync color picker with text input
+document.getElementById('id_color').addEventListener('input', function(e) {
+    document.getElementById('colorPicker').value = e.target.value;
+});
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    renderVariables();
+    renderFields();
+    
+    // Sync initial color
+    const colorValue = document.getElementById('id_color').value || '#000000';
+    document.getElementById('colorPicker').value = colorValue;
+});
+</script>
+{% endblock %}
+

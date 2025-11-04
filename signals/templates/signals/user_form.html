@@ -1,0 +1,195 @@
+{% extends 'signals/base.html' %}
+
+{% block title %}{% if form_type == 'create' %}Create User{% else %}Edit User{% endif %} - Crowned Trader Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-container {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .form-header {
+        margin-bottom: 30px;
+        text-align: center;
+    }
+
+    .form-header h2 {
+        color: #333;
+        font-size: 2em;
+        margin: 0;
+    }
+
+    .form-group {
+        margin-bottom: 25px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #333;
+        font-weight: 600;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="email"],
+    .form-group input[type="password"],
+    .form-group input[type="url"] {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 1em;
+        transition: border-color 0.3s;
+    }
+
+    .form-group input:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+
+    .form-group small {
+        display: block;
+        margin-top: 5px;
+        color: #666;
+        font-size: 0.9em;
+    }
+
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+    }
+
+    .checkbox-group label {
+        margin: 0;
+        cursor: pointer;
+        font-weight: normal;
+    }
+    
+    .checkbox-group small {
+        display: block;
+        margin-left: 0;
+        margin-top: 5px;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 15px;
+        margin-top: 30px;
+        justify-content: center;
+    }
+
+    .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1em;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.3s;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-secondary:hover {
+        background: #5a6268;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="form-header">
+        <h2>{% if form_type == 'create' %}➕ Create New User{% else %}✏️ Edit User{% endif %}</h2>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label for="username">Username *</label>
+            <input type="text" id="username" name="username" 
+                   value="{% if form_type == 'edit' %}{{ user.username }}{% elif username %}{{ username }}{% endif %}" 
+                   required>
+            <small>Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="email">Email *</label>
+            <input type="email" id="email" name="email" 
+                   value="{% if form_type == 'edit' %}{{ user.email }}{% elif email %}{{ email }}{% endif %}" 
+                   required>
+            <small>Required. A valid email address.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="password">Password {% if form_type == 'edit' %}(leave blank to keep current password){% else %}*{% endif %}</label>
+            <input type="password" id="password" name="password" {% if form_type == 'create' %}required{% endif %}>
+            <small>{% if form_type == 'edit' %}Enter a new password only if you want to change it.{% else %}Required. Minimum 8 characters recommended.{% endif %}</small>
+        </div>
+
+        <div class="form-group">
+            <label for="discord_channel_name">Discord Channel Name *</label>
+            <input type="text" id="discord_channel_name" name="discord_channel_name" 
+                   value="{% if form_type == 'edit' %}{{ discord_channel_name }}{% elif discord_channel_name %}{{ discord_channel_name }}{% endif %}" 
+                   required>
+            <small>Required. The name of the Discord channel.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="discord_channel_webhook">Discord Channel Webhook *</label>
+            <input type="url" id="discord_channel_webhook" name="discord_channel_webhook" 
+                   value="{% if form_type == 'edit' %}{{ discord_channel_webhook }}{% elif discord_channel_webhook %}{{ discord_channel_webhook }}{% endif %}" 
+                   required>
+            <small>Required. The webhook URL for the Discord channel (e.g., https://discord.com/api/webhooks/...).</small>
+        </div>
+
+        <div class="checkbox-group">
+            <input type="checkbox" id="is_superuser" name="is_superuser" 
+                   {% if form_type == 'edit' and user.is_superuser %}checked{% elif form_type == 'create' and is_superuser %}checked{% endif %}>
+            <label for="is_superuser">Superuser Status</label>
+            <small style="margin-left: 10px; color: #666;">Designates that this user has all permissions without explicitly assigning them.</small>
+        </div>
+
+        {% if form_type == 'edit' %}
+        <div class="checkbox-group">
+            <input type="checkbox" id="is_active" name="is_active" 
+                   {% if user.is_active %}checked{% endif %}>
+            <label for="is_active">Active Status</label>
+            <small style="margin-left: 10px; color: #666;">Designates whether this user should be treated as active. Uncheck this instead of deleting accounts.</small>
+        </div>
+        {% endif %}
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                {% if form_type == 'create' %}Create User{% else %}Update User{% endif %}
+            </button>
+            <a href="{% url 'user_management' %}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+

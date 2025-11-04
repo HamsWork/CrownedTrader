@@ -49,21 +49,38 @@
             border-radius: 15px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
             margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
         }
 
         .nav a {
             text-decoration: none;
             color: #667eea;
             font-weight: 600;
-            margin-right: 30px;
             padding: 10px 20px;
             border-radius: 8px;
             transition: all 0.3s;
+            white-space: nowrap;
         }
 
         .nav a:hover, .nav a.active {
             background: #667eea;
             color: white;
+        }
+
+        .nav .user-info {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .nav .user-info span {
+            color: #667eea;
+            font-weight: 600;
         }
 
         .messages {
@@ -119,9 +136,21 @@
         </div>
 
         <div class="nav">
-            <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">📊 Dashboard</a>
-            <!-- <a href="{% url 'signals_history' %}" class="{% if request.resolver_match.url_name == 'signals_history' %}active{% endif %}">📈 Signal History</a> -->
-            <!-- <a href="/admin/" target="_blank">⚙️ Admin Panel</a> -->
+            {% if user.is_authenticated %}
+                <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">📊 Dashboard</a>
+                <a href="{% url 'signal_types_list' %}" class="{% if 'signal_type' in request.resolver_match.url_name %}active{% endif %}">🔧 Signal Types</a>
+                <!-- <a href="{% url 'signals_history' %}" class="{% if request.resolver_match.url_name == 'signals_history' %}active{% endif %}">📈 Signal History</a> -->
+                {% if user.is_superuser %}
+                <a href="{% url 'user_management' %}" class="{% if request.resolver_match.url_name == 'user_management' or request.resolver_match.url_name == 'user_create' or request.resolver_match.url_name == 'user_edit' %}active{% endif %}">👥 User Management</a>
+                {% endif %}
+                <!-- <a href="/admin/" target="_blank">⚙️ Admin Panel</a> -->
+                <div class="user-info">
+                    <span>👤 {{ user.username }}</span>
+                    <a href="{% url 'user_logout' %}" style="background: #dc3545; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none;">Logout</a>
+                </div>
+            {% else %}
+                <a href="{% url 'user_login' %}" class="{% if request.resolver_match.url_name == 'user_login' %}active{% endif %}">🔐 Login</a>
+            {% endif %}
         </div>
 
         {% if messages %}

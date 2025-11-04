@@ -1,0 +1,225 @@
+{% extends 'signals/base.html' %}
+
+{% block title %}Signal Types - Crowned Trader Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .management-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+
+    .management-header h2 {
+        color: #333;
+        font-size: 2em;
+        margin: 0;
+    }
+
+    .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1em;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.3s;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .signal-types-section {
+        margin-bottom: 40px;
+    }
+
+    .section-title {
+        color: #333;
+        font-size: 1.5em;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #e0e0e0;
+    }
+
+    .signal-types-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+
+    .signal-type-card {
+        background: #f8f9fa;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 20px;
+        transition: all 0.3s;
+    }
+
+    .signal-type-card:hover {
+        border-color: #667eea;
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        transform: translateY(-2px);
+    }
+
+    .signal-type-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 15px;
+    }
+
+    .signal-type-name {
+        font-size: 1.3em;
+        font-weight: 600;
+        color: #333;
+        margin: 0;
+    }
+
+    .signal-type-color {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        border: 2px solid #ddd;
+        flex-shrink: 0;
+    }
+
+    .signal-type-info {
+        color: #666;
+        font-size: 0.9em;
+        margin-bottom: 15px;
+    }
+
+    .signal-type-info span {
+        display: inline-block;
+        margin-right: 15px;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 8px;
+    }
+
+    .btn-sm {
+        padding: 8px 16px;
+        font-size: 0.9em;
+    }
+
+    .btn-edit {
+        background: #28a745;
+        color: white;
+    }
+
+    .btn-delete {
+        background: #dc3545;
+        color: white;
+    }
+
+    .btn-edit:hover {
+        background: #218838;
+    }
+
+    .btn-delete:hover {
+        background: #c82333;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.85em;
+        font-weight: 600;
+    }
+
+    .badge-system {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+
+    .badge-custom {
+        background: #d4edda;
+        color: #155724;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="management-header">
+    <h2>🔧 Signal Type Templates</h2>
+    <a href="{% url 'signal_type_create' %}" class="btn btn-primary">➕ Create New Signal Type</a>
+</div>
+
+{% if user_signal_types %}
+<div class="signal-types-section">
+    <h3 class="section-title">Your Custom Signal Types</h3>
+    <div class="signal-types-grid">
+        {% for signal_type in user_signal_types %}
+        <div class="signal-type-card">
+            <div class="signal-type-header">
+                <h4 class="signal-type-name">{{ signal_type.name }}</h4>
+                <div class="signal-type-color" style="background-color: {{ signal_type.color }};"></div>
+            </div>
+            <div class="signal-type-info">
+                <span><strong>{{ signal_type.variables|length }}</strong> variables</span>
+                <span><strong>{{ signal_type.fileds_template|length }}</strong> fields</span>
+                <span class="badge badge-custom">Custom</span>
+            </div>
+            <div class="action-buttons">
+                <a href="{% url 'signal_type_edit' signal_type.id %}" class="btn btn-sm btn-edit">Edit</a>
+                <a href="{% url 'signal_type_delete' signal_type.id %}" class="btn btn-sm btn-delete" onclick="return confirm('Are you sure you want to delete signal type \"{{ signal_type.name }}\"?');">Delete</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if system_signal_types %}
+<div class="signal-types-section">
+    <h3 class="section-title">System Default Signal Types</h3>
+    <div class="signal-types-grid">
+        {% for signal_type in system_signal_types %}
+        <div class="signal-type-card">
+            <div class="signal-type-header">
+                <h4 class="signal-type-name">{{ signal_type.name }}</h4>
+                <div class="signal-type-color" style="background-color: {{ signal_type.color }};"></div>
+            </div>
+            <div class="signal-type-info">
+                <span><strong>{{ signal_type.variables|length }}</strong> variables</span>
+                <span><strong>{{ signal_type.fileds_template|length }}</strong> fields</span>
+                <span class="badge badge-system">System</span>
+            </div>
+            <div class="action-buttons">
+                <span style="color: #999; font-size: 0.9em;">Read-only</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if not user_signal_types and not system_signal_types %}
+<div class="empty-state">
+    <p>No signal types found. Create your first signal type to get started!</p>
+</div>
+{% endif %}
+{% endblock %}
+

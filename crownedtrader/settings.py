@@ -22,8 +22,15 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-your-secret-key-chang
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '162.218.114.93']
-CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1:8000', 'http://localhost:8000', 'http://162.218.114.93:8000']
+# Allow any host in debug mode for development, restrict in production
+if DEBUG:
+    # ALLOWED_HOSTS = ['*']  # Allow any host in debug mode
+    # CSRF_TRUSTED_ORIGINS = ['http://*', 'https://*']  # Allow any origin in debug mode
+    ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '162.218.114.93']
+    CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1:8000', 'http://localhost:8000', 'http://162.218.114.93:8000']
+else:
+    ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '162.218.114.93']
+    CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1:8000', 'http://localhost:8000', 'http://162.218.114.93:8000']
 
 
 # Application definition
@@ -131,4 +138,9 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Login URL for authentication
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/login/'
 
