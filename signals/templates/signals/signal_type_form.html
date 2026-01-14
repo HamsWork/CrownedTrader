@@ -7,6 +7,21 @@
     .form-container {
         max-width: 1000px;
         margin: 0 auto;
+        position: relative;
+    }
+
+    .form-wrapper {
+        display: flex;
+        gap: 30px;
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 20px;
+        align-items: flex-start;
+    }
+
+    .form-content {
+        flex: 1;
+        max-width: 1000px;
     }
 
     .form-header {
@@ -61,6 +76,57 @@
     .form-input:focus, .form-textarea:focus, .form-select:focus {
         outline: none;
         border-color: #667eea;
+    }
+
+    /* Read-only input styles */
+    .form-input[readonly],
+    .form-textarea[readonly],
+    input[readonly].form-input,
+    textarea[readonly].form-textarea,
+    .form-input.readonly,
+    .form-textarea.readonly,
+    .form-select[disabled],
+    .form-select.readonly,
+    select[disabled].form-select {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+        border: 2px solid #dee2e6 !important;
+        color: #495057 !important;
+        cursor: not-allowed !important;
+        opacity: 0.85;
+        position: relative;
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    .form-input[readonly]:hover,
+    .form-textarea[readonly]:hover,
+    input[readonly].form-input:hover,
+    textarea[readonly].form-textarea:hover,
+    .form-input.readonly:hover,
+    .form-textarea.readonly:hover,
+    .form-select[disabled]:hover,
+    .form-select.readonly:hover {
+        border-color: #adb5bd !important;
+        opacity: 0.9;
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Read-only indicator */
+    .readonly-indicator {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        opacity: 0.4;
+        pointer-events: none;
+        font-size: 0.9em;
+    }
+
+    .form-group {
+        position: relative;
+    }
+
+    .dynamic-item .form-group {
+        position: relative;
     }
 
     .form-textarea {
@@ -239,16 +305,251 @@
         border-radius: 3px;
         font-family: 'Courier New', monospace;
     }
+
+    /* Discord Preview Styles */
+    .discord-preview-wrapper {
+        position: sticky;
+        top: 20px;
+        width: 380px;
+        flex-shrink: 0;
+        z-index: 10;
+    }
+
+    .discord-preview-container {
+        background: #2f3136;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        position: sticky;
+        top: 20px;
+    }
+
+    .discord-preview {
+        max-width: 100%;
+        margin: 0 auto;
+    }
+
+    .preview-header {
+        color: #dcddde;
+        font-size: 0.9em;
+        margin-bottom: 15px;
+        text-align: center;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .discord-embed {
+        display: flex;
+        background: #2f3136;
+        border-radius: 4px;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    .discord-embed-color-bar {
+        width: 4px;
+        background: #5865f2;
+        flex-shrink: 0;
+    }
+
+    .discord-embed-content {
+        flex: 1;
+        padding: 12px 16px 12px 12px;
+        color: #dcddde;
+        font-size: 14px;
+        line-height: 1.375;
+    }
+
+    .discord-embed-title {
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 16px;
+        margin-bottom: 8px;
+        min-height: 20px;
+    }
+
+    .discord-embed-title:empty {
+        display: none;
+    }
+
+    /* Discord Markdown Styles */
+    .discord-embed-title strong,
+    .discord-embed-description strong,
+    .discord-embed-field-name strong,
+    .discord-embed-field-value strong,
+    .discord-embed-footer strong {
+        font-weight: 600;
+    }
+
+    .discord-embed-title em,
+    .discord-embed-description em,
+    .discord-embed-field-name em,
+    .discord-embed-field-value em,
+    .discord-embed-footer em {
+        font-style: italic;
+    }
+
+    .discord-embed-title u,
+    .discord-embed-description u,
+    .discord-embed-field-name u,
+    .discord-embed-field-value u,
+    .discord-embed-footer u {
+        text-decoration: underline;
+    }
+
+    .discord-embed-title s,
+    .discord-embed-description s,
+    .discord-embed-field-name s,
+    .discord-embed-field-value s,
+    .discord-embed-footer s {
+        text-decoration: line-through;
+    }
+
+    .discord-embed-title code,
+    .discord-embed-description code,
+    .discord-embed-field-name code,
+    .discord-embed-field-value code,
+    .discord-embed-footer code {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.9em;
+    }
+
+    .discord-embed-title pre,
+    .discord-embed-description pre,
+    .discord-embed-field-name pre,
+    .discord-embed-field-value pre,
+    .discord-embed-footer pre {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 8px;
+        border-radius: 4px;
+        margin: 4px 0;
+        overflow-x: auto;
+    }
+
+    .discord-embed-title pre code,
+    .discord-embed-description pre code,
+    .discord-embed-field-name pre code,
+    .discord-embed-field-value pre code,
+    .discord-embed-footer pre code {
+        background: none;
+        padding: 0;
+    }
+
+    .discord-embed-description {
+        color: #dcddde;
+        margin-bottom: 8px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .discord-embed-description:empty {
+        display: none;
+    }
+
+    .discord-embed-fields {
+        margin-top: 8px;
+    }
+
+    .discord-embed-field {
+        margin-bottom: 8px;
+    }
+
+    .discord-embed-field-inline {
+        flex: 0 0 calc(33.333% - 11px);
+        max-width: calc(33.333% - 11px);
+    }
+
+    .discord-embed-field-name {
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 14px;
+        margin-bottom: 2px;
+        min-height: 16px;
+    }
+
+    .discord-embed-field-name:empty {
+        display: none;
+    }
+
+    .discord-embed-field-value {
+        color: #dcddde;
+        font-size: 14px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        min-height: 16px;
+    }
+
+    .discord-embed-field-value:empty {
+        display: none;
+    }
+
+    .discord-embed-footer {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        color: #72767d;
+        font-size: 12px;
+        min-height: 14px;
+    }
+
+    .discord-embed-footer:empty {
+        display: none;
+    }
+
+    /* Responsive design for preview */
+    @media (max-width: 1200px) {
+        .form-wrapper {
+            flex-direction: column;
+        }
+
+        .discord-preview-wrapper {
+            width: 100%;
+            position: relative;
+            top: 0;
+            margin-top: 30px;
+        }
+
+        .discord-preview-container {
+            position: relative;
+            top: 0;
+            max-width: 520px;
+            margin: 0 auto;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .form-wrapper {
+            padding: 0 10px;
+        }
+
+        .discord-preview-container {
+            padding: 15px;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="form-container">
-    <div class="form-header">
-        <h2>{% if form_type == 'create' %}➕ Create Signal Type{% else %}✏️ Edit Signal Type{% endif %}</h2>
-    </div>
+<div class="form-wrapper">
+    <div class="form-content">
+        <div class="form-container">
+            <div class="form-header">
+                <h2>{% if form_type == 'create' %}➕ Create Signal Type{% else %}✏️ Edit Signal Type{% endif %}</h2>
+                {% if is_default %}
+                <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 15px; margin-top: 20px; text-align: center;">
+                    <strong>🔒 System Default Template (Read-Only)</strong>
+                    <p style="margin: 10px 0 0 0; color: #856404; font-size: 0.95em;">
+                        This is a system default template. You can view it but cannot modify it. 
+                        Create your own custom signal type to make changes.
+                    </p>
+                </div>
+                {% endif %}
+            </div>
 
-    <form method="post" id="signalTypeForm">
+            <form method="post" id="signalTypeForm" {% if is_default %}onsubmit="return false;"{% endif %}>
         {% csrf_token %}
         
         <!-- Basic Information -->
@@ -257,7 +558,14 @@
             
             <div class="form-group">
                 <label for="{{ form.name.id_for_label }}">Name *</label>
-                {{ form.name }}
+                {% if is_default %}
+                    <div style="position: relative;">
+                        <input type="text" id="{{ form.name.id_for_label }}" class="form-input" value="{{ form.name.value }}" readonly>
+                        <span class="readonly-indicator">🔒</span>
+                    </div>
+                {% else %}
+                    {{ form.name }}
+                {% endif %}
                 {% if form.name.errors %}
                     <div class="error-message">{{ form.name.errors }}</div>
                 {% endif %}
@@ -267,8 +575,15 @@
             <div class="form-group">
                 <label for="{{ form.color.id_for_label }}">Color</label>
                 <div class="color-input-group">
-                    <input type="color" id="colorPicker" value="{{ form.color.value|default:'#000000' }}" onchange="document.getElementById('id_color').value = this.value">
-                    {{ form.color }}
+                    <input type="color" id="colorPicker" value="{{ form.color.value|default:'#000000' }}" {% if is_default %}readonly disabled style="cursor: not-allowed;"{% else %}onchange="document.getElementById('id_color').value = this.value"{% endif %}>
+                    {% if is_default %}
+                        <div style="position: relative; flex: 1;">
+                            <input type="text" id="id_color" class="form-input" value="{{ form.color.value|default:'#000000' }}" readonly>
+                            <span class="readonly-indicator">🔒</span>
+                        </div>
+                    {% else %}
+                        {{ form.color }}
+                    {% endif %}
                 </div>
                 {% if form.color.errors %}
                     <div class="error-message">{{ form.color.errors }}</div>
@@ -285,7 +600,9 @@
                 Use <code>{{variable_name}}</code> syntax in templates to reference these variables.
             </div>
             <div id="variablesContainer" class="dynamic-list"></div>
+            {% if not is_default %}
             <button type="button" class="btn-add" onclick="addVariable()">➕ Add Variable</button>
+            {% endif %}
             {{ form.variables_json }}
         </div>
 
@@ -293,9 +610,99 @@
         <div class="form-section">
             <h3 class="form-section-title">Templates</h3>
             
+            <!-- Help Section: Markdown and Variables -->
+            <div class="help-section" style="background: #f8f9fa; border: 2px solid #667eea; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
+                <div style="display: flex; align-items: center; margin-bottom: 15px; cursor: pointer;" onclick="toggleHelpSection()">
+                    <h4 style="margin: 0; color: #667eea; font-size: 1.1em; flex: 1;">📖 Help: Markdown Formatting & Variables</h4>
+                    <span id="helpToggleIcon" style="font-size: 1.2em; color: #667eea;">▼</span>
+                </div>
+                <div id="helpContent" style="display: block;">
+                    <div style="margin-bottom: 20px;">
+                        <h5 style="color: #333; margin-bottom: 10px; font-size: 1em;">🔤 Variables Usage</h5>
+                        <p style="color: #666; margin-bottom: 10px; line-height: 1.6;">
+                            Use <code style="background: #e9ecef; padding: 2px 6px; border-radius: 3px;">{% templatetag openvariable %}variable_name{% templatetag closevariable %}</code> to insert variable values in your templates. 
+                            Variables are defined in the Variables section above.
+                        </p>
+                        <div style="background: white; padding: 12px; border-radius: 4px; border-left: 3px solid #667eea; margin-top: 10px;">
+                            <strong style="color: #333;">Examples:</strong>
+                            <ul style="margin: 8px 0 0 0; padding-left: 20px; color: #666;">
+                                <li>Title: <code>🚨 {% templatetag openvariable %}ticker{% templatetag closevariable %} Trade Alert</code></li>
+                                <li>Description: <code>Price: ${% templatetag openvariable %}price{% templatetag closevariable %} | Strike: {% templatetag openvariable %}strike{% templatetag closevariable %}</code></li>
+                                <li>Field Value: <code>{% templatetag openvariable %}expiration{% templatetag closevariable %} expires at {% templatetag openvariable %}time{% templatetag closevariable %}</code></li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <h5 style="color: #333; margin-bottom: 10px; font-size: 1em;">✨ Discord Markdown Formatting</h5>
+                        <p style="color: #666; margin-bottom: 10px; line-height: 1.6;">
+                            Discord supports basic markdown formatting. Use these syntaxes in your templates:
+                        </p>
+                        <div style="background: white; padding: 12px; border-radius: 4px; border-left: 3px solid #667eea;">
+                            <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                                <thead>
+                                    <tr style="background: #e9ecef;">
+                                        <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Style</th>
+                                        <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Syntax</th>
+                                        <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Example</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>Bold</strong></td>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>**text**</code> or <code>__text__</code></td>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>**Bold Text**</code></td>
+                                    </tr>
+                                    <tr style="background: #f8f9fa;">
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><em>Italic</em></td>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>*text*</code> or <code>_text_</code></td>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>*Italic Text*</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><strong><em>Bold Italic</em></strong></td>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>***text***</code></td>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>***Bold Italic***</code></td>
+                                    </tr>
+                                    <tr style="background: #f8f9fa;">
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><s>Strikethrough</s></td>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>~~text~~</code></td>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>~~Strikethrough~~</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>Inline Code</code></td>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>`code`</code></td>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>`code example`</code></td>
+                                    </tr>
+                                    <tr style="background: #f8f9fa;">
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>Code Block</code></td>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>```code```</code></td>
+                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>```code block```</code></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; border-radius: 4px;">
+                        <strong style="color: #856404;">💡 Tip:</strong>
+                        <p style="color: #856404; margin: 5px 0 0 0; line-height: 1.5;">
+                            You can combine markdown with variables! For example: <code>**{% templatetag openvariable %}ticker{% templatetag closevariable %}** is trading at $**{% templatetag openvariable %}price{% templatetag closevariable %}**</code> 
+                            will show the ticker and price in bold.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
             <div class="form-group">
                 <label for="{{ form.title_template.id_for_label }}">Title Template *</label>
-                {{ form.title_template }}
+                {% if is_default %}
+                    <div style="position: relative;">
+                        <textarea id="{{ form.title_template.id_for_label }}" class="form-textarea" readonly style="resize: none;">{{ form.title_template.value|default:'' }}</textarea>
+                        <span class="readonly-indicator" style="top: 12px; transform: none;">🔒</span>
+                    </div>
+                {% else %}
+                    {{ form.title_template }}
+                {% endif %}
                 {% if form.title_template.errors %}
                     <div class="error-message">{{ form.title_template.errors }}</div>
                 {% endif %}
@@ -304,7 +711,14 @@
 
             <div class="form-group">
                 <label for="{{ form.description_template.id_for_label }}">Description Template</label>
-                {{ form.description_template }}
+                {% if is_default %}
+                    <div style="position: relative;">
+                        <textarea id="{{ form.description_template.id_for_label }}" class="form-textarea" readonly style="resize: none;">{{ form.description_template.value|default:'' }}</textarea>
+                        <span class="readonly-indicator" style="top: 12px; transform: none;">🔒</span>
+                    </div>
+                {% else %}
+                    {{ form.description_template }}
+                {% endif %}
                 {% if form.description_template.errors %}
                     <div class="error-message">{{ form.description_template.errors }}</div>
                 {% endif %}
@@ -313,11 +727,55 @@
 
             <div class="form-group">
                 <label for="{{ form.footer_template.id_for_label }}">Footer Template</label>
-                {{ form.footer_template }}
+                {% if is_default %}
+                    <div style="position: relative;">
+                        <textarea id="{{ form.footer_template.id_for_label }}" class="form-textarea" readonly style="resize: none;">{{ form.footer_template.value|default:'' }}</textarea>
+                        <span class="readonly-indicator" style="top: 12px; transform: none;">🔒</span>
+                    </div>
+                {% else %}
+                    {{ form.footer_template }}
+                {% endif %}
                 {% if form.footer_template.errors %}
                     <div class="error-message">{{ form.footer_template.errors }}</div>
                 {% endif %}
                 <small>Template for Discord embed footer</small>
+            </div>
+
+            <!-- Default Display Options -->
+            <div class="form-group">
+                <label style="display: block; margin-bottom: 12px; font-weight: 600;">Default Display Options</label>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        {% if is_default %}
+                            <input type="checkbox" id="{{ form.show_title_default.id_for_label }}" disabled checked>
+                            <span class="readonly-indicator" style="position: static; margin-left: 5px;">🔒</span>
+                        {% else %}
+                            {{ form.show_title_default }}
+                        {% endif %}
+                        <label for="{{ form.show_title_default.id_for_label }}" style="margin: 0; cursor: pointer; font-weight: normal;">
+                            Show title by default
+                        </label>
+                    </div>
+                    {% if form.show_title_default.errors %}
+                        <div class="error-message">{{ form.show_title_default.errors }}</div>
+                    {% endif %}
+                    
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        {% if is_default %}
+                            <input type="checkbox" id="{{ form.show_description_default.id_for_label }}" disabled checked>
+                            <span class="readonly-indicator" style="position: static; margin-left: 5px;">🔒</span>
+                        {% else %}
+                            {{ form.show_description_default }}
+                        {% endif %}
+                        <label for="{{ form.show_description_default.id_for_label }}" style="margin: 0; cursor: pointer; font-weight: normal;">
+                            Show description by default
+                        </label>
+                    </div>
+                    {% if form.show_description_default.errors %}
+                        <div class="error-message">{{ form.show_description_default.errors }}</div>
+                    {% endif %}
+                </div>
+                <small>Default checkbox states when users select this signal type in the dashboard</small>
             </div>
         </div>
 
@@ -326,23 +784,57 @@
             <h3 class="form-section-title">Discord Embed Fields</h3>
             <div class="help-text">
                 Define the fields that will appear in the Discord embed. Each field can have a name and value, 
-                both supporting <code>{{variable}}</code> syntax. Use empty name/value for spacers.
+                both supporting <code>{% templatetag openvariable %}variable{% templatetag closevariable %}</code> syntax. Use empty name/value for spacers.
             </div>
             <div id="fieldsContainer" class="dynamic-list"></div>
-            <button type="button" class="btn-add" onclick="addField()">➕ Add Field</button>
+            {% if not is_default %}
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button type="button" class="btn-add" onclick="addField()">➕ Add Field</button>
+                <button type="button" class="btn-add" onclick="addBlankField()" style="background: #6c757d;">➕ Add Blank Field</button>
+            </div>
+            {% endif %}
             {{ form.fields_template_json }}
         </div>
 
         <div class="form-actions">
-            <button type="submit" class="btn btn-primary">💾 Save Signal Type</button>
-            <a href="{% url 'signal_types_list' %}" class="btn btn-secondary">Cancel</a>
+            {% if is_default %}
+                <button type="button" class="btn btn-primary" disabled style="opacity: 0.6; cursor: not-allowed;">💾 Save Signal Type (Read-Only)</button>
+                <a href="{% url 'signal_types_list' %}" class="btn btn-secondary">Back to List</a>
+            {% else %}
+                <button type="submit" class="btn btn-primary">💾 Save Signal Type</button>
+                <a href="{% url 'signal_types_list' %}" class="btn btn-secondary">Cancel</a>
+            {% endif %}
         </div>
-    </form>
+            </form>
+        </div>
+    </div>
+
+    <!-- Floating Preview Section -->
+    <div class="discord-preview-wrapper">
+        <div class="discord-preview-container">
+            <div class="preview-header">
+                <strong>📱 Live Preview</strong>
+                <div style="font-size: 0.85em; margin-top: 5px; opacity: 0.8;">Updates in real-time</div>
+            </div>
+            <div id="discordPreview" class="discord-preview">
+                <div class="discord-embed">
+                    <div class="discord-embed-color-bar" id="previewColorBar"></div>
+                    <div class="discord-embed-content">
+                        <div class="discord-embed-title" id="previewTitle">Title will appear here</div>
+                        <div class="discord-embed-description" id="previewDescription"></div>
+                        <div class="discord-embed-fields" id="previewFields"></div>
+                        <div class="discord-embed-footer" id="previewFooter"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
 let variables = [];
 let fields = [];
+let isReadOnly = {% if is_default %}true{% else %}false{% endif %};
 
 // Initialize from form data if editing
 {% if form.variables_json.value %}
@@ -388,6 +880,7 @@ function updateVariable(index, field, value) {
         variables[index][field] = value;
     }
     updateVariablesJSON();
+    updatePreview();
 }
 
 function renderVariables() {
@@ -400,19 +893,22 @@ function renderVariables() {
         item.innerHTML = `
             <div class="dynamic-item-header">
                 <span class="dynamic-item-title">Variable ${index + 1}</span>
-                <button type="button" class="btn-remove" onclick="removeVariable(${index})">Remove</button>
+                ${isReadOnly ? '' : `<button type="button" class="btn-remove" onclick="removeVariable(${index})">Remove</button>`}
             </div>
             <div class="form-row">
                 <div class="form-group">
                     <label>Variable Name *</label>
-                    <input type="text" class="form-input" value="${var_.name || ''}" 
-                           onchange="updateVariable(${index}, 'name', this.value)" 
+                    ${isReadOnly ? '<div style="position: relative;">' : ''}
+                    <input type="text" class="form-input${isReadOnly ? ' readonly' : ''}" value="${var_.name || ''}" 
+                           ${isReadOnly ? 'readonly' : 'onchange="updateVariable(' + index + ', \'name\', this.value)" oninput="updateVariable(' + index + ', \'name\', this.value)"'} 
                            placeholder="e.g., ticker, strike">
+                    ${isReadOnly ? '<span class="readonly-indicator">🔒</span></div>' : ''}
                     <small>Use only letters, numbers, and underscores</small>
                 </div>
                 <div class="form-group">
                     <label>Type *</label>
-                    <select class="form-select" onchange="updateVariable(${index}, 'type', this.value)">
+                    ${isReadOnly ? '<div style="position: relative;">' : ''}
+                    <select class="form-select${isReadOnly ? ' readonly' : ''}" ${isReadOnly ? 'disabled' : `onchange="updateVariable(${index}, 'type', this.value); renderVariables();"`}>
                         <option value="string" ${var_.type === 'string' ? 'selected' : ''}>String</option>
                         <option value="float" ${var_.type === 'float' ? 'selected' : ''}>Float</option>
                         <option value="integer" ${var_.type === 'integer' ? 'selected' : ''}>Integer</option>
@@ -426,35 +922,39 @@ function renderVariables() {
             <div class="form-row">
                 <div class="form-group">
                     <label>Label *</label>
-                    <input type="text" class="form-input" value="${var_.label || ''}" 
-                           onchange="updateVariable(${index}, 'label', this.value)" 
+                    <input type="text" class="form-input${isReadOnly ? ' readonly' : ''}" value="${var_.label || ''}" 
+                           ${isReadOnly ? 'readonly' : 'onchange="updateVariable(' + index + ', \'label\', this.value)"'} 
                            placeholder="e.g., Ticker Symbol">
+                    ${isReadOnly ? '<span class="readonly-indicator">🔒</span>' : ''}
                 </div>
                 <div class="form-group">
                     <label>Default Value</label>
-                    <input type="text" class="form-input" value="${var_.default || ''}" 
-                           onchange="updateVariable(${index}, 'default', this.value)">
+                    <input type="text" class="form-input${isReadOnly ? ' readonly' : ''}" value="${var_.default || ''}" 
+                           ${isReadOnly ? 'readonly' : 'onchange="updateVariable(' + index + ', \'default\', this.value)" oninput="updateVariable(' + index + ', \'default\', this.value)"'}>
+                    ${isReadOnly ? '<span class="readonly-indicator">🔒</span>' : ''}
                 </div>
             </div>
             ${var_.type === 'select' ? `
             <div class="form-group">
                 <label>Options * (comma-separated)</label>
-                <input type="text" class="form-input" value="${(var_.options || []).join(', ')}" 
-                       onchange="updateVariable(${index}, 'options', this.value)" 
+                <input type="text" class="form-input${isReadOnly ? ' readonly' : ''}" value="${(var_.options || []).join(', ')}" 
+                       ${isReadOnly ? 'readonly' : 'onchange="updateVariable(' + index + ', \'options\', this.value)"'} 
                        placeholder="e.g., PUT, CALL">
+                ${isReadOnly ? '<span class="readonly-indicator">🔒</span>' : ''}
             </div>
             ` : ''}
             <div class="form-row">
                 <div class="form-group">
                     <label>Hint/Help Text</label>
-                    <textarea class="form-textarea" rows="2" 
-                              onchange="updateVariable(${index}, 'hint', this.value)" 
+                    <textarea class="form-textarea${isReadOnly ? ' readonly' : ''}" rows="2" 
+                              ${isReadOnly ? 'readonly style="resize: none;"' : 'onchange="updateVariable(' + index + ', \'hint\', this.value)"'} 
                               placeholder="Optional help text">${var_.hint || ''}</textarea>
+                    ${isReadOnly ? '<span class="readonly-indicator" style="top: 12px; transform: none;">🔒</span>' : ''}
                 </div>
                 <div class="form-group">
                     <div class="checkbox-group">
                         <input type="checkbox" id="required_${index}" ${var_.required ? 'checked' : ''} 
-                               onchange="updateVariable(${index}, 'required', this.checked)">
+                               ${isReadOnly ? 'disabled' : `onchange="updateVariable(${index}, 'required', this.checked)"`}>
                         <label for="required_${index}">Required Field</label>
                     </div>
                 </div>
@@ -474,7 +974,18 @@ function addField() {
     fields.push({
         name: '',
         value: '',
-        inline: false
+        inline: false,
+        optional: false
+    });
+    renderFields();
+}
+
+function addBlankField() {
+    fields.push({
+        name: '',
+        value: '\u200b',  // Zero-width space for blank line in Discord
+        inline: false,
+        optional: false
     });
     renderFields();
 }
@@ -485,12 +996,23 @@ function removeField(index) {
 }
 
 function updateField(index, field, value) {
-    if (field === 'inline') {
+    // Prevent editing blank fields
+    const currentField = fields[index];
+    const isBlankField = (!currentField.name || currentField.name.trim() === '') && 
+                        currentField.value === '\u200b';
+    if (isBlankField && field !== 'inline') {
+        alert('Blank spacer fields cannot be edited. They are read-only.');
+        renderFields(); // Re-render to reset any changes
+        return;
+    }
+    
+    if (field === 'inline' || field === 'optional') {
         fields[index][field] = value;
     } else {
         fields[index][field] = value;
     }
     updateFieldsJSON();
+    updatePreview();
 }
 
 function renderFields() {
@@ -498,35 +1020,65 @@ function renderFields() {
     container.innerHTML = '';
     
     fields.forEach((field, index) => {
+        // Check if this is a blank field (empty name and zero-width space value)
+        // Only mark as blank if value is specifically the zero-width space character
+        const isBlankField = (!field.name || field.name.trim() === '') && 
+                            field.value === '\u200b';
+        const fieldIsReadOnly = isReadOnly || isBlankField;
+        
         const item = document.createElement('div');
         item.className = 'dynamic-item';
+        if (isBlankField) {
+            item.style.border = '2px dashed #6c757d';
+            item.style.backgroundColor = '#f0f0f0';
+            item.style.opacity = '0.95';
+            item.style.position = 'relative';
+        }
         item.innerHTML = `
             <div class="dynamic-item-header">
-                <span class="dynamic-item-title">Field ${index + 1}</span>
-                <button type="button" class="btn-remove" onclick="removeField(${index})">Remove</button>
+                <span class="dynamic-item-title">
+                    Field ${index + 1}
+                    ${isBlankField ? '<span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; margin-left: 10px;">Blank Spacer</span>' : ''}
+                </span>
+                ${isReadOnly ? '' : `<button type="button" class="btn-remove" onclick="removeField(${index})">Remove</button>`}
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label>Field Name</label>
-                    <input type="text" class="form-input" value="${field.name || ''}" 
-                           onchange="updateField(${index}, 'name', this.value)" 
-                           placeholder="e.g., Ticker: {{ticker}}">
-                    <small>Can use {{variable}} syntax</small>
+                    <label style="${isBlankField ? 'color: #6c757d; font-weight: 600;' : ''}">Field Name ${isBlankField ? '(Blank Spacer)' : ''}</label>
+                    ${fieldIsReadOnly ? '<div style="position: relative;">' : ''}
+                    <input type="text" class="form-input${fieldIsReadOnly ? ' readonly' : ''}" value="${(field.name || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}" 
+                           ${fieldIsReadOnly ? 'readonly disabled' : 'onchange="updateField(' + index + ', \'name\', this.value)" oninput="updateField(' + index + ', \'name\', this.value)"'} 
+                           placeholder="${isBlankField ? 'Blank spacer field (read-only)' : 'e.g., Ticker: {{ticker}}'}"
+                           style="${isBlankField ? 'background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%) !important; border: 2px solid #adb5bd !important; color: #6c757d !important; cursor: not-allowed !important;' : ''}">
+                    ${fieldIsReadOnly ? '<span class="readonly-indicator">🔒</span></div>' : ''}
+                    <small style="${isBlankField ? 'color: #6c757d; font-style: italic;' : ''}">${isBlankField ? '⚠️ This is a blank spacer field (read-only - cannot be edited)' : 'Can use {% templatetag openvariable %}variable{% templatetag closevariable %} syntax'}</small>
                 </div>
                 <div class="form-group">
                     <div class="checkbox-group">
                         <input type="checkbox" id="inline_${index}" ${field.inline ? 'checked' : ''} 
-                               onchange="updateField(${index}, 'inline', this.checked)">
+                               ${fieldIsReadOnly ? 'disabled' : `onchange="updateField(${index}, 'inline', this.checked)"`}>
                         <label for="inline_${index}">Inline Field</label>
                     </div>
                 </div>
             </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="optional_${index}" ${field.optional ? 'checked' : ''} 
+                               ${fieldIsReadOnly ? 'disabled' : `onchange="updateField(${index}, 'optional', this.checked)"`}>
+                        <label for="optional_${index}">Optional Field</label>
+                    </div>
+                    <small style="${isBlankField ? 'color: #6c757d; font-style: italic;' : ''}">${isBlankField ? '' : 'Optional fields can be shown/hidden in the message'}</small>
+                </div>
+            </div>
             <div class="form-group">
-                <label>Field Value</label>
-                <textarea class="form-textarea" rows="3" 
-                          onchange="updateField(${index}, 'value', this.value)" 
-                          placeholder="e.g., {{price}} or static text">${field.value || ''}</textarea>
-                <small>Can use {{variable}} syntax or be empty for name-only fields</small>
+                <label style="${isBlankField ? 'color: #6c757d; font-weight: 600;' : ''}">Field Value ${isBlankField ? '(Blank Spacer)' : ''}</label>
+                ${fieldIsReadOnly ? '<div style="position: relative;">' : ''}
+                <textarea class="form-textarea${fieldIsReadOnly ? ' readonly' : ''}" rows="3" 
+                          ${fieldIsReadOnly ? 'readonly disabled style="resize: none;' + (isBlankField ? ' background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%) !important; border: 2px solid #adb5bd !important; color: #6c757d !important; cursor: not-allowed !important;' : '') + '"' : 'onchange="updateField(' + index + ', \'value\', this.value)" oninput="updateField(' + index + ', \'value\', this.value)"'} 
+                          placeholder="${isBlankField ? 'Blank spacer field (read-only)' : 'e.g., {% templatetag openvariable %}price{% templatetag closevariable %} or static text'}">${(field.value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                ${fieldIsReadOnly ? '<span class="readonly-indicator" style="top: 12px; transform: none;">🔒</span></div>' : ''}
+                <small style="${isBlankField ? 'color: #6c757d; font-style: italic;' : ''}">${isBlankField ? '⚠️ Blank spacer field creates empty space in Discord embed (read-only - cannot be edited)' : 'Can use {% templatetag openvariable %}variable{% templatetag closevariable %} syntax or be empty for name-only fields'}</small>
             </div>
         `;
         container.appendChild(item);
@@ -541,16 +1093,299 @@ function renderFields() {
 
 function updateVariablesJSON() {
     document.getElementById('id_variables_json').value = JSON.stringify(variables);
+    updatePreview();
 }
 
 function updateFieldsJSON() {
     document.getElementById('id_fields_template_json').value = JSON.stringify(fields);
+    updatePreview();
 }
 
-// Sync color picker with text input
+// Generate sample data for variables based on their types
+function generateSampleData() {
+    const sampleData = {};
+    variables.forEach(v => {
+        if (!v.name) return;
+        switch(v.type) {
+            case 'string':
+                sampleData[v.name] = v.default || 'Sample ' + (v.label || v.name);
+                break;
+            case 'float':
+                sampleData[v.name] = v.default || '123.45';
+                break;
+            case 'integer':
+                sampleData[v.name] = v.default || '100';
+                break;
+            case 'date':
+                sampleData[v.name] = v.default || new Date().toLocaleDateString();
+                break;
+            case 'boolean':
+                sampleData[v.name] = v.default || 'true';
+                break;
+            case 'text':
+                sampleData[v.name] = v.default || 'Sample text content';
+                break;
+            case 'select':
+                const options = Array.isArray(v.options) ? v.options : (v.options || '').split(',').map(o => o.trim());
+                sampleData[v.name] = v.default || (options[0] || 'Option');
+                break;
+            default:
+                sampleData[v.name] = v.default || 'Sample';
+        }
+    });
+    return sampleData;
+}
+
+// Render template by replacing {{variable}} placeholders
+function renderTemplate(template, data) {
+    if (!template) return '';
+    return template.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+        return data[varName] !== undefined ? data[varName] : match;
+    });
+}
+
+// Parse Discord markdown to HTML
+function parseDiscordMarkdown(text) {
+    if (!text) return '';
+    
+    // Escape HTML first to prevent XSS
+    let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    
+    // Code blocks (```code```) - must be processed before inline code
+    html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+    
+    // Inline code (`code`) - protect code from other markdown
+    const codeBlocks = [];
+    html = html.replace(/`([^`\n]+)`/g, (match, code) => {
+        const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+        codeBlocks.push(`<code>${code}</code>`);
+        return placeholder;
+    });
+    
+    // Bold and italic combinations (***text***)
+    html = html.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+    
+    // Bold (**text**)
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    
+    // Bold (__text__) - Discord uses __ for bold
+    html = html.replace(/__(?![_*])([^_]+)__(?![_*])/g, '<strong>$1</strong>');
+    
+    // Underline (__text__) - Discord doesn't have underline in standard markdown, but we'll support it
+    // Actually, Discord uses __ for bold, not underline. But we can add underline support
+    // We'll use a different syntax for underline: <u>text</u> or we can use double underscores that aren't bold
+    
+    // Italic (*text*)
+    html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+    
+    // Italic (_text_) - but not if it's part of bold
+    html = html.replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>');
+    
+    // Strikethrough (~~text~~)
+    html = html.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+    
+    // Restore code blocks
+    codeBlocks.forEach((code, index) => {
+        html = html.replace(`__CODE_BLOCK_${index}__`, code);
+    });
+    
+    // Preserve newlines as <br>
+    html = html.replace(/\n/g, '<br>');
+    
+    return html;
+}
+
+// Update Discord embed preview
+function updatePreview() {
+    const sampleData = generateSampleData();
+    
+    // Update color bar
+    const color = document.getElementById('id_color').value || '#000000';
+    document.getElementById('previewColorBar').style.backgroundColor = color;
+    
+    // Update title
+    const titleTemplate = document.getElementById('id_title_template').value || '';
+    const title = renderTemplate(titleTemplate, sampleData);
+    const titleEl = document.getElementById('previewTitle');
+    if (title) {
+        titleEl.innerHTML = parseDiscordMarkdown(title);
+        titleEl.style.display = 'block';
+    } else {
+        titleEl.style.display = 'none';
+    }
+    
+    // Update description
+    const descTemplate = document.getElementById('id_description_template').value || '';
+    const description = renderTemplate(descTemplate, sampleData);
+    const descEl = document.getElementById('previewDescription');
+    if (description) {
+        descEl.innerHTML = parseDiscordMarkdown(description);
+        descEl.style.display = 'block';
+    } else {
+        descEl.style.display = 'none';
+    }
+    
+    // Update fields
+    const fieldsContainer = document.getElementById('previewFields');
+    fieldsContainer.innerHTML = '';
+    
+    let currentInlineGroup = null;
+    
+    // First pass: filter out consecutive blank spacers
+    const filteredFields = [];
+    let prevWasBlank = false;
+    fields.forEach((field, index) => {
+        const fieldName = renderTemplate(field.name || '', sampleData);
+        const fieldValue = renderTemplate(field.value || '', sampleData);
+        
+        // Check if this is a blank spacer (empty name and value is '\u200b')
+        const isBlankSpacer = (!fieldName || !fieldName.trim()) && 
+                              (fieldValue === '\u200b' || (fieldValue && fieldValue.trim() === '\u200b'));
+        
+        // Skip consecutive blank spacers
+        if (isBlankSpacer && prevWasBlank) {
+            return;
+        }
+        prevWasBlank = isBlankSpacer;
+        
+        // Skip empty fields (spacers with no name or value)
+        if (!fieldName && !fieldValue) {
+            return;
+        }
+        
+        filteredFields.push({field: field, fieldName: fieldName, fieldValue: fieldValue, index: index});
+    });
+    
+    // Remove trailing blank spacers
+    while (filteredFields.length > 0) {
+        const last = filteredFields[filteredFields.length - 1];
+        const isBlankSpacer = (!last.fieldName || !last.fieldName.trim()) && 
+                             (last.fieldValue === '\u200b' || (last.fieldValue && last.fieldValue.trim() === '\u200b'));
+        if (isBlankSpacer) {
+            filteredFields.pop();
+        } else {
+            break;
+        }
+    }
+    
+    filteredFields.forEach((item, filteredIndex) => {
+        const {field, fieldName, fieldValue, index} = item;
+        
+        const fieldEl = document.createElement('div');
+        fieldEl.className = 'discord-embed-field';
+        
+        // Check if this is an inline field
+        if (field.inline) {
+            // If previous field was not inline, start a new inline group
+            if (!currentInlineGroup || (filteredIndex > 0 && !filteredFields[filteredIndex - 1].field.inline)) {
+                currentInlineGroup = document.createElement('div');
+                currentInlineGroup.style.display = 'flex';
+                currentInlineGroup.style.flexWrap = 'wrap';
+                currentInlineGroup.style.gap = '16px';
+                fieldsContainer.appendChild(currentInlineGroup);
+            }
+            // Check if current group already has 3 fields, start a new row
+            if (currentInlineGroup && currentInlineGroup.children.length >= 3) {
+                currentInlineGroup = document.createElement('div');
+                currentInlineGroup.style.display = 'flex';
+                currentInlineGroup.style.flexWrap = 'wrap';
+                currentInlineGroup.style.gap = '16px';
+                fieldsContainer.appendChild(currentInlineGroup);
+            }
+            fieldEl.classList.add('discord-embed-field-inline');
+        } else {
+            // Non-inline field, close any existing inline group
+            currentInlineGroup = null;
+        }
+        
+        const nameEl = document.createElement('div');
+        nameEl.className = 'discord-embed-field-name';
+        nameEl.innerHTML = fieldName ? parseDiscordMarkdown(fieldName) : '\u200b'; // Zero-width space if empty
+        
+        const valueEl = document.createElement('div');
+        valueEl.className = 'discord-embed-field-value';
+        valueEl.innerHTML = fieldValue ? parseDiscordMarkdown(fieldValue) : '\u200b';
+        
+        fieldEl.appendChild(nameEl);
+        fieldEl.appendChild(valueEl);
+        
+        if (field.inline && currentInlineGroup) {
+            currentInlineGroup.appendChild(fieldEl);
+        } else {
+            fieldsContainer.appendChild(fieldEl);
+        }
+    });
+    
+    // Update footer
+    const footerTemplate = document.getElementById('id_footer_template').value || '';
+    const footer = renderTemplate(footerTemplate, sampleData);
+    const footerEl = document.getElementById('previewFooter');
+    if (footer) {
+        footerEl.innerHTML = parseDiscordMarkdown(footer);
+        footerEl.style.display = 'block';
+    } else {
+        footerEl.style.display = 'none';
+    }
+}
+
+// Sync color picker with text input and update preview
 document.getElementById('id_color').addEventListener('input', function(e) {
     document.getElementById('colorPicker').value = e.target.value;
+    updatePreview();
 });
+
+// Add event listeners to all form inputs for real-time preview
+function setupPreviewListeners() {
+    // Title template
+    const titleInput = document.getElementById('id_title_template');
+    if (titleInput) {
+        titleInput.addEventListener('input', updatePreview);
+        titleInput.addEventListener('change', updatePreview);
+    }
+    
+    // Description template
+    const descInput = document.getElementById('id_description_template');
+    if (descInput) {
+        descInput.addEventListener('input', updatePreview);
+        descInput.addEventListener('change', updatePreview);
+    }
+    
+    // Footer template
+    const footerInput = document.getElementById('id_footer_template');
+    if (footerInput) {
+        footerInput.addEventListener('input', updatePreview);
+        footerInput.addEventListener('change', updatePreview);
+    }
+    
+    // Color input
+    const colorInput = document.getElementById('id_color');
+    if (colorInput) {
+        colorInput.addEventListener('input', updatePreview);
+    }
+    
+    const colorPicker = document.getElementById('colorPicker');
+    if (colorPicker) {
+        colorPicker.addEventListener('change', function(e) {
+            document.getElementById('id_color').value = e.target.value;
+            updatePreview();
+        });
+    }
+}
+
+// Toggle help section
+function toggleHelpSection() {
+    const helpContent = document.getElementById('helpContent');
+    const helpToggleIcon = document.getElementById('helpToggleIcon');
+    if (helpContent && helpToggleIcon) {
+        if (helpContent.style.display === 'none') {
+            helpContent.style.display = 'block';
+            helpToggleIcon.textContent = '▼';
+        } else {
+            helpContent.style.display = 'none';
+            helpToggleIcon.textContent = '▶';
+        }
+    }
+}
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -560,6 +1395,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Sync initial color
     const colorValue = document.getElementById('id_color').value || '#000000';
     document.getElementById('colorPicker').value = colorValue;
+    
+    // Setup preview listeners
+    setupPreviewListeners();
+    
+    // Initial preview update
+    updatePreview();
 });
 </script>
 {% endblock %}

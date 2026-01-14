@@ -24,12 +24,45 @@
         display: flex;
         align-items: center;
         gap: 10px;
+        flex-wrap: nowrap;
     }
     
     .form-group:has(.form-checkbox) label {
+        display: inline-flex;
+        align-items: center;
         margin-bottom: 0;
+        margin-top: 0;
         font-weight: normal;
         cursor: pointer;
+        white-space: nowrap;
+    }
+    
+    .form-group:has(.form-checkbox) .form-checkbox {
+        flex-shrink: 0;
+        margin: 0;
+    }
+    
+    /* Fallback for browsers that don't support :has() */
+    .form-group.checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: nowrap;
+    }
+    
+    .form-group.checkbox-group label {
+        display: inline-flex;
+        align-items: center;
+        margin-bottom: 0;
+        margin-top: 0;
+        font-weight: normal;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    
+    .form-group.checkbox-group .form-checkbox {
+        flex-shrink: 0;
+        margin: 0;
     }
 
     .form-input, .form-textarea, .form-select {
@@ -152,47 +185,312 @@
         color: #999;
         font-size: 0.85em;
     }
+
+    /* Discord Preview Styles */
+    .discord-embed {
+        display: flex;
+        background: #2f3136;
+        border-radius: 4px;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    .discord-embed-color-bar {
+        width: 4px;
+        background: #5865f2;
+        flex-shrink: 0;
+    }
+
+    .discord-embed-content {
+        flex: 1;
+        padding: 12px 16px 12px 12px;
+        color: #dcddde;
+        font-size: 14px;
+        line-height: 1.375;
+    }
+
+    .discord-embed-title {
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 16px;
+        margin-bottom: 8px;
+        min-height: 20px;
+    }
+
+    .discord-embed-title:empty {
+        display: none;
+    }
+
+    .discord-embed-description {
+        color: #dcddde;
+        margin-bottom: 8px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .discord-embed-description:empty {
+        display: none;
+    }
+
+    .discord-embed-fields {
+        margin-top: 8px;
+    }
+
+    .discord-embed-field {
+        margin-bottom: 8px;
+    }
+
+    .discord-embed-field-inline {
+        flex: 0 0 calc(33.333% - 11px);
+        max-width: calc(33.333% - 11px);
+    }
+
+    .discord-embed-field-name {
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 14px;
+        margin-bottom: 2px;
+        min-height: 16px;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+    }
+
+    .discord-embed-field-name:empty {
+        display: none;
+    }
+
+    .discord-embed-field-value {
+        color: #dcddde;
+        font-size: 14px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        min-height: 16px;
+    }
+
+    .discord-embed-field-value:empty {
+        display: none;
+    }
+
+    .discord-embed-footer {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        color: #72767d;
+        font-size: 12px;
+        min-height: 14px;
+    }
+
+    .discord-embed-footer:empty {
+        display: none;
+    }
+
+    /* Discord Markdown Styles */
+    .discord-embed-title strong,
+    .discord-embed-description strong,
+    .discord-embed-field-name strong,
+    .discord-embed-field-value strong,
+    .discord-embed-footer strong {
+        font-weight: 600;
+    }
+
+    .discord-embed-title em,
+    .discord-embed-description em,
+    .discord-embed-field-name em,
+    .discord-embed-field-value em,
+    .discord-embed-footer em {
+        font-style: italic;
+    }
+
+    .discord-embed-title u,
+    .discord-embed-description u,
+    .discord-embed-field-name u,
+    .discord-embed-field-value u,
+    .discord-embed-footer u {
+        text-decoration: underline;
+    }
+
+    .discord-embed-title s,
+    .discord-embed-description s,
+    .discord-embed-field-name s,
+    .discord-embed-field-value s,
+    .discord-embed-footer s {
+        text-decoration: line-through;
+    }
+
+    .discord-embed-title code,
+    .discord-embed-description code,
+    .discord-embed-field-name code,
+    .discord-embed-field-value code,
+    .discord-embed-footer code {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.9em;
+    }
+
+    .discord-embed-title pre,
+    .discord-embed-description pre,
+    .discord-embed-field-name pre,
+    .discord-embed-field-value pre,
+    .discord-embed-footer pre {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 8px;
+        border-radius: 4px;
+        margin: 4px 0;
+        overflow-x: auto;
+    }
+
+    .discord-embed-title pre code,
+    .discord-embed-description pre code,
+    .discord-embed-field-name pre code,
+    .discord-embed-field-value pre code,
+    .discord-embed-footer pre code {
+        background: none;
+        padding: 0;
+    }
+
+    /* Responsive design for preview */
+    @media (max-width: 1200px) {
+        div[style*="display: flex"] {
+            flex-direction: column !important;
+        }
+
+        div[style*="position: sticky"] {
+            width: 100% !important;
+            position: relative !important;
+            top: 0 !important;
+            margin-top: 30px !important;
+        }
+
+        div[style*="background: #2f3136"][style*="position: sticky"] {
+            position: relative !important;
+            top: 0 !important;
+            max-width: 600px !important;
+            margin: 0 auto !important;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="form-container">
-    <h2 style="color: #333; margin-bottom: 30px; font-size: 2em;">📝 Submit New Signal</h2>
-    
-    <form method="post" id="signalForm">
-        {% csrf_token %}
-        
-        <!-- Signal Type FIRST -->
-        <div class="form-group">
-            <label for="{{ form.signal_type.id_for_label }}">Signal Type *</label>
-            {{ form.signal_type }}
-            {% if form.signal_type.errors %}
-                <div style="color: #dc3545; margin-top: 5px; font-size: 0.9em;">{{ form.signal_type.errors }}</div>
-            {% endif %}
-        </div>
-
-        <!-- Dynamic Form Fields Container -->
-        <div id="dynamicFields"></div>
-
-        <!-- Hidden field for data -->
-        <input type="hidden" name="data" id="id_data" value="{}" />
-        {% if form.data.errors %}
-            <div style="color: #dc3545; margin-top: 10px; margin-bottom: 10px; padding: 10px; background-color: #f8d7da; border-radius: 5px; font-size: 0.9em;">
-                {{ form.data.errors }}
+<div style="display: flex; gap: 30px; max-width: 1500px; margin: 0 auto; padding: 0 20px; align-items: flex-start;">
+    <div style="flex: 1; max-width: 800px;">
+        <div class="form-container">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 15px;">
+                <h2 id="dashboardTitle" style="color: #333; font-size: 2em; margin: 0;">📝 Submit New Signal</h2>
             </div>
-        {% endif %}
-        {% if form.non_field_errors %}
-            <div style="color: #dc3545; margin-top: 10px; margin-bottom: 10px; padding: 10px; background-color: #f8d7da; border-radius: 5px; font-size: 0.9em;">
-                {{ form.non_field_errors }}
-            </div>
-        {% endif %}
+            
+            <form method="post" id="signalForm">
+                {% csrf_token %}
+                
+                <!-- Signal Type FIRST -->
+                <div class="form-group">
+                    <label for="{{ form.signal_type.id_for_label }}">Signal Type *</label>
+                    {{ form.signal_type }}
+                    {% if form.signal_type.errors %}
+                        <div style="color: #dc3545; margin-top: 5px; font-size: 0.9em;">{{ form.signal_type.errors }}</div>
+                    {% endif %}
+                </div>
 
-        <div style="text-align: center; margin-top: 30px;">
-            <button type="submit" class="btn-submit">🚀 Submit Signal</button>
+                <!-- Discord Channel Selection -->
+                {% if discord_channels %}
+                <div class="form-group">
+                    <label for="discord_channel">Discord Channel</label>
+                    <select name="discord_channel" id="discord_channel" class="form-input" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1em;" required>
+                        {% for channel in discord_channels %}
+                        <option value="{{ channel.id }}" {% if channel.is_default %}selected{% elif forloop.first %}selected{% endif %}>
+                            {{ channel.channel_name }}{% if channel.is_default %} (Default){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <small>Discord channel to send this signal to.</small>
+                </div>
+                {% endif %}
+
+                <!-- Dynamic Form Fields Container -->
+                <div id="dynamicFields"></div>
+
+                <!-- Embed Display Options -->
+                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <div style="color: #333; font-size: 1em; margin-bottom: 12px; font-weight: 600;">📱 Embed Display Options</div>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="showTitleCheckbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal; font-size: 0.95em; color: #333;">
+                                <input type="checkbox" id="showTitleCheckbox" class="form-checkbox" checked style="width: 18px; height: 18px; cursor: pointer;">
+                                Show title
+                            </label>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="showDescriptionCheckbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal; font-size: 0.95em; color: #333;">
+                                <input type="checkbox" id="showDescriptionCheckbox" class="form-checkbox" checked style="width: 18px; height: 18px; cursor: pointer;">
+                                Show description
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Optional Fields Checkboxes -->
+                <div id="optionalFieldsSection" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; display: none;">
+                    <div style="color: #333; font-size: 1em; margin-bottom: 12px; font-weight: 600;">📋 Optional Fields</div>
+                    <div style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Select which optional fields to include in your Discord message:</div>
+                    <div id="optionalFieldsCheckboxesContainer" style="display: flex; flex-direction: column; gap: 10px;"></div>
+                    <!-- Container for variables that become visible when optional fields are selected -->
+                    <div id="optionalFieldsVariablesContainer" style="margin-top: 20px; display: none;">
+                        <div style="color: #333; font-size: 0.95em; margin-bottom: 12px; font-weight: 600; padding-top: 15px; border-top: 1px solid #dee2e6;">📝 Related Variables</div>
+                    </div>
+                </div>
+
+                
+
+                <!-- Hidden field for data -->
+                <input type="hidden" name="data" id="id_data" value="{}" />
+                {% if form.data.errors %}
+                    <div style="color: #dc3545; margin-top: 10px; margin-bottom: 10px; padding: 10px; background-color: #f8d7da; border-radius: 5px; font-size: 0.9em;">
+                        {{ form.data.errors }}
+                    </div>
+                {% endif %}
+                {% if form.non_field_errors %}
+                    <div style="color: #dc3545; margin-top: 10px; margin-bottom: 10px; padding: 10px; background-color: #f8d7da; border-radius: 5px; font-size: 0.9em;">
+                        {{ form.non_field_errors }}
+                    </div>
+                {% endif %}
+
+                <div style="text-align: center; margin-top: 30px;">
+                    <button type="submit" class="btn-submit">🚀 Submit Signal</button>
+                </div>
+            </form>
         </div>
-    </form>
+    </div>
 
-    {% if recent_signals %}
+    <!-- Floating Preview Section -->
+    <div style="position: sticky; top: 20px; width: 480px; flex-shrink: 0; z-index: 10;">
+        <div style="background: #2f3136; border-radius: 8px; padding: 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); position: sticky; top: 20px;">
+            <div style="color: #dcddde; font-size: 0.9em; margin-bottom: 15px; text-align: center; padding-bottom: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                <strong>📱 Live Preview</strong>
+                <div style="font-size: 0.85em; margin-top: 5px; opacity: 0.8;">Updates in real-time</div>
+            </div>
+            <div id="discordPreview" style="max-width: 100%; margin: 0 auto;">
+                <div id="optionalFieldsControls" style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; display: none;">
+                    <div style="color: #dcddde; font-size: 0.85em; margin-bottom: 8px; font-weight: 600;">Optional Fields:</div>
+                    <div id="optionalFieldsCheckboxes" style="display: flex; flex-direction: column; gap: 8px;"></div>
+                </div>
+                <div class="discord-embed">
+                    <div class="discord-embed-color-bar" id="previewColorBar"></div>
+                    <div class="discord-embed-content">
+                        <div class="discord-embed-title" id="previewTitle">Select a signal type to see preview</div>
+                        <div class="discord-embed-description" id="previewDescription"></div>
+                        <div class="discord-embed-fields" id="previewFields"></div>
+                        <div class="discord-embed-footer" id="previewFooter"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if recent_signals %}
+<div class="form-container" style="margin-top: 40px;">
     <div class="recent-signals">
         <h2>📊 Recent Signals</h2>
         {% for signal in recent_signals %}
@@ -215,18 +513,34 @@
         </div>
         {% endfor %}
     </div>
-    {% endif %}
 </div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
 <script>
-// Store signal types data
+// Store signal types data with full template information
 const signalTypesData = {
     {% for st in signal_types_data %}
-    {{ st.id }}: {{ st.variables|safe }},
+    {{ st.id }}: {
+        variables: {{ st.variables|safe }},
+        title_template: '{{ st.title_template|escapejs }}',
+        description_template: '{{ st.description_template|escapejs }}',
+        footer_template: '{{ st.footer_template|escapejs }}',
+        color: '{{ st.color|default:"#000000" }}',
+        fields_template: {{ st.fields_template|safe }},
+        show_title_default: {{ st.show_title_default|yesno:"true,false" }},
+        show_description_default: {{ st.show_description_default|yesno:"true,false" }}
+    },
     {% endfor %}
 };
+
+// Debug: Log signalTypesData to console
+console.log('signalTypesData loaded:', signalTypesData);
+console.log('Number of signal types:', Object.keys(signalTypesData).length);
+
+// Track visibility of optional fields (default: hidden)
+const optionalFieldsVisibility = {};
 
 // Map variable types to input field types
 function getInputType(variableType) {
@@ -252,19 +566,498 @@ function getLabel(variable) {
     return name.charAt(0).toUpperCase() + name.slice(1).replace(/_/g, ' ');
 }
 
-// Create dynamic form fields based on signal type
-function createDynamicFields(signalTypeId) {
-    const dynamicFieldsContainer = document.getElementById('dynamicFields');
-    dynamicFieldsContainer.innerHTML = '';
+// Parse Discord markdown to HTML
+function parseDiscordMarkdown(text) {
+    if (!text) return '';
     
-    const variables = signalTypesData[signalTypeId];
-    if (!variables) {
+    // Escape HTML first to prevent XSS
+    let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    
+    // Code blocks (```code```) - must be processed before inline code
+    html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+    
+    // Inline code (`code`) - protect code from other markdown
+    const codeBlocks = [];
+    html = html.replace(/`([^`\n]+)`/g, (match, code) => {
+        const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+        codeBlocks.push(`<code>${code}</code>`);
+        return placeholder;
+    });
+    
+    // Bold and italic combinations (***text***)
+    html = html.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+    
+    // Bold (**text**)
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    
+    // Bold (__text__) - Discord uses __ for bold
+    html = html.replace(/__(?![_*])([^_]+)__(?![_*])/g, '<strong>$1</strong>');
+    
+    // Italic (*text*)
+    html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+    
+    // Italic (_text_) - but not if it's part of bold
+    html = html.replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>');
+    
+    // Strikethrough (~~text~~)
+    html = html.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+    
+    // Restore code blocks
+    codeBlocks.forEach((code, index) => {
+        html = html.replace(`__CODE_BLOCK_${index}__`, code);
+    });
+    
+    // Preserve newlines as <br>
+    html = html.replace(/\n/g, '<br>');
+    
+    return html;
+}
+
+// Render template by replacing {{variable}} placeholders
+function renderTemplate(template, data) {
+    if (!template) return '';
+    return template.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+        return data[varName] !== undefined ? String(data[varName]) : match;
+    });
+}
+
+// Extract all variable names from a template string
+function extractVariablesFromTemplate(template) {
+    if (!template) return [];
+    const variables = [];
+    const regex = /\{\{(\w+)\}\}/g;
+    let match;
+    while ((match = regex.exec(template)) !== null) {
+        if (!variables.includes(match[1])) {
+            variables.push(match[1]);
+        }
+    }
+    return variables;
+}
+
+// Get all variables that are currently used in visible templates and fields
+function getUsedVariables(signalTypeId) {
+    const signalTypeIdStr = String(signalTypeId);
+    const signalType = signalTypesData[signalTypeIdStr] || signalTypesData[signalTypeId];
+    if (!signalType) return { all: new Set(), optionalOnly: new Set() };
+    
+    const usedVariables = new Set();
+    const optionalOnlyVariables = new Set();
+    
+    // Track variables used in non-optional contexts
+    const nonOptionalVariables = new Set();
+    
+    // Check if is_shares is checked
+    const isSharesCheckbox = document.getElementById('id_is_shares');
+    const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+    
+    // Check title template (if visible)
+    const showTitleCheckbox = document.getElementById('showTitleCheckbox');
+    const showTitle = showTitleCheckbox ? showTitleCheckbox.checked : true;
+    if (showTitle && signalType.title_template) {
+        extractVariablesFromTemplate(signalType.title_template).forEach(v => {
+            usedVariables.add(v);
+            nonOptionalVariables.add(v);
+        });
+    }
+    
+    // Check description template (if visible)
+    const showDescriptionCheckbox = document.getElementById('showDescriptionCheckbox');
+    const showDescription = showDescriptionCheckbox ? showDescriptionCheckbox.checked : true;
+    if (showDescription && signalType.description_template) {
+        extractVariablesFromTemplate(signalType.description_template).forEach(v => {
+            usedVariables.add(v);
+            nonOptionalVariables.add(v);
+        });
+    }
+    
+    // Check footer template
+    if (signalType.footer_template) {
+        extractVariablesFromTemplate(signalType.footer_template).forEach(v => {
+            usedVariables.add(v);
+            nonOptionalVariables.add(v);
+        });
+    }
+    
+    // Check fields template (considering optional fields and is_shares)
+    if (signalType.fields_template) {
+        let fields = signalType.fields_template;
+        if (typeof fields === 'string') {
+            try {
+                fields = JSON.parse(fields);
+            } catch (e) {
+                fields = [];
+            }
+        }
+        fields = fields || [];
+        
+        fields.forEach((field, index) => {
+            const isOptional = field.optional === true;
+            const fieldKey = `field_${signalTypeId}_${index}`;
+            const isOptionalVisible = isOptional && optionalFieldsVisibility[fieldKey];
+            
+            // Skip optional fields that are hidden
+            if (isOptional && !isOptionalVisible) {
+                return; // Skip this optional field
+            }
+            
+            // Skip fields that contain strike, expiration when is_shares is checked
+            if (isShares) {
+                const fieldNameLower = (field.name || '').toLowerCase();
+                if (fieldNameLower.includes('strike') || fieldNameLower.includes('expiration')) {
+                    return; // Skip this field
+                }
+            }
+            
+            // Extract variables from field name and value
+            const fieldVars = new Set();
+            if (field.name) {
+                extractVariablesFromTemplate(field.name).forEach(v => {
+                    usedVariables.add(v);
+                    fieldVars.add(v);
+                });
+            }
+            if (field.value) {
+                extractVariablesFromTemplate(field.value).forEach(v => {
+                    usedVariables.add(v);
+                    fieldVars.add(v);
+                });
+            }
+            
+            // If this is an optional field, mark its variables as optional-only (if not already in non-optional)
+            if (isOptional && isOptionalVisible) {
+                fieldVars.forEach(v => {
+                    if (!nonOptionalVariables.has(v)) {
+                        optionalOnlyVariables.add(v);
+                    }
+                });
+            } else {
+                // Non-optional field, mark variables as non-optional
+                fieldVars.forEach(v => nonOptionalVariables.add(v));
+            }
+        });
+    }
+    
+    // Remove variables from optionalOnly if they're also in nonOptional
+    nonOptionalVariables.forEach(v => optionalOnlyVariables.delete(v));
+    
+    return { all: usedVariables, optionalOnly: optionalOnlyVariables };
+}
+
+// Update Discord embed preview
+function updatePreview() {
+    const signalTypeSelect = document.querySelector('select[name="signal_type"]');
+    if (!signalTypeSelect || !signalTypeSelect.value) {
         return;
     }
     
+    const signalTypeId = signalTypeSelect.value;
+    // Convert to string to match the keys in signalTypesData (which are strings from template)
+    const signalTypeIdStr = String(signalTypeId);
+    const signalType = signalTypesData[signalTypeIdStr] || signalTypesData[signalTypeId];
+    if (!signalType) {
+        console.warn('Signal type not found for preview:', signalTypeId, 'Available keys:', Object.keys(signalTypesData));
+        return;
+    }
+    
+    // Collect current form values
+    const formData = {};
+    
+    // Check if is_shares is checked
+    const isSharesCheckbox = document.getElementById('id_is_shares');
+    const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+    
+    // Option-related fields that should be excluded when is_shares is checked
+    const optionFields = ['strike', 'expiration', 'option_type'];
+    
+    // Collect inputs from both main dynamicFields container and optional fields variables container
+    const dynamicInputs = document.querySelectorAll('#dynamicFields input, #dynamicFields textarea, #dynamicFields select, #optionalFieldsVariablesContainer input, #optionalFieldsVariablesContainer textarea, #optionalFieldsVariablesContainer select');
+    dynamicInputs.forEach(input => {
+        // Skip option-related fields if is_shares is checked
+        if (isShares && optionFields.includes(input.name)) {
+            return;
+        }
+        
+        // Skip hidden fields (those with data-requires-options when is_shares is true)
+        if (input.closest('[data-requires-options="true"]') && isShares) {
+            return;
+        }
+        
+        if (input.type === 'checkbox') {
+            formData[input.name] = input.checked ? 'true' : 'false';
+        } else {
+            formData[input.name] = input.value || '';
+        }
+    });
+    
+    // Update color bar
+    const color = signalType.color || '#000000';
+    document.getElementById('previewColorBar').style.backgroundColor = color;
+    
+    // Update title - check if title should be shown
+    const showTitleCheckbox = document.getElementById('showTitleCheckbox');
+    const showTitle = showTitleCheckbox ? showTitleCheckbox.checked : true;
+    const title = renderTemplate(signalType.title_template, formData);
+    const titleEl = document.getElementById('previewTitle');
+    if (title && showTitle) {
+        titleEl.innerHTML = parseDiscordMarkdown(title);
+        titleEl.style.display = 'block';
+    } else {
+        titleEl.style.display = 'none';
+    }
+    
+    // Update description - check if description should be shown
+    const showDescriptionCheckbox = document.getElementById('showDescriptionCheckbox');
+    const showDescription = showDescriptionCheckbox ? showDescriptionCheckbox.checked : true;
+    const description = renderTemplate(signalType.description_template, formData);
+    const descEl = document.getElementById('previewDescription');
+    if (description && showDescription) {
+        descEl.innerHTML = parseDiscordMarkdown(description);
+        descEl.style.display = 'block';
+    } else {
+        descEl.style.display = 'none';
+    }
+    
+    // Update fields
+    const fieldsContainer = document.getElementById('previewFields');
+    fieldsContainer.innerHTML = '';
+    
+    // Parse fields_template from JSON string if needed
+    let fields = signalType.fields_template;
+    if (typeof fields === 'string') {
+        try {
+            fields = JSON.parse(fields);
+        } catch (e) {
+            console.error('Error parsing fields_template:', e);
+            fields = [];
+        }
+    }
+    fields = fields || [];
+    
+    // First, collect all fields that should be rendered (with all filtering applied)
+    const fieldsToRender = [];
+    fields.forEach((field, index) => {
+        // Render field name and value first
+        const fieldName = renderTemplate(field.name || '', formData);
+        const fieldValue = renderTemplate(field.value || '', formData);
+        
+        // Skip optional fields that are hidden
+        if (field.optional === true) {
+            const fieldKey = `field_${signalTypeId}_${index}`;
+            if (!optionalFieldsVisibility[fieldKey]) {
+                return; // Skip this optional field
+            }
+        }
+        
+        // Skip fields that contain strike, expiration, or option_type when is_shares is checked
+        if (isShares) {
+            const fieldNameLower = (field.name || '').toLowerCase();
+            const fieldValueLower = (field.value || '').toLowerCase();
+            const renderedNameLower = (fieldName || '').toLowerCase();
+            const renderedValueLower = (fieldValue || '').toLowerCase();
+            
+            // Check both raw template and rendered values
+            // if (fieldNameLower.includes('strike') || fieldNameLower.includes('expiration') || fieldNameLower.includes('option') ||
+            //     fieldValueLower.includes('{{strike}}') || fieldValueLower.includes('{{expiration}}') || fieldValueLower.includes('{{option_type}}') ||
+            //     renderedNameLower.includes('strike') || renderedNameLower.includes('expiration') || renderedNameLower.includes('option') ||
+            //     renderedValueLower.includes('strike') || renderedValueLower.includes('expiration') || renderedValueLower.includes('option')) {
+            //     return; // Skip this field
+            // }
+            if (fieldNameLower.includes('strike') || fieldNameLower.includes('expiration')){
+                return;
+            }
+        }
+        
+        // Store field data for rendering
+        fieldsToRender.push({
+            field: field,
+            index: index,
+            fieldName: fieldName,
+            fieldValue: fieldValue
+        });
+    });
+    
+    // Remove consecutive blank spacers (keep only one)
+    const filteredFields = [];
+    let prevWasBlank = false;
+    fieldsToRender.forEach((item) => {
+        const isBlankSpacer = (!item.fieldName || !item.fieldName.trim()) && 
+                             (item.fieldValue === '\u200b' || (item.fieldValue && item.fieldValue.trim() === '\u200b'));
+        if (isBlankSpacer && prevWasBlank) {
+            return; // Skip consecutive blank spacers
+        }
+        prevWasBlank = isBlankSpacer;
+        filteredFields.push(item);
+    });
+    
+    // Remove trailing blank spacers
+    while (filteredFields.length > 0) {
+        const lastField = filteredFields[filteredFields.length - 1];
+        const isBlankSpacer = (!lastField.fieldName || !lastField.fieldName.trim()) && 
+                             (lastField.fieldValue === '\u200b' || (lastField.fieldValue && lastField.fieldValue.trim() === '\u200b'));
+        if (isBlankSpacer) {
+            filteredFields.pop();
+        } else {
+            break;
+        }
+    }
+    
+    // Use filtered fields for rendering
+    const fieldsToRenderFinal = filteredFields;
+    
+    let currentInlineGroup = null;
+    
+    // Function to adjust inline field widths based on count in group
+    function adjustInlineGroupWidths(inlineGroup) {
+        if (!inlineGroup) return;
+        const fieldCount = inlineGroup.children.length;
+        if (fieldCount === 0) return;
+        
+        // Calculate width based on number of fields
+        let width;
+        if (fieldCount === 1) {
+            width = 'calc(33.333% - 11px)'; // Single field in a row of 3
+        } else if (fieldCount === 2) {
+            width = 'calc(50% - 8px)'; // Two fields: each takes 50% minus half the gap
+        } else {
+            width = 'calc(33.333% - 11px)'; // Three fields: each takes 33.333%
+        }
+        
+        // Apply width to all fields in the group
+        Array.from(inlineGroup.children).forEach(field => {
+            field.style.flex = `0 0 ${width}`;
+            field.style.maxWidth = width;
+        });
+    }
+    
+    // Now render the filtered fields
+    fieldsToRenderFinal.forEach(({field, index, fieldName, fieldValue}, renderIndex) => {
+        
+        const fieldEl = document.createElement('div');
+        fieldEl.className = 'discord-embed-field';
+        
+        // Check if this is an inline field
+        if (field.inline) {
+            // If previous field was not inline, start a new inline group
+            if (!currentInlineGroup || (renderIndex > 0 && !fieldsToRenderFinal[renderIndex - 1].field.inline)) {
+                currentInlineGroup = document.createElement('div');
+                currentInlineGroup.style.display = 'flex';
+                currentInlineGroup.style.flexWrap = 'wrap';
+                currentInlineGroup.style.gap = '16px';
+                fieldsContainer.appendChild(currentInlineGroup);
+            }
+            // Check if current group already has 3 fields, start a new row
+            if (currentInlineGroup && currentInlineGroup.children.length >= 3) {
+                // Adjust widths for the previous group before starting new one
+                adjustInlineGroupWidths(currentInlineGroup);
+                currentInlineGroup = document.createElement('div');
+                currentInlineGroup.style.display = 'flex';
+                currentInlineGroup.style.flexWrap = 'wrap';
+                currentInlineGroup.style.gap = '16px';
+                fieldsContainer.appendChild(currentInlineGroup);
+            }
+            fieldEl.classList.add('discord-embed-field-inline');
+        } else {
+            // Non-inline field, adjust widths for any existing inline group and close it
+            adjustInlineGroupWidths(currentInlineGroup);
+            currentInlineGroup = null;
+        }
+        
+        const nameEl = document.createElement('div');
+        nameEl.className = 'discord-embed-field-name';
+        nameEl.innerHTML = fieldName ? parseDiscordMarkdown(fieldName) : '\u200b';
+        
+        const valueEl = document.createElement('div');
+        valueEl.className = 'discord-embed-field-value';
+        valueEl.innerHTML = fieldValue ? parseDiscordMarkdown(fieldValue) : '\u200b';
+        
+        fieldEl.appendChild(nameEl);
+        if (fieldValue !== '') {
+            fieldEl.appendChild(valueEl);
+        }
+            
+        
+        if (field.inline && currentInlineGroup) {
+            currentInlineGroup.appendChild(fieldEl);
+        } else {
+            fieldsContainer.appendChild(fieldEl);
+        }
+    });
+    
+    // Adjust widths for any remaining inline group at the end
+    adjustInlineGroupWidths(currentInlineGroup);
+    
+    // Update footer
+    const footer = renderTemplate(signalType.footer_template, formData);
+    const footerEl = document.getElementById('previewFooter');
+    if (footer) {
+        footerEl.innerHTML = parseDiscordMarkdown(footer);
+        footerEl.style.display = 'block';
+    } else {
+        footerEl.style.display = 'none';
+    }
+}
+
+// Create dynamic form fields based on signal type
+function createDynamicFields(signalTypeId) {
+    console.log('createDynamicFields called with signalTypeId:', signalTypeId);
+    const dynamicFieldsContainer = document.getElementById('dynamicFields');
+    if (!dynamicFieldsContainer) {
+        console.error('dynamicFields container not found!');
+        return;
+    }
+    dynamicFieldsContainer.innerHTML = '';
+    
+    // Convert to string to match the keys in signalTypesData (which are strings from template)
+    const signalTypeIdStr = String(signalTypeId);
+    const signalType = signalTypesData[signalTypeIdStr] || signalTypesData[signalTypeId];
+    if (!signalType) {
+        console.error('Signal type not found:', signalTypeId, 'Available keys:', Object.keys(signalTypesData));
+        updatePreview();
+        return;
+    }
+    
+    console.log('Found signal type:', signalType);
+    
+    // Parse variables from JSON string if needed
+    let variables = signalType.variables;
+    if (typeof variables === 'string') {
+        try {
+            variables = JSON.parse(variables);
+        } catch (e) {
+            console.error('Error parsing variables:', e, 'Raw value:', variables);
+            variables = [];
+        }
+    }
+    variables = variables || [];
+    
+    console.log('Parsed variables:', variables, 'Count:', variables.length);
+    
+    if (variables.length === 0) {
+        console.warn('No variables found for signal type:', signalTypeId);
+        dynamicFieldsContainer.innerHTML = '<p style="color: #666; padding: 20px; text-align: center;">No variables defined for this signal type.</p>';
+        updatePreview();
+        return;
+    }
+    
+    // Get used variables to determine visibility
+    const { all: usedVariables, optionalOnly: optionalOnlyVariables } = getUsedVariables(signalTypeId);
+    
     variables.forEach(variable => {
+        // Check if this variable is used
+        // is_shares is a special control variable that should always be visible
+        const isSpecialControl = variable.name === 'is_shares';
+        const isUsed = usedVariables.has(variable.name) || isSpecialControl;
+        const isOptionalOnly = optionalOnlyVariables.has(variable.name);
+        
+        // Create form group with data attribute for visibility control
         const formGroup = document.createElement('div');
         formGroup.className = 'form-group';
+        formGroup.setAttribute('data-variable-name', variable.name);
+        // Initially hide if not used (but always show is_shares)
+        if (!isUsed) {
+            formGroup.style.display = 'none';
+        }
         
         const label = document.createElement('label');
         const isRequired = variable.required === true;
@@ -302,6 +1095,16 @@ function createDynamicFields(signalTypeId) {
                 input.type = 'checkbox';
                 input.className = 'form-checkbox';
                 input.checked = variable.default || false;
+                
+                // Apply optional fields checkbox style for is_shares (same as optional fields)
+                if (variable.name === 'is_shares') {
+                    input.style.width = '18px';
+                    input.style.height = '18px';
+                    input.style.cursor = 'pointer';
+                    input.style.margin = '0';
+                    input.style.verticalAlign = 'middle';
+                    input.style.flexShrink = '0';
+                }
             } else {
                 input = document.createElement('input');
                 input.className = 'form-input';
@@ -346,15 +1149,45 @@ function createDynamicFields(signalTypeId) {
             formGroup.setAttribute('data-requires-options', 'true');
         }
         
-        // For checkboxes, append input first then label
+        // For checkboxes, append input first then label and add checkbox-group class
         if (variable.type === 'boolean' || inputType === 'checkbox') {
+            formGroup.classList.add('checkbox-group');
+            
+            // Apply optional fields checkbox wrapper style for is_shares (same as optional fields)
+            if (variable.name === 'is_shares') {
+                formGroup.style.display = 'flex';
+                formGroup.style.alignItems = 'center';
+                formGroup.style.gap = '8px';
+                label.style.cursor = 'pointer';
+                label.style.color = '#333';
+                label.style.fontSize = '0.95em';
+                label.style.fontWeight = 'normal';
+                label.style.margin = '8px';
+                label.style.padding = '0';
+                label.style.lineHeight = '18px';
+                label.style.display = 'inline-block';
+                label.style.verticalAlign = 'middle';
+            }
+            
             formGroup.appendChild(input);
             formGroup.appendChild(label);
         } else {
             formGroup.appendChild(label);
             formGroup.appendChild(input);
         }
-        dynamicFieldsContainer.appendChild(formGroup);
+        
+        // Place in appropriate container based on whether it's optional-only and visible
+        // is_shares should always stay in main container, never in optional container
+        const optionalFieldsVariablesContainer = document.getElementById('optionalFieldsVariablesContainer');
+        if (isUsed && isOptionalOnly && optionalFieldsVariablesContainer && !isSpecialControl) {
+            optionalFieldsVariablesContainer.appendChild(formGroup);
+        } else {
+            dynamicFieldsContainer.appendChild(formGroup);
+        }
+        
+        // Add event listeners for real-time preview
+        input.addEventListener('input', updatePreview);
+        input.addEventListener('change', updatePreview);
     });
     
     // Set up is_shares checkbox handler
@@ -362,10 +1195,35 @@ function createDynamicFields(signalTypeId) {
     if (isSharesCheckbox) {
         isSharesCheckbox.addEventListener('change', function() {
             toggleOptionFields(this.checked);
+            updateVariableVisibility(); // Update variable visibility when is_shares changes
+            updatePreview();
         });
         // Initialize on page load
         toggleOptionFields(isSharesCheckbox.checked);
     }
+    
+    // Create optional fields checkboxes
+    createOptionalFieldsCheckboxes(signalTypeId);
+    
+    // Set checkbox defaults based on signal type
+    const showTitleCheckbox = document.getElementById('showTitleCheckbox');
+    const showDescriptionCheckbox = document.getElementById('showDescriptionCheckbox');
+    
+    if (showTitleCheckbox && signalType.show_title_default !== undefined) {
+        showTitleCheckbox.checked = signalType.show_title_default;
+        
+    }
+    
+    if (showDescriptionCheckbox && signalType.show_description_default !== undefined) {
+        showDescriptionCheckbox.checked = signalType.show_description_default;
+        
+    }
+    
+    // Update variable visibility after fields are created
+    updateVariableVisibility();
+    
+    // Update preview after fields are created
+    updatePreview();
 }
 
 // Toggle visibility of option-related fields based on is_shares checkbox
@@ -389,32 +1247,301 @@ function toggleOptionFields(isShares) {
     });
 }
 
+// Update variable visibility based on which variables are currently used
+function updateVariableVisibility() {
+    const signalTypeSelect = document.querySelector('select[name="signal_type"]');
+    if (!signalTypeSelect || !signalTypeSelect.value) {
+        return;
+    }
+    
+    const signalTypeId = signalTypeSelect.value;
+    const { all: usedVariables, optionalOnly: optionalOnlyVariables } = getUsedVariables(signalTypeId);
+    
+    const dynamicFieldsContainer = document.getElementById('dynamicFields');
+    const optionalFieldsVariablesContainer = document.getElementById('optionalFieldsVariablesContainer');
+    
+    // Update visibility of all variable inputs
+    const variableInputs = document.querySelectorAll('#dynamicFields [data-variable-name], #optionalFieldsVariablesContainer [data-variable-name]');
+    variableInputs.forEach(formGroup => {
+        const variableName = formGroup.getAttribute('data-variable-name');
+        // is_shares is a special control variable that should always be visible
+        const isSpecialControl = variableName === 'is_shares';
+        const isUsed = usedVariables.has(variableName) || isSpecialControl;
+        const isOptionalOnly = optionalOnlyVariables.has(variableName);
+        const currentParent = formGroup.parentElement;
+        const isInOptionalContainer = currentParent === optionalFieldsVariablesContainer;
+        
+        if (isUsed) {
+            formGroup.style.display = 'block';
+            
+            // is_shares should always stay in main container, never move to optional container
+            if (isSpecialControl && isInOptionalContainer) {
+                // Move back to main container
+                formGroup.remove();
+                dynamicFieldsContainer.appendChild(formGroup);
+            } else if (isOptionalOnly && !isInOptionalContainer && !isSpecialControl) {
+                // Move to optional fields container (but not is_shares)
+                formGroup.remove();
+                optionalFieldsVariablesContainer.appendChild(formGroup);
+            } else if (!isOptionalOnly && isInOptionalContainer && !isSpecialControl) {
+                // Move back to main container
+                formGroup.remove();
+                dynamicFieldsContainer.appendChild(formGroup);
+            }
+        } else {
+            formGroup.style.display = 'none';
+            // Clear the value when hiding (except for required fields and is_shares)
+            if (!isSpecialControl) {
+                const input = formGroup.querySelector('input, textarea, select');
+                if (input && !input.hasAttribute('required')) {
+                    if (input.type === 'checkbox') {
+                        input.checked = false;
+                    } else {
+                        input.value = '';
+                    }
+                }
+            }
+        }
+    });
+    
+    // Show/hide optional fields variables container based on visible variable inputs
+    if (optionalFieldsVariablesContainer) {
+        // Count visible variable inputs (form groups with data-variable-name that are not hidden)
+        const visibleVariables = Array.from(optionalFieldsVariablesContainer.children).filter(child => {
+            // Check if it's a form group with data-variable-name that's visible
+            const hasVariableName = child.getAttribute && child.getAttribute('data-variable-name');
+            const isVisible = child.style && child.style.display !== 'none';
+            return hasVariableName && isVisible;
+        });
+        
+        // Only show the container if there are visible variable inputs
+        if (visibleVariables.length > 0) {
+            optionalFieldsVariablesContainer.style.display = 'block';
+        } else {
+            optionalFieldsVariablesContainer.style.display = 'none';
+        }
+    }
+}
+
+// Create checkboxes for optional fields
+function createOptionalFieldsCheckboxes(signalTypeId) {
+    const optionalFieldsSection = document.getElementById('optionalFieldsSection');
+    const optionalFieldsContainer = document.getElementById('optionalFieldsCheckboxesContainer');
+    
+    if (!optionalFieldsSection || !optionalFieldsContainer) {
+        return;
+    }
+    
+    // Clear existing checkboxes
+    optionalFieldsContainer.innerHTML = '';
+    
+    // Get signal type data
+    const signalTypeIdStr = String(signalTypeId);
+    const signalType = signalTypesData[signalTypeIdStr] || signalTypesData[signalTypeId];
+    if (!signalType) {
+        optionalFieldsSection.style.display = 'none';
+        return;
+    }
+    
+    // Parse fields_template
+    let fields = signalType.fields_template;
+    if (typeof fields === 'string') {
+        try {
+            fields = JSON.parse(fields);
+        } catch (e) {
+            console.error('Error parsing fields_template:', e);
+            fields = [];
+        }
+    }
+    fields = fields || [];
+    
+    // Find optional fields
+    const optionalFields = [];
+    fields.forEach((field, index) => {
+        if (field.optional === true) {
+            // Extract a readable name from the field
+            let fieldName = field.name || field.value || `Field ${index + 1}`;
+            // Remove markdown, emojis, and variable placeholders, then clean up
+            fieldName = fieldName.replace(/\*\*/g, '').replace(/[📝💵⚠️🎯🛑💰✍️🔴]/g, '').replace(/\{\{.*?\}\}/g, '').trim();
+            if (!fieldName) {
+                fieldName = field.value ? field.value.replace(/\{\{.*?\}\}/g, '').replace(/\*\*/g, '').replace(/[📝💵⚠️🎯🛑💰✍️🔴]/g, '').trim() : `Field ${index + 1}`;
+            }
+            if (!fieldName || fieldName === '\u200b') {
+                fieldName = `Optional Field ${index + 1}`;
+            }
+            optionalFields.push({
+                index: index,
+                name: fieldName,
+                field: field
+            });
+        }
+    });
+    
+    // Show/hide section based on whether there are optional fields
+    if (optionalFields.length === 0) {
+        optionalFieldsSection.style.display = 'none';
+        return;
+    }
+    
+    optionalFieldsSection.style.display = 'block';
+    
+    // Create checkboxes for each optional field
+    optionalFields.forEach(({index, name, field}) => {
+        const fieldKey = `field_${signalTypeId}_${index}`;
+        
+        // Create checkbox container
+        const checkboxWrapper = document.createElement('div');
+        checkboxWrapper.style.display = 'flex';
+        checkboxWrapper.style.alignItems = 'center';
+        checkboxWrapper.style.gap = '8px';
+        
+        // Create checkbox
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `optional_field_${fieldKey}`;
+        checkbox.className = 'form-checkbox';
+        checkbox.checked = optionalFieldsVisibility[fieldKey] || false;
+        checkbox.style.width = '18px';
+        checkbox.style.height = '18px';
+        checkbox.style.cursor = 'pointer';
+        
+        // Create label
+        const label = document.createElement('label');
+        label.htmlFor = checkbox.id;
+        label.textContent = name;
+        label.style.cursor = 'pointer';
+        label.style.color = '#333';
+        label.style.fontSize = '0.95em';
+        label.style.margin = '0';
+        
+        // Add change event listener
+        checkbox.addEventListener('change', function() {
+            optionalFieldsVisibility[fieldKey] = this.checked;
+            updateVariableVisibility(); // Update variable visibility when optional fields change
+            updatePreview();
+        });
+        
+        checkboxWrapper.appendChild(checkbox);
+        checkboxWrapper.appendChild(label);
+        optionalFieldsContainer.appendChild(checkboxWrapper);
+    });
+}
+
+
+
+// Handle title visibility toggle
+function toggleTitleVisibility() {
+    const showTitleCheckbox = document.getElementById('showTitleCheckbox');
+    if (showTitleCheckbox) {
+        // Save preference to localStorage
+        localStorage.setItem('discordShowTitle', showTitleCheckbox.checked ? 'true' : 'false');
+        // Update variable visibility
+        updateVariableVisibility();
+        // Update preview
+        updatePreview();
+    }
+}
+
+// Handle description visibility toggle
+function toggleDescriptionVisibility() {
+    const showDescriptionCheckbox = document.getElementById('showDescriptionCheckbox');
+    if (showDescriptionCheckbox) {
+        // Save preference to localStorage
+        localStorage.setItem('discordShowDescription', showDescriptionCheckbox.checked ? 'true' : 'false');
+        // Update variable visibility
+        updateVariableVisibility();
+        // Update preview
+        updatePreview();
+    }
+}
+
+// Load visibility preferences from localStorage or signal type defaults
+function loadVisibilityPreferences() {
+    const showTitleCheckbox = document.getElementById('showTitleCheckbox');
+    const showDescriptionCheckbox = document.getElementById('showDescriptionCheckbox');
+    
+    // Check if a signal type is already selected
+    const signalTypeSelect = document.querySelector('select[name="signal_type"]');
+    let useSignalTypeDefaults = false;
+    
+    if (signalTypeSelect && signalTypeSelect.value) {
+        const signalTypeId = signalTypeSelect.value;
+        const signalTypeIdStr = String(signalTypeId);
+        const signalType = signalTypesData[signalTypeIdStr] || signalTypesData[signalTypeId];
+        
+        if (signalType && (signalType.show_title_default !== undefined || signalType.show_description_default !== undefined)) {
+            useSignalTypeDefaults = true;
+            
+            if (showTitleCheckbox && signalType.show_title_default !== undefined) {
+                showTitleCheckbox.checked = signalType.show_title_default;
+                localStorage.setItem('discordShowTitle', signalType.show_title_default ? 'true' : 'false');
+            }
+            
+            if (showDescriptionCheckbox && signalType.show_description_default !== undefined) {
+                showDescriptionCheckbox.checked = signalType.show_description_default;
+                localStorage.setItem('discordShowDescription', signalType.show_description_default ? 'true' : 'false');
+            }
+        }
+    }
+    
+}
+
 // Handle signal type change
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOMContentLoaded - Initializing dashboard...');
+    
+    // Initialize visibility preferences
+    loadVisibilityPreferences();
+    
+    // Add event listeners to checkboxes
+    const showTitleCheckbox = document.getElementById('showTitleCheckbox');
+    if (showTitleCheckbox) {
+        showTitleCheckbox.addEventListener('change', toggleTitleVisibility);
+    }
+    
+    const showDescriptionCheckbox = document.getElementById('showDescriptionCheckbox');
+    if (showDescriptionCheckbox) {
+        showDescriptionCheckbox.addEventListener('change', toggleDescriptionVisibility);
+    }
+    
     const signalTypeSelect = document.querySelector('select[name="signal_type"]');
     const form = document.getElementById('signalForm');
     
+    console.log('signalTypeSelect found:', !!signalTypeSelect);
+    console.log('signalTypesData keys:', Object.keys(signalTypesData));
+    
     if (signalTypeSelect) {
         // Initial load - always create fields for the first/default value
-        const defaultValue = signalTypeSelect.value || Object.keys(signalTypesData)[0];
+        const defaultValue = signalTypeSelect.value || signalTypeSelect.options[signalTypeSelect.selectedIndex]?.value || Object.keys(signalTypesData)[0];
+        console.log('Default value determined:', defaultValue);
+        
         if (defaultValue) {
             signalTypeSelect.value = defaultValue;
+            console.log('Creating dynamic fields for default value:', defaultValue);
             createDynamicFields(defaultValue);
+        } else {
+            console.warn('No default value found. signalTypeSelect.value:', signalTypeSelect.value, 'Options:', signalTypeSelect.options.length);
         }
         
         // Handle change
         signalTypeSelect.addEventListener('change', function() {
-            createDynamicFields(this.value);
+            console.log('Signal type changed to:', this.value);
+            if (this.value) {
+                createDynamicFields(this.value);
+                // Update preview immediately - createDynamicFields already calls it, but ensure it happens
+                updatePreview();
+            }
         });
         
         // Handle form submission
         form.addEventListener('submit', function(e) {
             // Get current signal type and its variables
             const currentSignalTypeId = signalTypeSelect.value;
-            const currentVariables = signalTypesData[currentSignalTypeId] || [];
+            const currentSignalType = signalTypesData[currentSignalTypeId];
+            const currentVariables = currentSignalType ? (currentSignalType.variables || []) : [];
             
-            // Validate required fields
-            const dynamicInputs = document.querySelectorAll('#dynamicFields input, #dynamicFields textarea, #dynamicFields select');
+            // Validate required fields - include inputs from both containers
+            const dynamicInputs = document.querySelectorAll('#dynamicFields input, #dynamicFields textarea, #dynamicFields select, #optionalFieldsVariablesContainer input, #optionalFieldsVariablesContainer textarea, #optionalFieldsVariablesContainer select');
             const errors = [];
             
             // Check if is_shares is checked
@@ -476,6 +1603,45 @@ document.addEventListener('DOMContentLoaded', function() {
                     signalData[input.name] = input.value;
                 }
             });
+            
+            // Collect optional field selections
+            const optionalFieldsIndices = [];
+            // currentSignalType already declared above
+            if (currentSignalType) {
+                let fields = currentSignalType.fields_template;
+                if (typeof fields === 'string') {
+                    try {
+                        fields = JSON.parse(fields);
+                    } catch (e) {
+                        fields = [];
+                    }
+                }
+                fields = fields || [];
+                
+                fields.forEach((field, index) => {
+                    if (field.optional === true) {
+                        const fieldKey = `field_${currentSignalTypeId}_${index}`;
+                        if (optionalFieldsVisibility[fieldKey] === true) {
+                            optionalFieldsIndices.push(index);
+                        }
+                    }
+                });
+            }
+            
+            // Store optional field indices in signalData
+            if (optionalFieldsIndices.length > 0) {
+                signalData['_optional_fields'] = optionalFieldsIndices;
+            }
+            
+            // Store title and description visibility preferences
+            const showTitleCheckbox = document.getElementById('showTitleCheckbox');
+            const showDescriptionCheckbox = document.getElementById('showDescriptionCheckbox');
+            if (showTitleCheckbox) {
+                signalData['_show_title'] = showTitleCheckbox.checked;
+            }
+            if (showDescriptionCheckbox) {
+                signalData['_show_description'] = showDescriptionCheckbox.checked;
+            }
             
             // Set the data field value
             const dataInput = form.querySelector('input[name="data"]');

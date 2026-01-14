@@ -22,78 +22,92 @@ def create_default_signal_types(apps, schema_editor):
                 {'name': 'trade_detail', 'type': 'text', 'label': 'Trade Detail', 'hint': 'Enter Trade Detail (e.g.\n Take Profit (1): At 20% take off 50% of position and tighten up stop loss to slightly above break even\nTake Profit (2): At 30% take off 50% of remaining position and set a 15% trailing stop loss for the remaining runners.)'},
                 {'name': 'risk_management', 'type': 'text', 'label': 'Risk Management', 'hint': 'Enter Risk Management (e.g.\n 1. Avoid holding 0DTE/1DTE past 3PM ET unless momentum is explosive\n2. Control Position Size\n3. Do your own due diligence. This is not a suggestion to buy, sell or hold)'},
             ],
-            'title_template': '🚨 {{ticker}} Swing Trade Alert',
+            'title_template': '🚨 {{ticker}} Trade Alert',
             'description_template': (
                 'BTO(Buy to Open)\n'
-                
             ),
+            'show_title': False,
+            'show_description': False,
             'color': '#0000FF',
             'fileds_template': [
                 {
                     'name': '🟢 Ticker: {{ticker}}',
                     'value': '',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '',
                     'value': '\u200b',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '❌ Expiration',
                     'value': '{{expiration}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '✍️ Strike',
                     'value': '{{strike}} {{option_type}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '💵 Price',
                     'value': '${{price}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': True
                 },
                 {
                     'name': '',
                     'value': '\u200b',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '📝 **Game Plan**',
                     'value': '',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '🎯 Targets: {{targets}}',
                     'value': '',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '🛑 Stop Loss: {{stop_loss}}',
                     'value': '',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '',
                     'value': '\u200b',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 
                 {
-                    'name': '💰 **Take Profit Plan**',
+                    'name': '💰 **Trade Detail**',
                     'value': '{{trade_detail}}',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '',
                     'value': '\u200b',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '⚠️ Risk Management',
                     'value': '{{risk_management}}',
-                    'inline': False
+                    'inline': False,
+                    'optional': True
                 },
             ],
         },
@@ -117,57 +131,68 @@ def create_default_signal_types(apps, schema_editor):
                 {
                     'name': 'Ticker: {{ticker}}',
                     'value': '',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '❌ Expiration',
                     'value': '{{expiration}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '✍️ Strike',
                     'value': '{{strike}} {{option_type}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '💵 Price',
                     'value': '${{price}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '',
                     'value': '\u200b',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '✅ Entry',
                     'value': '${{entry_price}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '🛑 Stop Hit',
                     'value': '${{exit_price}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '💸 Result',
                     'value': '{{pnl_percent}}%',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '',
                     'value': '\u200b',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '🚨 __Status: Position Closed__ 🚨',
                     'value': '\u200b',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '🛡️ Discipline Matters: Following the plan keeps you in the game for winning trades',
                     'value': '',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 }
             ],
         },
@@ -191,67 +216,80 @@ def create_default_signal_types(apps, schema_editor):
                 {
                     'name': 'Ticker: {{ticker}}',
                     'value': '',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '❌ Expiration',
                     'value': '{{expiration}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '✍️ Strike',
                     'value': '{{strike}} {{option_type}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '💵 Price',
                     'value': '${{price}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '',
                     'value': '\u200b',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '✅ Entry',
                     'value': '${{entry_price}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '🎯 TP Hit',
                     'value': '${{exit_price}}',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '💸 Profit',
                     'value': '{{pnl_percent}}%',
-                    'inline': True
+                    'inline': True,
+                    'optional': False
                 },
                 {
                     'name': '',
                     'value': '\u200b',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '🚨 __Status: TP Reached__ 🚨',
                     'value': '',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '',
                     'value': '\u200b',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '🔍 Position Management:',
                     'value': '',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
                 {
                     'name': '✅ Reduce position by 50% (lock in profit)',
                     'value': '',
-                    'inline': False
+                    'inline': False,
+                    'optional': False
                 },
             ]
         }

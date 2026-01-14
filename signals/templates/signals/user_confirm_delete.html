@@ -1,0 +1,141 @@
+{% extends 'signals/base.html' %}
+
+{% block title %}Delete User - Crowned Trader Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .delete-container {
+        max-width: 600px;
+        margin: 0 auto;
+        background: white;
+        padding: 40px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .delete-header {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+
+    .delete-header h2 {
+        color: #dc3545;
+        font-size: 2em;
+        margin: 0 0 10px 0;
+    }
+
+    .delete-warning {
+        background: #fff3cd;
+        border: 2px solid #ffc107;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 30px;
+    }
+
+    .delete-warning p {
+        color: #856404;
+        margin: 0;
+        font-size: 1.1em;
+        line-height: 1.6;
+    }
+
+    .user-info {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+    }
+
+    .user-info h3 {
+        color: #333;
+        margin: 0 0 15px 0;
+    }
+
+    .user-info p {
+        color: #666;
+        margin: 5px 0;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+    }
+
+    .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1em;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+        transition: all 0.3s;
+    }
+
+    .btn-danger {
+        background: #dc3545;
+        color: white;
+    }
+
+    .btn-danger:hover {
+        background: #c82333;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4);
+    }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-secondary:hover {
+        background: #5a6268;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="delete-container">
+    <div class="delete-header">
+        <h2>⚠️ Delete User</h2>
+    </div>
+
+    <div class="delete-warning">
+        <p><strong>Warning:</strong> Are you sure you want to delete the user "<strong>{{ user.username }}</strong>"? This action cannot be undone and will permanently delete all associated data including signals and Discord channels.</p>
+    </div>
+
+    <div class="user-info">
+        <h3>User Information</h3>
+        <p><strong>Username:</strong> {{ user.username }}</p>
+        <p><strong>Email:</strong> {{ user.email|default:"—" }}</p>
+        <p><strong>Role:</strong> 
+            {% if user.is_superuser %}
+                Superuser
+            {% elif user.is_staff %}
+                Staff
+            {% else %}
+                User
+            {% endif %}
+        </p>
+        <p><strong>Status:</strong> 
+            {% if user.is_active %}
+                <span style="color: #28a745;">Active</span>
+            {% else %}
+                <span style="color: #dc3545;">Inactive</span>
+            {% endif %}
+        </p>
+        <p><strong>Date Joined:</strong> {{ user.date_joined|date:"M d, Y" }}</p>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-actions">
+            <button type="submit" class="btn btn-danger">Yes, Delete User</button>
+            <a href="{% url 'user_management' %}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+

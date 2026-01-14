@@ -240,7 +240,7 @@
         <tr>
             <th>Username</th>
             <th>Email</th>
-            <th>Discord Channel Name</th>
+            <th>Discord Channels</th>
             <th>Status</th>
             <th>Role</th>
             <th>Date Joined</th>
@@ -253,8 +253,20 @@
             <td><strong>{{ user.username }}</strong></td>
             <td>{{ user.email|default:"—" }}</td>
             <td>
-                {% if user.profile.discord_channel_name %}
-                    {{ user.profile.discord_channel_name }}
+                {% if user.discord_channels.all %}
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        {% for channel in user.discord_channels.all %}
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span>{{ channel.channel_name }}</span>
+                                {% if channel.is_default %}
+                                    <span style="background: #667eea; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; font-weight: 600;">Default</span>
+                                {% endif %}
+                                {% if not channel.is_active %}
+                                    <span style="background: #dc3545; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; font-weight: 600;">Inactive</span>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
                 {% else %}
                     —
                 {% endif %}
@@ -280,7 +292,10 @@
                 <div class="action-buttons">
                     <a href="{% url 'user_edit' user.id %}" class="btn btn-sm btn-edit">Edit</a>
                     {% if user.id != request.user.id %}
-                    <a href="{% url 'user_delete' user.id %}" class="btn btn-sm btn-delete" onclick="return confirm('Are you sure you want to delete user {{ user.username }}?');">Delete</a>
+                    <form method="post" action="{% url 'user_delete' user.id %}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete user {{ user.username }}?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-delete">Delete</button>
+                    </form>
                     {% endif %}
                 </div>
             </td>

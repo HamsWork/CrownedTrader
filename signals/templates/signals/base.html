@@ -13,163 +13,195 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f5f5f5;
             min-height: 100vh;
-            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 0;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .logo {
+            font-size: 1.8em;
+            font-weight: 700;
+        }
+
+        .logo p {
+            font-size: 0.5em;
+            font-weight: 400;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .nav {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .nav a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: background 0.3s;
+            font-weight: 500;
+        }
+
+        .nav a:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .nav a.active {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-info span {
+            color: white;
+            font-weight: 500;
+        }
+
+        .user-info .btn-logout {
+            background: #dc3545;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: background 0.3s;
+        }
+
+        .user-info .btn-logout:hover {
+            background: #c82333;
         }
 
         .container {
             max-width: 1200px;
             margin: 0 auto;
-        }
-
-        .header {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-            margin-bottom: 30px;
-            text-align: center;
-        }
-
-        .header h1 {
-            color: #333;
-            font-size: 2.5em;
-            margin-bottom: 10px;
-        }
-
-        .header p {
-            color: #666;
-            font-size: 1.1em;
-        }
-
-        .nav {
-            background: white;
-            padding: 20px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-            margin-bottom: 30px;
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .nav a {
-            text-decoration: none;
-            color: #667eea;
-            font-weight: 600;
-            padding: 10px 20px;
-            border-radius: 8px;
-            transition: all 0.3s;
-            white-space: nowrap;
-        }
-
-        .nav a:hover, .nav a.active {
-            background: #667eea;
-            color: white;
-        }
-
-        .nav .user-info {
-            margin-left: auto;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            flex-wrap: wrap;
-        }
-
-        .nav .user-info span {
-            color: #667eea;
-            font-weight: 600;
+            padding: 30px 20px;
         }
 
         .messages {
-            margin-bottom: 20px;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 0 20px;
         }
 
         .message {
             padding: 15px 20px;
+            margin-bottom: 15px;
             border-radius: 8px;
-            margin-bottom: 10px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            font-weight: 500;
         }
 
         .message.success {
             background: #d4edda;
             color: #155724;
-            border-left: 4px solid #28a745;
-        }
-
-        .message.warning {
-            background: #fff3cd;
-            color: #856404;
-            border-left: 4px solid #ffc107;
+            border: 1px solid #c3e6cb;
         }
 
         .message.error {
             background: #f8d7da;
             color: #721c24;
-            border-left: 4px solid #dc3545;
+            border: 1px solid #f5c6cb;
         }
 
-        .content {
-            background: white;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        .message.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+
+        .message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
         }
 
         .footer {
+            background: #2f3136;
+            color: #dcddde;
             text-align: center;
-            color: white;
-            margin-top: 30px;
             padding: 20px;
+            margin-top: 50px;
+        }
+
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .nav {
+                justify-content: center;
+            }
         }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>👑 Crowned Trader Dashboard</h1>
-            <p>Professional Trading Signal Management</p>
-        </div>
-
-        <div class="nav">
-            {% if user.is_authenticated %}
-                <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">📊 Dashboard</a>
-                <a href="{% url 'signal_types_list' %}" class="{% if 'signal_type' in request.resolver_match.url_name %}active{% endif %}">🔧 Signal Types</a>
-                <!-- <a href="{% url 'signals_history' %}" class="{% if request.resolver_match.url_name == 'signals_history' %}active{% endif %}">📈 Signal History</a> -->
-                {% if user.is_superuser %}
-                <a href="{% url 'user_management' %}" class="{% if request.resolver_match.url_name == 'user_management' or request.resolver_match.url_name == 'user_create' or request.resolver_match.url_name == 'user_edit' %}active{% endif %}">👥 User Management</a>
-                {% endif %}
-                <!-- <a href="/admin/" target="_blank">⚙️ Admin Panel</a> -->
-                <div class="user-info">
-                    <span>👤 {{ user.username }}</span>
-                    <a href="{% url 'user_logout' %}" style="background: #dc3545; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none;">Logout</a>
-                </div>
-            {% else %}
-                <a href="{% url 'user_login' %}" class="{% if request.resolver_match.url_name == 'user_login' %}active{% endif %}">🔐 Login</a>
-            {% endif %}
-        </div>
-
-        {% if messages %}
-        <div class="messages">
-            {% for message in messages %}
-            <div class="message {{ message.tags }}">
-                {{ message }}
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">
+                <div>👑 Crowned Trader</div>
+                <p>Professional Trading Signal Management</p>
             </div>
-            {% endfor %}
-        </div>
-        {% endif %}
 
-        <div class="content">
-            {% block content %}{% endblock %}
+            <div class="nav">
+                {% if user.is_authenticated %}
+                    <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">📊 Dashboard</a>
+                    <a href="{% url 'signal_types_list' %}" class="{% if 'signal_type' in request.resolver_match.url_name %}active{% endif %}">🔧 Signal Types</a>
+                    {% if user.is_superuser %}
+                    <a href="{% url 'user_management' %}" class="{% if request.resolver_match.url_name == 'user_management' or request.resolver_match.url_name == 'user_create' or request.resolver_match.url_name == 'user_edit' %}active{% endif %}">👥 User Management</a>
+                    {% endif %}
+                    <div class="user-info">
+                        <a href="{% url 'profile' %}" class="{% if request.resolver_match.url_name == 'profile' or request.resolver_match.url_name == 'change_password' %}active{% endif %}">👤 Profile</a>
+                        <span>👤 {{ user.username }}</span>
+                        <a href="{% url 'user_logout' %}" class="btn-logout">Logout</a>
+                    </div>
+                {% else %}
+                    <a href="{% url 'user_login' %}" class="{% if request.resolver_match.url_name == 'user_login' %}active{% endif %}">🔐 Login</a>
+                {% endif %}
+            </div>
         </div>
+    </div>
 
-        <div class="footer">
-            <p>&copy; 2025 Crowned Trader Dashboard | Built by Hams</p>
+    {% if messages %}
+    <div class="messages">
+        {% for message in messages %}
+        <div class="message {{ message.tags }}">
+            {{ message }}
         </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <div class="footer">
+        <p>&copy; 2025 Crowned Trader Dashboard | Built by Hams</p>
     </div>
 
     {% block extra_js %}{% endblock %}

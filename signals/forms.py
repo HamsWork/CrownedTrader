@@ -169,13 +169,15 @@ class SignalTypeForm(forms.ModelForm):
     
     class Meta:
         model = SignalType
-        fields = ['name', 'title_template', 'description_template', 'color', 'footer_template']
+        fields = ['name', 'title_template', 'description_template', 'color', 'footer_template', 'show_title_default', 'show_description_default']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-input'}),
             'title_template': forms.TextInput(attrs={'class': 'form-input'}),
             'description_template': forms.Textarea(attrs={'class': 'form-textarea', 'rows': 3}),
             'color': forms.TextInput(attrs={'class': 'form-input'}),
             'footer_template': forms.Textarea(attrs={'class': 'form-textarea', 'rows': 2}),
+            'show_title_default': forms.CheckboxInput(attrs={'class': 'form-checkbox'}),
+            'show_description_default': forms.CheckboxInput(attrs={'class': 'form-checkbox'}),
         }
     
     def __init__(self, *args, **kwargs):
@@ -265,19 +267,29 @@ class SignalTypeForm(forms.ModelForm):
         if self.user:
             instance.user = self.user
         
-        # Set variables and fields_template from JSON
-        variables_json = self.cleaned_data.get('variables_json', '[]')
-        fields_template_json = self.cleaned_data.get('fields_template_json', '[]')
+        # Set variables and fields_template from cleaned data (already parsed by clean methods)
+        # The clean methods return the parsed list, not the JSON string
+        variables = self.cleaned_data.get('variables_json', [])
+        fields_template = self.cleaned_data.get('fields_template_json', [])
         
-        try:
-            instance.variables = json.loads(variables_json) if variables_json else []
-        except json.JSONDecodeError:
-            instance.variables = []
+        # Ensure they are lists
+        if isinstance(variables, list):
+            instance.variables = variables
+        else:
+            # Fallback: try to parse if it's still a string
+            try:
+                instance.variables = json.loads(variables) if variables else []
+            except (json.JSONDecodeError, TypeError):
+                instance.variables = []
         
-        try:
-            instance.fileds_template = json.loads(fields_template_json) if fields_template_json else []
-        except json.JSONDecodeError:
-            instance.fileds_template = []
+        if isinstance(fields_template, list):
+            instance.fileds_template = fields_template
+        else:
+            # Fallback: try to parse if it's still a string
+            try:
+                instance.fileds_template = json.loads(fields_template) if fields_template else []
+            except (json.JSONDecodeError, TypeError):
+                instance.fileds_template = []
         
         if commit:
             instance.save()

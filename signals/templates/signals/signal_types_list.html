@@ -208,7 +208,7 @@
                 <span class="badge badge-system">System</span>
             </div>
             <div class="action-buttons">
-                <span style="color: #999; font-size: 0.9em;">Read-only</span>
+                <a href="{% url 'signal_type_edit' signal_type.id %}" class="btn btn-sm btn-edit" title="View system template (read-only)">👁️ View</a>
             </div>
         </div>
         {% endfor %}

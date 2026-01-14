@@ -26,11 +26,11 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 if DEBUG:
     # ALLOWED_HOSTS = ['*']  # Allow any host in debug mode
     # CSRF_TRUSTED_ORIGINS = ['http://*', 'https://*']  # Allow any origin in debug mode
-    ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '162.218.114.93']
-    CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1:8000', 'http://localhost:8000', 'http://162.218.114.93:8000']
+    ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '132.148.77.219', 'crowntraders.stockswithjosh.com']
+    CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1:8000', 'http://localhost:8000', 'http://132.148.77.219:8000', 'https://crowntraders.stockswithjosh.com']
 else:
-    ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '162.218.114.93']
-    CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1:8000', 'http://localhost:8000', 'http://162.218.114.93:8000']
+    ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '132.148.77.219', 'crowntraders.stockswithjosh.com']
+    CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1:8000', 'http://localhost:8000', 'http://132.148.77.219:8000', 'https://crowntraders.stockswithjosh.com']
 
 
 # Application definition
@@ -143,4 +143,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/login/'
+
+# CSRF and Session settings for HTTPS
+# If behind a reverse proxy (Nginx) with SSL termination, Django needs to trust proxy headers
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+CSRF_COOKIE_SECURE = True  # Set to True if using HTTPS
+SESSION_COOKIE_SECURE = True  # Set to True if using HTTPS
+CSRF_COOKIE_HTTPONLY = False
+CSRF_USE_SESSIONS = False
+CSRF_COOKIE_SAMESITE = 'Lax'
 

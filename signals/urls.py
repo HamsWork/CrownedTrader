@@ -8,6 +8,9 @@ urlpatterns = [
     # Authentication URLs
     path('login/', views.user_login, name='user_login'),
     path('logout/', views.user_logout, name='user_logout'),
+    # Profile URLs
+    path('profile/', views.profile, name='profile'),
+    path('profile/change-password/', views.change_password, name='change_password'),
     # User Management URLs
     path('users/', views.user_management, name='user_management'),
     path('users/create/', views.user_create, name='user_create'),

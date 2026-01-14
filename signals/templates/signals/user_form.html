@@ -117,6 +117,97 @@
     .btn-secondary:hover {
         background: #5a6268;
     }
+
+    .channel-card {
+        background: #fff;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 15px;
+    }
+
+    .channel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 15px;
+    }
+
+    .channel-badge {
+        background: #667eea;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.8em;
+        margin-left: 10px;
+    }
+
+    .channel-badge.inactive {
+        background: #dc3545;
+    }
+
+    .channel-input-group {
+        background: #f8f9fa;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 15px;
+        position: relative;
+    }
+
+    .channel-input-group:first-of-type {
+        margin-top: 15px;
+    }
+
+    .remove-channel-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: #dc3545;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 6px 12px;
+        font-size: 0.85em;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .remove-channel-btn:hover {
+        background: #c82333;
+    }
+
+    .add-channel-btn {
+        background: #28a745;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-size: 0.95em;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        margin-bottom: 15px;
+    }
+
+    .add-channel-btn:hover {
+        background: #218838;
+        transform: translateY(-2px);
+    }
+
+    .channel-input-group-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+
+    .channel-input-group-title {
+        color: #333;
+        font-weight: 600;
+        font-size: 1em;
+        margin: 0;
+    }
 </style>
 {% endblock %}
 
@@ -151,22 +242,6 @@
             <small>{% if form_type == 'edit' %}Enter a new password only if you want to change it.{% else %}Required. Minimum 8 characters recommended.{% endif %}</small>
         </div>
 
-        <div class="form-group">
-            <label for="discord_channel_name">Discord Channel Name *</label>
-            <input type="text" id="discord_channel_name" name="discord_channel_name" 
-                   value="{% if form_type == 'edit' %}{{ discord_channel_name }}{% elif discord_channel_name %}{{ discord_channel_name }}{% endif %}" 
-                   required>
-            <small>Required. The name of the Discord channel.</small>
-        </div>
-
-        <div class="form-group">
-            <label for="discord_channel_webhook">Discord Channel Webhook *</label>
-            <input type="url" id="discord_channel_webhook" name="discord_channel_webhook" 
-                   value="{% if form_type == 'edit' %}{{ discord_channel_webhook }}{% elif discord_channel_webhook %}{{ discord_channel_webhook }}{% endif %}" 
-                   required>
-            <small>Required. The webhook URL for the Discord channel (e.g., https://discord.com/api/webhooks/...).</small>
-        </div>
-
         <div class="checkbox-group">
             <input type="checkbox" id="is_superuser" name="is_superuser" 
                    {% if form_type == 'edit' and user.is_superuser %}checked{% elif form_type == 'create' and is_superuser %}checked{% endif %}>
@@ -183,6 +258,20 @@
         </div>
         {% endif %}
 
+        {% if form_type == 'create' %}
+        <!-- Discord Channels Input for New User -->
+        <div id="discordChannelsSection" style="margin-top: 30px; padding-top: 30px; border-top: 2px solid #e0e0e0;">
+            <h3 style="color: #333; margin-bottom: 10px;">📡 Discord Channels *</h3>
+            <p style="color: #666; margin-bottom: 20px; font-size: 0.9em;">At least one Discord channel is required. You can add multiple channels.</p>
+            
+            <div id="channelsContainer">
+                <!-- Channel inputs will be added here dynamically -->
+            </div>
+            
+            <button type="button" id="addChannelBtn" class="add-channel-btn">➕ Add Another Channel</button>
+        </div>
+        {% endif %}
+
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">
                 {% if form_type == 'create' %}Create User{% else %}Update User{% endif %}
@@ -190,6 +279,223 @@
             <a href="{% url 'user_management' %}" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
+
+    {% if form_type == 'edit' %}
+    <!-- Discord Channels Management Section -->
+    <div style="margin-top: 50px; padding-top: 30px; border-top: 2px solid #e0e0e0;">
+        <h3 style="color: #333; margin-bottom: 20px;">📡 Discord Channels</h3>
+        <p style="color: #666; margin-bottom: 20px;">Manage Discord channels for this user. Users can have multiple channels and set one as default.</p>
+
+        <!-- Add New Channel Form -->
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
+            <h4 style="color: #333; margin-bottom: 15px;">➕ Add New Channel</h4>
+            <form method="post" style="display: flex; flex-direction: column; gap: 15px;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_channel">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; color: #333; font-weight: 600;">Channel Name *</label>
+                        <input type="text" name="channel_name" required style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; color: #333; font-weight: 600;">Webhook URL *</label>
+                        <input type="text" name="webhook_url" required style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px;">
+                    </div>
+                </div>
+                <div>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" name="is_default">
+                        <span style="color: #333;">Set as default channel</span>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary" style="align-self: flex-start;">Add Channel</button>
+            </form>
+        </div>
+
+        <!-- Existing Channels List -->
+        {% if discord_channels %}
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            {% for channel in discord_channels %}
+            <div class="channel-card">
+                <div class="channel-header">
+                    <div style="flex: 1;">
+                        <h4 style="color: #333; margin: 0 0 5px 0;">
+                            {{ channel.channel_name }}
+                            {% if channel.is_default %}
+                            <span class="channel-badge">Default</span>
+                            {% endif %}
+                            {% if not channel.is_active %}
+                            <span class="channel-badge inactive">Inactive</span>
+                            {% endif %}
+                        </h4>
+                        <p style="color: #666; margin: 0; font-size: 0.9em; word-break: break-all;">{{ channel.webhook_url }}</p>
+                    </div>
+                    <form method="post" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this channel?');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="delete_channel">
+                        <input type="hidden" name="channel_id" value="{{ channel.id }}">
+                        <button type="submit" class="btn btn-secondary" style="background: #dc3545; padding: 8px 16px; font-size: 0.9em;">Delete</button>
+                    </form>
+                </div>
+                <form method="post" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="update_channel">
+                    <input type="hidden" name="channel_id" value="{{ channel.id }}">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; color: #333; font-weight: 600;">Channel Name</label>
+                        <input type="text" name="channel_name" value="{{ channel.channel_name }}" required style="width: 100%; padding: 8px; border: 2px solid #e0e0e0; border-radius: 6px;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; color: #333; font-weight: 600;">Webhook URL</label>
+                        <input type="text" name="webhook_url" value="{{ channel.webhook_url }}" required style="width: 100%; padding: 8px; border: 2px solid #e0e0e0; border-radius: 6px;">
+                    </div>
+                    <div style="display: flex; gap: 15px; align-items: center;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" name="is_default" {% if channel.is_default %}checked{% endif %}>
+                            <span style="color: #333;">Default</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" name="is_active" {% if channel.is_active %}checked{% endif %}>
+                            <span style="color: #333;">Active</span>
+                        </label>
+                    </div>
+                    <div>
+                        <button type="submit" class="btn btn-primary" style="padding: 8px 16px; font-size: 0.9em;">Update Channel</button>
+                    </div>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="color: #666; font-style: italic;">No Discord channels configured. Add channels above.</p>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if form_type == 'create' %}
+<script>
+let channelCount = 0;
+
+// Function to create a new channel input group
+function createChannelInput(index, channelData = null) {
+    const container = document.getElementById('channelsContainer');
+    const channelGroup = document.createElement('div');
+    channelGroup.className = 'channel-input-group';
+    channelGroup.dataset.index = index;
+    
+    const canRemove = index > 0; // Can remove if not the first one
+    
+    channelGroup.innerHTML = `
+        ${canRemove ? '<button type="button" class="remove-channel-btn" onclick="removeChannel(this)">✕ Remove</button>' : ''}
+        <div class="channel-input-group-header">
+            <h4 class="channel-input-group-title">Channel ${index + 1}</h4>
+        </div>
+        <div class="form-group">
+            <label for="channel_name_${index}">Channel Name *</label>
+            <input type="text" id="channel_name_${index}" name="channel_name_${index}" 
+                   value="${channelData ? (channelData.name || '') : ''}"
+                   placeholder="e.g., trading-signals" required>
+            <small>Name of the Discord channel</small>
+        </div>
+        <div class="form-group">
+            <label for="webhook_url_${index}">Webhook URL *</label>
+            <input type="url" id="webhook_url_${index}" name="webhook_url_${index}" 
+                   value="${channelData ? (channelData.url || '') : ''}"
+                   placeholder="https://discord.com/api/webhooks/..." required>
+            <small>Discord webhook URL for this channel</small>
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="is_default_${index}" name="is_default_${index}" 
+                   ${channelData && channelData.is_default ? 'checked' : ''}>
+            <label for="is_default_${index}">Set as default channel</label>
+            <small style="margin-left: 10px; color: #666;">This will be the default channel for sending signals</small>
+        </div>
+    `;
+    
+    container.appendChild(channelGroup);
+}
+
+// Function to remove a channel input group
+function removeChannel(button) {
+    const channelGroup = button.closest('.channel-input-group');
+    channelGroup.remove();
+    updateChannelNumbers();
+}
+
+// Function to update channel numbers
+function updateChannelNumbers() {
+    const containers = document.querySelectorAll('.channel-input-group');
+    containers.forEach((container, index) => {
+        const title = container.querySelector('.channel-input-group-title');
+        if (title) {
+            title.textContent = `Channel ${index + 1}`;
+        }
+        // Update input IDs and names
+        const inputs = container.querySelectorAll('input, label');
+        inputs.forEach(input => {
+            if (input.id) {
+                input.id = input.id.replace(/_\d+$/, `_${index}`);
+            }
+            if (input.name) {
+                input.name = input.name.replace(/_\d+$/, `_${index}`);
+            }
+            if (input.htmlFor) {
+                input.htmlFor = input.htmlFor.replace(/_\d+$/, `_${index}`);
+            }
+        });
+        container.dataset.index = index;
+        
+        // Show/hide remove button - first channel cannot be removed
+        const removeBtn = container.querySelector('.remove-channel-btn');
+        if (removeBtn) {
+            if (index === 0) {
+                removeBtn.remove(); // Remove button completely for first channel
+            }
+        }
+    });
+}
+
+// Add channel button handler
+document.addEventListener('DOMContentLoaded', function() {
+    // Create first channel input
+    createChannelInput(channelCount++);
+    
+    // Add channel button
+    const addBtn = document.getElementById('addChannelBtn');
+    if (addBtn) {
+        addBtn.addEventListener('click', function() {
+            createChannelInput(channelCount++);
+        });
+    }
+    
+    // Form validation - ensure at least one channel has both name and URL
+    const form = document.querySelector('form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const channelGroups = document.querySelectorAll('.channel-input-group');
+            let hasValidChannel = false;
+            
+            channelGroups.forEach(group => {
+                const nameInput = group.querySelector(`input[name^="channel_name_"]`);
+                const urlInput = group.querySelector(`input[name^="webhook_url_"]`);
+                
+                if (nameInput && urlInput && nameInput.value.trim() && urlInput.value.trim()) {
+                    hasValidChannel = true;
+                }
+            });
+            
+            if (!hasValidChannel) {
+                e.preventDefault();
+                alert('Please provide at least one Discord channel with both channel name and webhook URL.');
+                return false;
+            }
+        });
+    }
+});
+</script>
+{% endif %}
 {% endblock %}
 
