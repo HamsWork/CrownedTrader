@@ -183,6 +183,10 @@ class SignalTypeForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
+
+        # These templates are optional
+        self.fields['description_template'].required = False
+        self.fields['footer_template'].required = False
         
         if self.instance and self.instance.pk:
             # Editing existing signal type

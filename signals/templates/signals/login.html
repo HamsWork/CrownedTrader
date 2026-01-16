@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,19 +14,34 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --accent: #CFB568;
+            --accent-rgb: 207, 181, 104;
+            background:
+                radial-gradient(1100px 700px at 25% 15%, rgba(59, 130, 246, 0.14), transparent 60%),
+                radial-gradient(900px 600px at 85% 25%, rgba(147, 51, 234, 0.16), transparent 60%),
+                linear-gradient(135deg, #020617 0%, #0b1020 55%, #050816 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
+            color-scheme: dark;
+        }
+
+        .login-shell {
+            width: 100%;
+            display: grid;
+            place-items: center;
+            gap: 18px;
+            padding: 22px 10px;
         }
 
         .login-container {
-            background: white;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            background: rgba(15, 23, 42, 0.72);
+            border: 1px solid rgba(42, 55, 95, 0.55);
+            padding: 34px;
+            border-radius: 16px;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
             width: 100%;
             max-width: 400px;
         }
@@ -35,15 +51,56 @@
             margin-bottom: 30px;
         }
 
-        .login-header h1 {
-            color: #333;
-            font-size: 2em;
+        .brand-row {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
             margin-bottom: 10px;
         }
 
+        .brand-mark {
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
+            background: rgba(var(--accent-rgb), 0.12);
+            border: 1px solid rgba(var(--accent-rgb), 0.35);
+            display: grid;
+            place-items: center;
+            box-shadow: 0 12px 26px rgba(var(--accent-rgb), 0.08);
+        }
+
+        .brand-mark svg {
+            width: 20px;
+            height: 20px;
+            display: block;
+            color: var(--accent);
+        }
+
+        .brand-mark img {
+            width: 22px;
+            height: 22px;
+            display: block;
+        }
+
+        .brand-mark .logo-mask {
+            width: 22px;
+            height: 22px;
+            background: var(--accent);
+            -webkit-mask: url("{% static 'signals/logo.svg' %}") center / contain no-repeat;
+            mask: url("{% static 'signals/logo.svg' %}") center / contain no-repeat;
+        }
+
+        .login-header h1 {
+            color: #e8ecff;
+            font-size: 1.9em;
+            font-weight: 800;
+            margin: 0;
+        }
+
         .login-header p {
-            color: #666;
-            font-size: 1em;
+            color: rgba(232, 236, 255, 0.65);
+            font-size: 1.02em;
         }
 
         .form-group {
@@ -53,40 +110,45 @@
         .form-group label {
             display: block;
             margin-bottom: 8px;
-            color: #333;
-            font-weight: 600;
+            color: rgba(232, 236, 255, 0.92);
+            font-weight: 700;
+            font-size: 0.95em;
         }
 
         .form-group input {
             width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
+            padding: 12px 14px;
+            border: 1px solid rgba(42, 55, 95, 0.65);
+            border-radius: 12px;
             font-size: 1em;
-            transition: border-color 0.3s;
+            transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+            background: rgba(10, 16, 35, 0.72);
+            color: #e8ecff;
         }
 
         .form-group input:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: rgba(59, 130, 246, 0.85);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
         }
 
         .btn {
             width: 100%;
-            padding: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 12px 14px;
+            background: #3b5bdb;
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 12px;
             font-size: 1em;
-            font-weight: 600;
+            font-weight: 800;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
+            height: 44px;
         }
 
         .btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 14px 26px rgba(59, 91, 219, 0.28);
         }
 
         .btn:active {
@@ -99,61 +161,77 @@
 
         .message {
             padding: 15px 20px;
-            border-radius: 8px;
+            border-radius: 12px;
             margin-bottom: 10px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(42, 55, 95, 0.55);
+            background: rgba(10, 16, 35, 0.55);
         }
 
         .message.success {
-            background: #d4edda;
-            color: #155724;
-            border-left: 4px solid #28a745;
+            background: rgba(16, 185, 129, 0.12);
+            color: rgba(110, 231, 183, 0.95);
+            border-left: 4px solid rgba(16, 185, 129, 0.95);
         }
 
         .message.error {
-            background: #f8d7da;
-            color: #721c24;
-            border-left: 4px solid #dc3545;
+            background: rgba(255, 77, 77, 0.10);
+            color: rgba(255, 140, 140, 0.95);
+            border-left: 4px solid rgba(255, 77, 77, 0.95);
         }
 
         .message.warning {
-            background: #fff3cd;
-            color: #856404;
-            border-left: 4px solid #ffc107;
+            background: rgba(var(--accent-rgb), 0.12);
+            color: rgba(232, 236, 255, 0.90);
+            border-left: 4px solid rgba(var(--accent-rgb), 0.95);
+        }
+
+        .login-footer {
+            color: rgba(232, 236, 255, 0.35);
+            font-size: 0.85em;
+            text-align: center;
         }
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-header">
-            <h1>👑 Crowned Trader</h1>
-            <p>Please login to continue</p>
+    <div class="login-shell">
+        <div class="login-container">
+            <div class="login-header">
+                <div class="brand-row">
+                    <div class="brand-mark" aria-hidden="true">
+                        <span class="logo-mask"></span>
+                    </div>
+                    <h1>Crowned Trader</h1>
+                </div>
+                <p>Please login to continue</p>
+            </div>
+
+            {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                <div class="message {{ message.tags }}">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <form method="post" action="{% url 'user_login' %}">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required autofocus>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+
+                <button type="submit" class="btn">Login</button>
+            </form>
         </div>
 
-        {% if messages %}
-        <div class="messages">
-            {% for message in messages %}
-            <div class="message {{ message.tags }}">
-                {{ message }}
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-
-        <form method="post" action="{% url 'user_login' %}">
-            {% csrf_token %}
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" required autofocus>
-            </div>
-
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-
-            <button type="submit" class="btn">Login</button>
-        </form>
+        <div class="login-footer">© 2026 Crowned Trader. All rights reserved.</div>
     </div>
 </body>
 </html>

@@ -1,6 +1,13 @@
 {% extends 'signals/base.html' %}
+{% load static %}
 
 {% block title %}{% if form_type == 'create' %}Create Signal Type{% else %}Edit Signal Type{% endif %} - Crowned Trader Dashboard{% endblock %}
+
+{% block breadcrumbs %}
+<a href="{% url 'signal_types_list' %}">Signal Types</a>
+<span>/</span>
+<span>{% if form_type == 'create' %}Create New Type{% else %}{% if is_default %}View Template{% else %}Edit Template{% endif %}{% endif %}</span>
+{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -119,6 +126,27 @@
         opacity: 0.4;
         pointer-events: none;
         font-size: 0.9em;
+    }
+
+    /* Inline lock badge (placed next to labels like the screenshot) */
+    .lock-inline {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        margin-left: 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        color: rgba(232, 236, 255, 0.70);
+        transform: translateY(2px);
+    }
+
+    .lock-inline svg {
+        width: 12px;
+        height: 12px;
+        display: block;
     }
 
     .form-group {
@@ -529,19 +557,593 @@
             padding: 15px;
         }
     }
+
+    /* ===== Crowned Trader Dark Theme Overrides (match Submit Signal page) ===== */
+    .stf-page {
+        width: 100%;
+        max-width: 1840px;
+        margin: 0 auto;
+    }
+
+    .form-wrapper {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) clamp(420px, 34vw, 560px) !important;
+        gap: 30px !important;
+        max-width: none !important;
+        padding: 0 !important;
+        align-items: start !important;
+    }
+
+    .form-content {
+        max-width: none !important;
+        min-width: 0;
+    }
+
+    .form-container {
+        max-width: none !important;
+        margin: 0 !important;
+    }
+
+    .form-header {
+        text-align: left !important;
+        margin-bottom: 18px !important;
+    }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 22px;
+        position: sticky;
+        top: 76px; /* below 60px top header + spacing */
+        z-index: 30;
+        padding: 14px 0;
+        background: linear-gradient(180deg, rgba(2, 6, 23, 0.92), rgba(2, 6, 23, 0.55), rgba(2, 6, 23, 0));
+        backdrop-filter: blur(8px);
+    }
+
+    .page-title h1 {
+        margin: 0 0 8px 0;
+        color: #e8ecff;
+        font-size: 2.2em;
+        font-weight: 800;
+    }
+
+    .page-title p {
+        margin: 0;
+        color: rgba(232, 236, 255, 0.65);
+        font-size: 1.05em;
+    }
+
+    .page-actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .btn-cancel {
+        background: rgba(255, 255, 255, 0.06);
+        color: rgba(232, 236, 255, 0.92);
+        padding: 12px 18px;
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        border-radius: 12px;
+        text-decoration: none;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+        height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+    }
+
+    .btn-cancel:hover {
+        background: rgba(255, 255, 255, 0.09);
+        border-color: rgba(42, 55, 95, 0.85);
+        transform: translateY(-1px);
+    }
+
+    .btn-save {
+        background: var(--accent);
+        color: #0b1020;
+        padding: 12px 18px;
+        border: none;
+        border-radius: 12px;
+        font-weight: 800;
+        cursor: pointer;
+        transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+        height: 44px;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        white-space: nowrap;
+        box-shadow: 0 10px 26px rgba(var(--accent-rgb), 0.18);
+    }
+
+    .btn-save:hover {
+        transform: translateY(-1px);
+        background: color-mix(in srgb, var(--accent) 85%, #ffffff 15%);
+        box-shadow: 0 14px 30px rgba(var(--accent-rgb), 0.22);
+    }
+
+    .btn-save[disabled] {
+        opacity: 0.55;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
+
+    .form-section {
+        background: rgba(15, 23, 42, 0.72) !important;
+        border: 1px solid rgba(42, 55, 95, 0.55) !important;
+        border-radius: 16px !important;
+        padding: 22px !important;
+    }
+
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 0;
+    }
+
+    .section-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        color: var(--accent);
+        flex: 0 0 auto;
+    }
+
+    .section-icon svg {
+        width: 18px;
+        height: 18px;
+        display: block;
+    }
+
+    .section-divider {
+        height: 1px;
+        width: 100%;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 14px 0 18px 0;
+    }
+
+    .form-section-title {
+        margin: 0 !important;
+        color: #e8ecff !important;
+        font-size: 1.15em !important;
+        font-weight: 800 !important;
+        padding-bottom: 0 !important;
+        border-bottom: none !important;
+    }
+
+    .form-group label {
+        color: #e8ecff !important;
+    }
+
+    .form-input, .form-textarea, .form-select {
+        border: 1px solid rgba(42, 55, 95, 0.65) !important;
+        border-radius: 12px !important;
+        background: rgba(10, 16, 35, 0.72) !important;
+        color: #e8ecff !important;
+    }
+
+    .form-input:focus, .form-textarea:focus, .form-select:focus {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.10) !important;
+    }
+
+    .dynamic-item {
+        background: linear-gradient(180deg, rgba(10, 16, 35, 0.62), rgba(10, 16, 35, 0.40)) !important;
+        border: 1px solid rgba(42, 55, 95, 0.65) !important;
+        border-radius: 18px !important;
+        padding: 18px !important;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .dynamic-item-header {
+        margin-bottom: 18px !important;
+    }
+
+    .dynamic-item-title {
+        color: #e8ecff !important;
+        font-weight: 800 !important;
+    }
+
+    .btn-add {
+        background: rgba(255, 255, 255, 0.06) !important;
+        border: 1px solid rgba(42, 55, 95, 0.55) !important;
+        color: #e8ecff !important;
+    }
+
+    .btn-add:hover {
+        background: rgba(255, 255, 255, 0.09) !important;
+        border-color: rgba(42, 55, 95, 0.85) !important;
+    }
+
+    /* Wide dashed "Add" CTA buttons (match screenshot) */
+    .btn-add-wide {
+        width: 100%;
+        height: 46px;
+        border-radius: 14px;
+        border: 1px dashed rgba(42, 55, 95, 0.75);
+        background: rgba(10, 16, 35, 0.35);
+        color: rgba(232, 236, 255, 0.80);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        font-weight: 800;
+        cursor: pointer;
+        transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+
+    .btn-add-wide .plus {
+        width: 22px;
+        height: 22px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        color: rgba(232, 236, 255, 0.78);
+        font-size: 16px;
+        line-height: 1;
+        transform: translateY(-1px);
+    }
+
+    .btn-add-wide:hover {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(42, 55, 95, 0.95);
+        transform: translateY(-1px);
+    }
+
+    .btn-add-wide.secondary {
+        color: rgba(232, 236, 255, 0.70);
+        border-color: rgba(42, 55, 95, 0.55);
+        background: rgba(10, 16, 35, 0.25);
+    }
+
+    .add-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 12px;
+    }
+
+    @media (max-width: 640px) {
+        .add-actions {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .btn-remove {
+        background: transparent !important;
+        border: none !important;
+        color: #ff4d4d !important;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 800;
+        padding: 8px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: background 160ms ease, color 160ms ease;
+    }
+
+    .btn-remove svg {
+        width: 14px;
+        height: 14px;
+        display: block;
+    }
+
+    .btn-remove:hover {
+        background: rgba(255, 77, 77, 0.10) !important;
+        color: rgba(255, 140, 140, 1) !important;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: #3b82f6;
+    }
+
+    .checkbox-group label {
+        color: rgba(232, 236, 255, 0.78);
+        font-weight: 700;
+    }
+
+    /* Switches (replace all checkboxes) */
+    .switch-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .switch-text {
+        color: rgba(232, 236, 255, 0.78);
+        font-weight: 700;
+        font-size: 0.95em;
+        cursor: pointer;
+        user-select: none;
+        margin: 0;
+    }
+
+    .mini-switch {
+        position: relative;
+        width: 40px;
+        height: 22px;
+        flex: 0 0 auto;
+        display: inline-block;
+    }
+
+    .mini-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .mini-slider {
+        position: absolute;
+        inset: 0;
+        cursor: pointer;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(42, 55, 95, 0.75);
+        transition: 180ms ease;
+    }
+
+    .mini-slider::before {
+        content: "";
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        left: 3px;
+        top: 50%;
+        transform: translateY(-50%);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 10px 16px rgba(0, 0, 0, 0.28);
+        transition: 180ms ease;
+    }
+
+    .mini-switch input:checked + .mini-slider {
+        background: rgba(var(--accent-rgb), 0.35);
+        border-color: rgba(var(--accent-rgb), 0.75);
+    }
+
+    .mini-switch input:checked + .mini-slider::before {
+        transform: translate(18px, -50%);
+        background: var(--accent);
+    }
+
+    .mini-switch input:focus + .mini-slider {
+        box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.12);
+    }
+
+    .mini-switch input:disabled + .mini-slider {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    /* Help section (existing markup uses inline light styles) */
+    .help-section {
+        background: rgba(10, 16, 35, 0.62) !important;
+        border: 1px solid rgba(42, 55, 95, 0.55) !important;
+        border-radius: 14px !important;
+        padding: 0 !important;
+        overflow: hidden;
+    }
+
+    .help-header {
+        padding: 16px 18px !important;
+        margin-bottom: 0 !important;
+        background: rgba(255, 255, 255, 0.03);
+        justify-content: space-between;
+    }
+
+    .help-section.is-open .help-header {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .help-title {
+        display: inline-flex !important;
+        align-items: center;
+        gap: 10px;
+        color: var(--accent) !important;
+        font-weight: 800 !important;
+        font-size: 1.02em !important;
+    }
+
+    .help-icon {
+        width: 18px;
+        height: 18px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--accent);
+        flex: 0 0 auto;
+        filter: drop-shadow(0 10px 22px rgba(var(--accent-rgb), 0.14));
+    }
+
+    .help-icon svg {
+        width: 18px;
+        height: 18px;
+        display: block;
+    }
+
+    .help-chevron {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+        background: transparent;
+        border: 1px solid transparent;
+        color: rgba(232, 236, 255, 0.70) !important;
+        font-weight: 900;
+        font-size: 18px;
+        line-height: 1;
+        user-select: none;
+        transition: background 160ms ease, border-color 160ms ease, transform 160ms ease, color 160ms ease;
+        transform: translateY(-1px);
+    }
+
+    .help-header:hover .help-chevron {
+        color: rgba(232, 236, 255, 0.88) !important;
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(42, 55, 95, 0.55);
+        transform: translateY(-2px);
+    }
+
+    .help-body {
+        padding: 16px !important;
+    }
+
+    .help-section h5,
+    .help-section strong {
+        color: #e8ecff !important;
+    }
+
+    .help-section p,
+    .help-section li {
+        color: rgba(232, 236, 255, 0.72) !important;
+    }
+
+    /* Inset panels inside the help accordion (override inline white/yellow blocks) */
+    .help-section div[style*="background: white"] {
+        background: rgba(10, 16, 35, 0.72) !important;
+        border: 1px solid rgba(42, 55, 95, 0.55) !important;
+        border-left: 3px solid rgba(59, 130, 246, 0.65) !important;
+        border-radius: 12px !important;
+    }
+
+    .help-section div[style*="background: #fff3cd"] {
+        background: rgba(var(--accent-rgb), 0.10) !important;
+        border: 1px solid rgba(var(--accent-rgb), 0.28) !important;
+        border-left: 4px solid rgba(var(--accent-rgb), 0.85) !important;
+        border-radius: 12px !important;
+    }
+
+    .help-section div[style*="background: #fff3cd"] strong,
+    .help-section div[style*="background: #fff3cd"] p {
+        color: rgba(232, 236, 255, 0.80) !important;
+    }
+
+    .help-section code,
+    .help-section code[style] {
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(42, 55, 95, 0.55) !important;
+        color: rgba(232, 236, 255, 0.92) !important;
+        padding: 2px 8px !important;
+        border-radius: 8px !important;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+    }
+
+    .md-list code {
+        white-space: nowrap;
+    }
+
+    /* Hint / info box under section titles (match screenshot) */
+    .help-text {
+        position: relative;
+        margin-top: 14px !important;
+        margin-bottom: 12px;
+        padding: 12px 14px 12px 44px !important;
+        border-radius: 12px !important;
+        background: rgba(59, 130, 246, 0.10) !important;
+        border: 1px solid rgba(59, 130, 246, 0.22) !important;
+        border-left: 4px solid rgba(59, 130, 246, 0.85) !important;
+        color: rgba(147, 197, 253, 0.95) !important;
+        font-size: 0.92em !important;
+        line-height: 1.4;
+    }
+
+    .help-text::before {
+        content: "";
+        position: absolute;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 20px;
+        border-radius: 999px;
+        background: rgba(59, 130, 246, 0.22);
+        border: 1px solid rgba(59, 130, 246, 0.35);
+        box-shadow: 0 10px 18px rgba(0, 0, 0, 0.18);
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M11 17h2v-6h-2v6zm0-8h2V7h-2v2zm1 13C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm0-2a8 8 0 1 0 0-16 8 8 0 0 0 0 16z'/%3E%3C/svg%3E") center/14px 14px no-repeat;
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M11 17h2v-6h-2v6zm0-8h2V7h-2v2zm1 13C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm0-2a8 8 0 1 0 0-16 8 8 0 0 0 0 16z'/%3E%3C/svg%3E") center/14px 14px no-repeat;
+    }
+
+    .help-text code {
+        background: rgba(10, 16, 35, 0.72) !important;
+        border: 1px solid rgba(42, 55, 95, 0.55) !important;
+        color: rgba(232, 236, 255, 0.92) !important;
+        padding: 2px 8px !important;
+        border-radius: 8px !important;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+        font-size: 0.95em;
+    }
+
+    /* Right preview */
+    .discord-preview-wrapper {
+        position: sticky !important;
+        top: 170px !important; /* keep below the sticky Cancel/Save bar */
+        width: 100% !important;
+    }
+
+    .discord-preview-container {
+        background: rgba(15, 23, 42, 0.72) !important;
+        border: 1px solid rgba(42, 55, 95, 0.55) !important;
+        border-radius: 16px !important;
+        padding: 22px !important;
+        max-width: none !important;
+    }
+
+    @media (max-width: 1200px) {
+        .form-wrapper {
+            grid-template-columns: 1fr !important;
+        }
+        .discord-preview-wrapper {
+            position: relative !important;
+            top: 0 !important;
+            margin-top: 30px !important;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+<div class="stf-page">
+<div class="page-header">
+    <div class="page-title">
+        <h1>{% if form_type == 'create' %}Create Signal Type{% else %}{% if is_default %}View Signal Template{% else %}Edit Signal Template{% endif %}{% endif %}</h1>
+        <p>Define a new signal structure, variables, and Discord output format.</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn-cancel" href="{% url 'signal_types_list' %}">Cancel</a>
+        {% if is_default %}
+            <button class="btn-save" type="button" disabled>💾 Save Signal Type</button>
+        {% else %}
+            <button class="btn-save" type="submit" form="signalTypeForm">💾 Save Signal Type</button>
+        {% endif %}
+    </div>
+</div>
+
 <div class="form-wrapper">
     <div class="form-content">
         <div class="form-container">
             <div class="form-header">
-                <h2>{% if form_type == 'create' %}➕ Create Signal Type{% else %}✏️ Edit Signal Type{% endif %}</h2>
                 {% if is_default %}
-                <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 15px; margin-top: 20px; text-align: center;">
+                <div style="background: rgba(var(--accent-rgb), 0.10); border: 1px solid rgba(var(--accent-rgb), 0.35); border-radius: 14px; padding: 14px 16px; margin-top: 0; text-align: left;">
                     <strong>🔒 System Default Template (Read-Only)</strong>
-                    <p style="margin: 10px 0 0 0; color: #856404; font-size: 0.95em;">
+                    <p style="margin: 8px 0 0 0; color: rgba(232, 236, 255, 0.75); font-size: 0.95em;">
                         This is a system default template. You can view it but cannot modify it. 
                         Create your own custom signal type to make changes.
                     </p>
@@ -549,19 +1151,31 @@
                 {% endif %}
             </div>
 
-            <form method="post" id="signalTypeForm" {% if is_default %}onsubmit="return false;"{% endif %}>
+            <form method="post" id="signalTypeForm" data-read-only="{% if is_default %}1{% else %}0{% endif %}" {% if is_default %}onsubmit="return false;"{% endif %}>
         {% csrf_token %}
         
         <!-- Basic Information -->
         <div class="form-section">
-            <h3 class="form-section-title">Basic Information</h3>
+            <div class="section-header">
+                <div class="section-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3 2 8l10 5 10-5-10-5zm0 7.2L4.4 8 12 4.8 19.6 8 12 10.2z"/><path fill="currentColor" d="M2 12l10 5 10-5v2l-10 5-10-5v-2z"/></svg>
+                </div>
+                <h3 class="form-section-title">Basic Information</h3>
+            </div>
+            <div class="section-divider"></div>
             
             <div class="form-group">
-                <label for="{{ form.name.id_for_label }}">Name *</label>
+                <label for="{{ form.name.id_for_label }}">
+                    Name *
+                    {% if is_default %}
+                    <span class="lock-inline" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg>
+                    </span>
+                    {% endif %}
+                </label>
                 {% if is_default %}
                     <div style="position: relative;">
                         <input type="text" id="{{ form.name.id_for_label }}" class="form-input" value="{{ form.name.value }}" readonly>
-                        <span class="readonly-indicator">🔒</span>
                     </div>
                 {% else %}
                     {{ form.name }}
@@ -573,13 +1187,19 @@
             </div>
 
             <div class="form-group">
-                <label for="{{ form.color.id_for_label }}">Color</label>
+                <label for="{{ form.color.id_for_label }}">
+                    Color
+                    {% if is_default %}
+                    <span class="lock-inline" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg>
+                    </span>
+                    {% endif %}
+                </label>
                 <div class="color-input-group">
                     <input type="color" id="colorPicker" value="{{ form.color.value|default:'#000000' }}" {% if is_default %}readonly disabled style="cursor: not-allowed;"{% else %}onchange="document.getElementById('id_color').value = this.value"{% endif %}>
                     {% if is_default %}
                         <div style="position: relative; flex: 1;">
                             <input type="text" id="id_color" class="form-input" value="{{ form.color.value|default:'#000000' }}" readonly>
-                            <span class="readonly-indicator">🔒</span>
                         </div>
                     {% else %}
                         {{ form.color }}
@@ -594,29 +1214,51 @@
 
         <!-- Variables Section -->
         <div class="form-section">
-            <h3 class="form-section-title">Variables</h3>
+            <div class="section-header">
+                <div class="section-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M4 6h16a1 1 0 1 1 0 2H4a1 1 0 1 1 0-2zm0 5h10a1 1 0 1 1 0 2H4a1 1 0 1 1 0-2zm0 5h16a1 1 0 1 1 0 2H4a1 1 0 1 1 0-2z"/></svg>
+                </div>
+                <h3 class="form-section-title">Variables</h3>
+            </div>
+            <div class="section-divider"></div>
             <div class="help-text">
                 Variables are the data fields that users will fill in when creating a signal. 
-                Use <code>{{variable_name}}</code> syntax in templates to reference these variables.
+                Use <code>{% templatetag openvariable %}variable_name{% templatetag closevariable %}</code> syntax in templates to reference these variables.
             </div>
             <div id="variablesContainer" class="dynamic-list"></div>
             {% if not is_default %}
-            <button type="button" class="btn-add" onclick="addVariable()">➕ Add Variable</button>
+            <button type="button" class="btn-add-wide" onclick="addVariable()">
+                <span class="plus">+</span>
+                <span>Add Variable</span>
+            </button>
             {% endif %}
             {{ form.variables_json }}
         </div>
 
         <!-- Templates Section -->
         <div class="form-section">
-            <h3 class="form-section-title">Templates</h3>
+            <div class="section-header">
+                <div class="section-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M16.5 2a1 1 0 0 1 .9.56L18 4l1.44.6a1 1 0 0 1 0 1.8L18 7l-.6 1.44a1 1 0 0 1-1.8 0L15 7l-1.44-.6a1 1 0 0 1 0-1.8L15 4l.6-1.44A1 1 0 0 1 16.5 2z"></path><path fill="currentColor" d="M3 21a1 1 0 0 1-.71-1.71l11.9-11.9a1 1 0 0 1 1.42 0l2.3 2.3a1 1 0 0 1 0 1.42l-11.9 11.9A1 1 0 0 1 3 21z"></path></svg>
+                </div>
+                <h3 class="form-section-title">Templates</h3>
+            </div>
+            <div class="section-divider"></div>
             
             <!-- Help Section: Markdown and Variables -->
-            <div class="help-section" style="background: #f8f9fa; border: 2px solid #667eea; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
-                <div style="display: flex; align-items: center; margin-bottom: 15px; cursor: pointer;" onclick="toggleHelpSection()">
-                    <h4 style="margin: 0; color: #667eea; font-size: 1.1em; flex: 1;">📖 Help: Markdown Formatting & Variables</h4>
-                    <span id="helpToggleIcon" style="font-size: 1.2em; color: #667eea;">▼</span>
+            <div class="help-section" id="helpSection" style="background: #f8f9fa; border: 2px solid #667eea; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
+                <div class="help-header" style="display: flex; align-items: center; margin-bottom: 15px; cursor: pointer;" onclick="toggleHelpSection()">
+                    <h4 class="help-title" style="margin: 0; color: #667eea; font-size: 1.1em; flex: 1;">
+                        <span class="help-icon" aria-hidden="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                                <path fill="currentColor" d="M9 21h6v-1H9v1zm3-20a7 7 0 0 0-4 12.75V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-3.25A7 7 0 0 0 12 1zm3 11.4-.9.75V16h-4.2v-2.85L9 12.4A5 5 0 1 1 15 12.4z"/>
+                            </svg>
+                        </span>
+                        <span>Help: Markdown Formatting &amp; Variables</span>
+                    </h4>
+                    <span id="helpToggleIcon" class="help-chevron" aria-hidden="true">⌄</span>
                 </div>
-                <div id="helpContent" style="display: block;">
+                <div id="helpContent" class="help-body" style="display: none;">
                     <div style="margin-bottom: 20px;">
                         <h5 style="color: #333; margin-bottom: 10px; font-size: 1em;">🔤 Variables Usage</h5>
                         <p style="color: #666; margin-bottom: 10px; line-height: 1.6;">
@@ -639,47 +1281,12 @@
                             Discord supports basic markdown formatting. Use these syntaxes in your templates:
                         </p>
                         <div style="background: white; padding: 12px; border-radius: 4px; border-left: 3px solid #667eea;">
-                            <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
-                                <thead>
-                                    <tr style="background: #e9ecef;">
-                                        <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Style</th>
-                                        <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Syntax</th>
-                                        <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Example</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>Bold</strong></td>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>**text**</code> or <code>__text__</code></td>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>**Bold Text**</code></td>
-                                    </tr>
-                                    <tr style="background: #f8f9fa;">
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><em>Italic</em></td>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>*text*</code> or <code>_text_</code></td>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>*Italic Text*</code></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><strong><em>Bold Italic</em></strong></td>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>***text***</code></td>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>***Bold Italic***</code></td>
-                                    </tr>
-                                    <tr style="background: #f8f9fa;">
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><s>Strikethrough</s></td>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>~~text~~</code></td>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>~~Strikethrough~~</code></td>
-                                    </tr>
-                                    <tr>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>Inline Code</code></td>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>`code`</code></td>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>`code example`</code></td>
-                                    </tr>
-                                    <tr style="background: #f8f9fa;">
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>Code Block</code></td>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>```code```</code></td>
-                                        <td style="padding: 8px; border: 1px solid #dee2e6;"><code>```code block```</code></td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <ul class="md-list" style="margin: 0; padding-left: 18px; color: #666; line-height: 1.7;">
+                                <li><code>**Bold Text**</code></li>
+                                <li><code>*Italic Text*</code></li>
+                                <li><code>__Underline__</code></li>
+                                <li><code>`Code Block`</code></li>
+                            </ul>
                         </div>
                     </div>
                     
@@ -694,11 +1301,17 @@
             </div>
             
             <div class="form-group">
-                <label for="{{ form.title_template.id_for_label }}">Title Template *</label>
+                <label for="{{ form.title_template.id_for_label }}">
+                    Title Template *
+                    {% if is_default %}
+                    <span class="lock-inline" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg>
+                    </span>
+                    {% endif %}
+                </label>
                 {% if is_default %}
                     <div style="position: relative;">
                         <textarea id="{{ form.title_template.id_for_label }}" class="form-textarea" readonly style="resize: none;">{{ form.title_template.value|default:'' }}</textarea>
-                        <span class="readonly-indicator" style="top: 12px; transform: none;">🔒</span>
                     </div>
                 {% else %}
                     {{ form.title_template }}
@@ -710,11 +1323,17 @@
             </div>
 
             <div class="form-group">
-                <label for="{{ form.description_template.id_for_label }}">Description Template</label>
+                <label for="{{ form.description_template.id_for_label }}">
+                    Description Template
+                    {% if is_default %}
+                    <span class="lock-inline" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg>
+                    </span>
+                    {% endif %}
+                </label>
                 {% if is_default %}
                     <div style="position: relative;">
                         <textarea id="{{ form.description_template.id_for_label }}" class="form-textarea" readonly style="resize: none;">{{ form.description_template.value|default:'' }}</textarea>
-                        <span class="readonly-indicator" style="top: 12px; transform: none;">🔒</span>
                     </div>
                 {% else %}
                     {{ form.description_template }}
@@ -726,11 +1345,17 @@
             </div>
 
             <div class="form-group">
-                <label for="{{ form.footer_template.id_for_label }}">Footer Template</label>
+                <label for="{{ form.footer_template.id_for_label }}">
+                    Footer Template
+                    {% if is_default %}
+                    <span class="lock-inline" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg>
+                    </span>
+                    {% endif %}
+                </label>
                 {% if is_default %}
                     <div style="position: relative;">
                         <textarea id="{{ form.footer_template.id_for_label }}" class="form-textarea" readonly style="resize: none;">{{ form.footer_template.value|default:'' }}</textarea>
-                        <span class="readonly-indicator" style="top: 12px; transform: none;">🔒</span>
                     </div>
                 {% else %}
                     {{ form.footer_template }}
@@ -745,31 +1370,37 @@
             <div class="form-group">
                 <label style="display: block; margin-bottom: 12px; font-weight: 600;">Default Display Options</label>
                 <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        {% if is_default %}
-                            <input type="checkbox" id="{{ form.show_title_default.id_for_label }}" disabled checked>
-                            <span class="readonly-indicator" style="position: static; margin-left: 5px;">🔒</span>
-                        {% else %}
-                            {{ form.show_title_default }}
-                        {% endif %}
-                        <label for="{{ form.show_title_default.id_for_label }}" style="margin: 0; cursor: pointer; font-weight: normal;">
-                            Show title by default
+                    <div class="switch-item">
+                        <label class="mini-switch">
+                            {% if is_default %}
+                                <input type="checkbox" id="{{ form.show_title_default.id_for_label }}" disabled checked>
+                            {% else %}
+                                {{ form.show_title_default }}
+                            {% endif %}
+                            <span class="mini-slider"></span>
                         </label>
+                        <label class="switch-text" for="{{ form.show_title_default.id_for_label }}">Show title by default</label>
+                        {% if is_default %}
+                            <span class="readonly-indicator" style="position: static; margin-left: 6px;">🔒</span>
+                        {% endif %}
                     </div>
                     {% if form.show_title_default.errors %}
                         <div class="error-message">{{ form.show_title_default.errors }}</div>
                     {% endif %}
                     
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        {% if is_default %}
-                            <input type="checkbox" id="{{ form.show_description_default.id_for_label }}" disabled checked>
-                            <span class="readonly-indicator" style="position: static; margin-left: 5px;">🔒</span>
-                        {% else %}
-                            {{ form.show_description_default }}
-                        {% endif %}
-                        <label for="{{ form.show_description_default.id_for_label }}" style="margin: 0; cursor: pointer; font-weight: normal;">
-                            Show description by default
+                    <div class="switch-item">
+                        <label class="mini-switch">
+                            {% if is_default %}
+                                <input type="checkbox" id="{{ form.show_description_default.id_for_label }}" disabled checked>
+                            {% else %}
+                                {{ form.show_description_default }}
+                            {% endif %}
+                            <span class="mini-slider"></span>
                         </label>
+                        <label class="switch-text" for="{{ form.show_description_default.id_for_label }}">Show description by default</label>
+                        {% if is_default %}
+                            <span class="readonly-indicator" style="position: static; margin-left: 6px;">🔒</span>
+                        {% endif %}
                     </div>
                     {% if form.show_description_default.errors %}
                         <div class="error-message">{{ form.show_description_default.errors }}</div>
@@ -781,30 +1412,33 @@
 
         <!-- Fields Template Section -->
         <div class="form-section">
-            <h3 class="form-section-title">Discord Embed Fields</h3>
+            <div class="section-header">
+                <div class="section-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3 3 8l9 5 9-5-9-5z"/><path fill="currentColor" d="M3 12l9 5 9-5v2l-9 5-9-5v-2z"/></svg>
+                </div>
+                <h3 class="form-section-title">Discord Embed Fields</h3>
+            </div>
+            <div class="section-divider"></div>
             <div class="help-text">
                 Define the fields that will appear in the Discord embed. Each field can have a name and value, 
                 both supporting <code>{% templatetag openvariable %}variable{% templatetag closevariable %}</code> syntax. Use empty name/value for spacers.
             </div>
             <div id="fieldsContainer" class="dynamic-list"></div>
             {% if not is_default %}
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <button type="button" class="btn-add" onclick="addField()">➕ Add Field</button>
-                <button type="button" class="btn-add" onclick="addBlankField()" style="background: #6c757d;">➕ Add Blank Field</button>
+            <div class="add-actions">
+                <button type="button" class="btn-add-wide" onclick="addField()">
+                    <span class="plus">+</span>
+                    <span>Add Field</span>
+                </button>
+                <button type="button" class="btn-add-wide secondary" onclick="addBlankField()">
+                    <span class="plus">+</span>
+                    <span>Add Blank Field</span>
+                </button>
             </div>
             {% endif %}
             {{ form.fields_template_json }}
         </div>
 
-        <div class="form-actions">
-            {% if is_default %}
-                <button type="button" class="btn btn-primary" disabled style="opacity: 0.6; cursor: not-allowed;">💾 Save Signal Type (Read-Only)</button>
-                <a href="{% url 'signal_types_list' %}" class="btn btn-secondary">Back to List</a>
-            {% else %}
-                <button type="submit" class="btn btn-primary">💾 Save Signal Type</button>
-                <a href="{% url 'signal_types_list' %}" class="btn btn-secondary">Cancel</a>
-            {% endif %}
-        </div>
             </form>
         </div>
     </div>
@@ -813,9 +1447,10 @@
     <div class="discord-preview-wrapper">
         <div class="discord-preview-container">
             <div class="preview-header">
-                <strong>📱 Live Preview</strong>
-                <div style="font-size: 0.85em; margin-top: 5px; opacity: 0.8;">Updates in real-time</div>
+                <strong>Live Preview</strong>
+                <div class="preview-subtitle">Updates in real-time</div>
             </div>
+            <div class="preview-divider"></div>
             <div id="discordPreview" class="discord-preview">
                 <div class="discord-embed">
                     <div class="discord-embed-color-bar" id="previewColorBar"></div>
@@ -830,28 +1465,27 @@
         </div>
     </div>
 </div>
+</div>
 
 <script>
 let variables = [];
 let fields = [];
-let isReadOnly = {% if is_default %}true{% else %}false{% endif %};
+let isReadOnly = document.getElementById('signalTypeForm')?.dataset?.readOnly === '1';
 
-// Initialize from form data if editing
-{% if form.variables_json.value %}
+// Initialize from hidden inputs (keeps this script valid JS for linters)
 try {
-    variables = JSON.parse('{{ form.variables_json.value|escapejs }}');
-} catch(e) {
+    const rawVars = (document.getElementById('id_variables_json')?.value || '').trim();
+    variables = rawVars ? JSON.parse(rawVars) : [];
+} catch (e) {
     variables = [];
 }
-{% endif %}
 
-{% if form.fields_template_json.value %}
 try {
-    fields = JSON.parse('{{ form.fields_template_json.value|escapejs }}');
-} catch(e) {
+    const rawFields = (document.getElementById('id_fields_template_json')?.value || '').trim();
+    fields = rawFields ? JSON.parse(rawFields) : [];
+} catch (e) {
     fields = [];
 }
-{% endif %}
 
 function addVariable() {
     variables.push({
@@ -893,20 +1527,25 @@ function renderVariables() {
         item.innerHTML = `
             <div class="dynamic-item-header">
                 <span class="dynamic-item-title">Variable ${index + 1}</span>
-                ${isReadOnly ? '' : `<button type="button" class="btn-remove" onclick="removeVariable(${index})">Remove</button>`}
+                ${isReadOnly ? '' : `<button type="button" class="btn-remove" onclick="removeVariable(${index})">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="currentColor" d="M9 3h6l1 2h4a1 1 0 1 1 0 2h-1l-1.2 14.1A2 2 0 0 1 14.8 23H9.2a2 2 0 0 1-2-1.9L6 7H5a1 1 0 1 1 0-2h4l1-2zm0 6a1 1 0 0 1 1 1v9a1 1 0 1 1-2 0v-9a1 1 0 0 1 1-1zm6 0a1 1 0 0 1 1 1v9a1 1 0 1 1-2 0v-9a1 1 0 0 1 1-1z"/>
+                    </svg>
+                    <span>Remove</span>
+                </button>`}
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label>Variable Name *</label>
+                    <label>Variable Name * ${isReadOnly ? `<span class="lock-inline" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg></span>` : ''}</label>
                     ${isReadOnly ? '<div style="position: relative;">' : ''}
                     <input type="text" class="form-input${isReadOnly ? ' readonly' : ''}" value="${var_.name || ''}" 
                            ${isReadOnly ? 'readonly' : 'onchange="updateVariable(' + index + ', \'name\', this.value)" oninput="updateVariable(' + index + ', \'name\', this.value)"'} 
                            placeholder="e.g., ticker, strike">
-                    ${isReadOnly ? '<span class="readonly-indicator">🔒</span></div>' : ''}
+                    ${isReadOnly ? '</div>' : ''}
                     <small>Use only letters, numbers, and underscores</small>
                 </div>
                 <div class="form-group">
-                    <label>Type *</label>
+                    <label>Type * ${isReadOnly ? `<span class="lock-inline" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg></span>` : ''}</label>
                     ${isReadOnly ? '<div style="position: relative;">' : ''}
                     <select class="form-select${isReadOnly ? ' readonly' : ''}" ${isReadOnly ? 'disabled' : `onchange="updateVariable(${index}, 'type', this.value); renderVariables();"`}>
                         <option value="string" ${var_.type === 'string' ? 'selected' : ''}>String</option>
@@ -921,41 +1560,44 @@ function renderVariables() {
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label>Label *</label>
+                    <label>Label * ${isReadOnly ? `<span class="lock-inline" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg></span>` : ''}</label>
                     <input type="text" class="form-input${isReadOnly ? ' readonly' : ''}" value="${var_.label || ''}" 
                            ${isReadOnly ? 'readonly' : 'onchange="updateVariable(' + index + ', \'label\', this.value)"'} 
                            placeholder="e.g., Ticker Symbol">
-                    ${isReadOnly ? '<span class="readonly-indicator">🔒</span>' : ''}
+                    ${isReadOnly ? '' : ''}
                 </div>
                 <div class="form-group">
-                    <label>Default Value</label>
+                    <label>Default Value ${isReadOnly ? `<span class="lock-inline" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg></span>` : ''}</label>
                     <input type="text" class="form-input${isReadOnly ? ' readonly' : ''}" value="${var_.default || ''}" 
                            ${isReadOnly ? 'readonly' : 'onchange="updateVariable(' + index + ', \'default\', this.value)" oninput="updateVariable(' + index + ', \'default\', this.value)"'}>
-                    ${isReadOnly ? '<span class="readonly-indicator">🔒</span>' : ''}
+                    ${isReadOnly ? '' : ''}
                 </div>
             </div>
             ${var_.type === 'select' ? `
             <div class="form-group">
-                <label>Options * (comma-separated)</label>
+                <label>Options * (comma-separated) ${isReadOnly ? `<span class="lock-inline" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg></span>` : ''}</label>
                 <input type="text" class="form-input${isReadOnly ? ' readonly' : ''}" value="${(var_.options || []).join(', ')}" 
                        ${isReadOnly ? 'readonly' : 'onchange="updateVariable(' + index + ', \'options\', this.value)"'} 
                        placeholder="e.g., PUT, CALL">
-                ${isReadOnly ? '<span class="readonly-indicator">🔒</span>' : ''}
+                ${isReadOnly ? '' : ''}
             </div>
             ` : ''}
             <div class="form-row">
                 <div class="form-group">
-                    <label>Hint/Help Text</label>
+                    <label>Hint/Help Text ${isReadOnly ? `<span class="lock-inline" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg></span>` : ''}</label>
                     <textarea class="form-textarea${isReadOnly ? ' readonly' : ''}" rows="2" 
                               ${isReadOnly ? 'readonly style="resize: none;"' : 'onchange="updateVariable(' + index + ', \'hint\', this.value)"'} 
                               placeholder="Optional help text">${var_.hint || ''}</textarea>
-                    ${isReadOnly ? '<span class="readonly-indicator" style="top: 12px; transform: none;">🔒</span>' : ''}
+                    ${isReadOnly ? '' : ''}
                 </div>
                 <div class="form-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="required_${index}" ${var_.required ? 'checked' : ''} 
-                               ${isReadOnly ? 'disabled' : `onchange="updateVariable(${index}, 'required', this.checked)"`}>
-                        <label for="required_${index}">Required Field</label>
+                    <div class="switch-item">
+                        <label class="mini-switch">
+                            <input type="checkbox" id="required_${index}" ${var_.required ? 'checked' : ''} 
+                                   ${isReadOnly ? 'disabled' : `onchange="updateVariable(${index}, 'required', this.checked)"`}>
+                            <span class="mini-slider"></span>
+                        </label>
+                        <label class="switch-text" for="required_${index}">Required Field</label>
                     </div>
                 </div>
             </div>
@@ -1040,44 +1682,61 @@ function renderFields() {
                     Field ${index + 1}
                     ${isBlankField ? '<span style="background: #6c757d; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; margin-left: 10px;">Blank Spacer</span>' : ''}
                 </span>
-                ${isReadOnly ? '' : `<button type="button" class="btn-remove" onclick="removeField(${index})">Remove</button>`}
+                ${isReadOnly ? '' : `<button type="button" class="btn-remove" onclick="removeField(${index})">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="currentColor" d="M9 3h6l1 2h4a1 1 0 1 1 0 2h-1l-1.2 14.1A2 2 0 0 1 14.8 23H9.2a2 2 0 0 1-2-1.9L6 7H5a1 1 0 1 1 0-2h4l1-2zm0 6a1 1 0 0 1 1 1v9a1 1 0 1 1-2 0v-9a1 1 0 0 1 1-1zm6 0a1 1 0 0 1 1 1v9a1 1 0 1 1-2 0v-9a1 1 0 0 1 1-1z"/>
+                    </svg>
+                    <span>Remove</span>
+                </button>`}
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label style="${isBlankField ? 'color: #6c757d; font-weight: 600;' : ''}">Field Name ${isBlankField ? '(Blank Spacer)' : ''}</label>
+                    <label style="${isBlankField ? 'color: #6c757d; font-weight: 600;' : ''}">
+                        Field Name ${isBlankField ? '(Blank Spacer)' : ''}
+                        ${fieldIsReadOnly ? `<span class="lock-inline" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg></span>` : ''}
+                    </label>
                     ${fieldIsReadOnly ? '<div style="position: relative;">' : ''}
                     <input type="text" class="form-input${fieldIsReadOnly ? ' readonly' : ''}" value="${(field.name || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}" 
                            ${fieldIsReadOnly ? 'readonly disabled' : 'onchange="updateField(' + index + ', \'name\', this.value)" oninput="updateField(' + index + ', \'name\', this.value)"'} 
                            placeholder="${isBlankField ? 'Blank spacer field (read-only)' : 'e.g., Ticker: {{ticker}}'}"
                            style="${isBlankField ? 'background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%) !important; border: 2px solid #adb5bd !important; color: #6c757d !important; cursor: not-allowed !important;' : ''}">
-                    ${fieldIsReadOnly ? '<span class="readonly-indicator">🔒</span></div>' : ''}
+                    ${fieldIsReadOnly ? '</div>' : ''}
                     <small style="${isBlankField ? 'color: #6c757d; font-style: italic;' : ''}">${isBlankField ? '⚠️ This is a blank spacer field (read-only - cannot be edited)' : 'Can use {% templatetag openvariable %}variable{% templatetag closevariable %} syntax'}</small>
                 </div>
                 <div class="form-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="inline_${index}" ${field.inline ? 'checked' : ''} 
-                               ${fieldIsReadOnly ? 'disabled' : `onchange="updateField(${index}, 'inline', this.checked)"`}>
-                        <label for="inline_${index}">Inline Field</label>
+                    <div class="switch-item">
+                        <label class="mini-switch">
+                            <input type="checkbox" id="inline_${index}" ${field.inline ? 'checked' : ''} 
+                                   ${fieldIsReadOnly ? 'disabled' : `onchange="updateField(${index}, 'inline', this.checked)"`}>
+                            <span class="mini-slider"></span>
+                        </label>
+                        <label class="switch-text" for="inline_${index}">Inline Field</label>
                     </div>
                 </div>
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="optional_${index}" ${field.optional ? 'checked' : ''} 
-                               ${fieldIsReadOnly ? 'disabled' : `onchange="updateField(${index}, 'optional', this.checked)"`}>
-                        <label for="optional_${index}">Optional Field</label>
+                    <div class="switch-item">
+                        <label class="mini-switch">
+                            <input type="checkbox" id="optional_${index}" ${field.optional ? 'checked' : ''} 
+                                   ${fieldIsReadOnly ? 'disabled' : `onchange="updateField(${index}, 'optional', this.checked)"`}>
+                            <span class="mini-slider"></span>
+                        </label>
+                        <label class="switch-text" for="optional_${index}">Optional Field</label>
                     </div>
                     <small style="${isBlankField ? 'color: #6c757d; font-style: italic;' : ''}">${isBlankField ? '' : 'Optional fields can be shown/hidden in the message'}</small>
                 </div>
             </div>
             <div class="form-group">
-                <label style="${isBlankField ? 'color: #6c757d; font-weight: 600;' : ''}">Field Value ${isBlankField ? '(Blank Spacer)' : ''}</label>
+                <label style="${isBlankField ? 'color: #6c757d; font-weight: 600;' : ''}">
+                    Field Value ${isBlankField ? '(Blank Spacer)' : ''}
+                    ${fieldIsReadOnly ? `<span class="lock-inline" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg></span>` : ''}
+                </label>
                 ${fieldIsReadOnly ? '<div style="position: relative;">' : ''}
                 <textarea class="form-textarea${fieldIsReadOnly ? ' readonly' : ''}" rows="3" 
                           ${fieldIsReadOnly ? 'readonly disabled style="resize: none;' + (isBlankField ? ' background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%) !important; border: 2px solid #adb5bd !important; color: #6c757d !important; cursor: not-allowed !important;' : '') + '"' : 'onchange="updateField(' + index + ', \'value\', this.value)" oninput="updateField(' + index + ', \'value\', this.value)"'} 
                           placeholder="${isBlankField ? 'Blank spacer field (read-only)' : 'e.g., {% templatetag openvariable %}price{% templatetag closevariable %} or static text'}">${(field.value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
-                ${fieldIsReadOnly ? '<span class="readonly-indicator" style="top: 12px; transform: none;">🔒</span></div>' : ''}
+                ${fieldIsReadOnly ? '</div>' : ''}
                 <small style="${isBlankField ? 'color: #6c757d; font-style: italic;' : ''}">${isBlankField ? '⚠️ Blank spacer field creates empty space in Discord embed (read-only - cannot be edited)' : 'Can use {% templatetag openvariable %}variable{% templatetag closevariable %} syntax or be empty for name-only fields'}</small>
             </div>
         `;
@@ -1376,13 +2035,16 @@ function setupPreviewListeners() {
 function toggleHelpSection() {
     const helpContent = document.getElementById('helpContent');
     const helpToggleIcon = document.getElementById('helpToggleIcon');
+    const helpSection = document.getElementById('helpSection');
     if (helpContent && helpToggleIcon) {
         if (helpContent.style.display === 'none') {
             helpContent.style.display = 'block';
-            helpToggleIcon.textContent = '▼';
+            helpToggleIcon.textContent = '⌃';
+            if (helpSection) helpSection.classList.add('is-open');
         } else {
             helpContent.style.display = 'none';
-            helpToggleIcon.textContent = '▶';
+            helpToggleIcon.textContent = '⌄';
+            if (helpSection) helpSection.classList.remove('is-open');
         }
     }
 }

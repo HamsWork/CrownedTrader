@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,98 +14,306 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #f5f5f5;
+            --accent: #CFB568;
+            --accent-rgb: 207, 181, 104;
+            background:
+                radial-gradient(1200px 600px at 30% 0%, rgba(var(--accent-rgb), 0.08) 0%, rgba(var(--accent-rgb), 0) 45%),
+                radial-gradient(900px 500px at 85% 15%, rgba(147, 51, 234, 0.10) 0%, rgba(147, 51, 234, 0) 55%),
+                linear-gradient(180deg, #050816 0%, #0b1020 55%, #0b1020 100%);
             min-height: 100vh;
+            color: #e8ecff;
         }
 
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px 0;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .header-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
+        .app-layout {
             display: flex;
+            min-height: 100vh;
+            width: 100%;
+        }
+
+        /* Top Header Bar */
+        .top-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: rgba(5, 8, 22, 0.92);
+            border-bottom: 1px solid rgba(42, 55, 95, 0.55);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
             justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 20px;
+            padding: 0 20px;
+            z-index: 1000;
         }
 
-        .logo {
-            font-size: 1.8em;
-            font-weight: 700;
-        }
-
-        .logo p {
-            font-size: 0.5em;
-            font-weight: 400;
-            opacity: 0.9;
-            margin-top: 5px;
-        }
-
-        .nav {
+        .header-left {
             display: flex;
-            gap: 15px;
             align-items: center;
-            flex-wrap: wrap;
+            gap: 15px;
         }
 
-        .nav a {
-            color: white;
-            text-decoration: none;
-            padding: 8px 16px;
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .brand-badge {
+            width: 34px;
+            height: 34px;
             border-radius: 8px;
+            background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.95) 0%, var(--accent) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 22px rgba(var(--accent-rgb), 0.18);
+            flex: 0 0 auto;
+        }
+
+        .brand-badge img {
+            width: 20px;
+            height: 20px;
+            display: block;
+        }
+
+        .brand-text {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.1;
+        }
+
+        .brand-title {
+            font-size: 16px;
+            font-weight: 800;
+            letter-spacing: 0.2px;
+            color: #e8ecff;
+        }
+
+        .brand-subtitle {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            color: rgba(232, 236, 255, 0.7);
+        }
+
+        .breadcrumbs {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #888;
+            font-size: 14px;
+            margin-left: 20px;
+        }
+
+        .breadcrumbs a {
+            color: #888;
+            text-decoration: none;
+        }
+
+        .breadcrumbs a:hover {
+            color: var(--accent);
+        }
+
+        .breadcrumbs span {
+            color: #555;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .notification-icon {
+            font-size: 20px;
+            color: #888;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+
+        .notification-icon:hover {
+            color: var(--accent);
+        }
+
+        .btn-logout {
+            background: transparent;
+            color: #e0e0e0;
+            padding: 8px 16px;
+            border: 1px solid rgba(42, 55, 95, 0.55);
+            border-radius: 6px;
+            text-decoration: none;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .btn-logout:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(42, 55, 95, 0.75);
+        }
+
+        /* Left Sidebar */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 60px;
+            width: 250px;
+            height: calc(100vh - 60px);
+            background: rgba(5, 8, 22, 0.90);
+            border-right: 1px solid rgba(42, 55, 95, 0.55);
+            padding: 14px 12px;
+            overflow-y: auto;
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-nav {
+            list-style: none;
+            padding: 0;
+            margin: 4px 0 0 0;
+            flex: 1 1 auto;
+        }
+
+        .sidebar-nav li {
+            margin: 0;
+        }
+
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            color: rgba(232, 236, 255, 0.72);
+            text-decoration: none;
+            transition: all 0.3s;
+            font-size: 15px;
+            border-radius: 12px;
+            margin: 4px 0;
+        }
+
+        .sidebar-nav a:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(232, 236, 255, 0.92);
+        }
+
+        .sidebar-nav a.active {
+            background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.95) 0%, rgba(var(--accent-rgb), 0.78) 100%);
+            color: #0b1020;
+            box-shadow: 0 10px 26px rgba(var(--accent-rgb), 0.18);
+            border-left: none;
+        }
+
+        .sidebar-nav a.active .sidebar-nav-icon {
+            color: #0b1020;
+        }
+
+        .sidebar-nav-icon {
+            font-size: 18px;
+            width: 20px;
+            text-align: center;
+            color: rgba(232, 236, 255, 0.75);
+        }
+
+        .sidebar-nav-icon img {
+            width: 18px;
+            height: 18px;
+            display: block;
+            filter: invert(92%);
+            opacity: 0.95;
+        }
+
+        .sidebar-nav a.active .sidebar-nav-icon img {
+            filter: invert(0%);
+            opacity: 1;
+        }
+
+        .sidebar-user-profile {
+            margin-top: auto;
+            padding: 14px 4px 6px 4px;
+            border-top: 1px solid rgba(42, 55, 95, 0.55);
+        }
+
+        .user-profile-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 12px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(42, 55, 95, 0.55);
+            border-radius: 12px;
+            cursor: pointer;
             transition: background 0.3s;
-            font-weight: 500;
         }
 
-        .nav a:hover {
-            background: rgba(255, 255, 255, 0.2);
+        .user-profile-card:hover {
+            background: rgba(255, 255, 255, 0.09);
         }
 
-        .nav a.active {
-            background: rgba(255, 255, 255, 0.3);
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.95) 0%, rgba(147, 51, 234, 0.95) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 16px;
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+            border: 2px solid rgba(255, 255, 255, 0.10);
         }
 
         .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
+            flex: 1;
+            min-width: 0;
         }
 
-        .user-info span {
-            color: white;
-            font-weight: 500;
+        .user-name {
+            color: #e0e0e0;
+            font-weight: 600;
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
-        .user-info .btn-logout {
-            background: #dc3545;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 8px;
-            text-decoration: none;
-            transition: background 0.3s;
+        .user-email {
+            color: #888;
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
-        .user-info .btn-logout:hover {
-            background: #c82333;
+        .user-arrow {
+            color: #888;
+            font-size: 14px;
+            flex: 0 0 auto;
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 30px 20px;
+        /* Main Content Area */
+        .main-content {
+            margin-left: 0;
+            margin-top: 60px;
+            padding: 30px;
+            min-height: calc(100vh - 60px);
+            background: transparent;
+            width: 100vw;
+            max-width: 100vw;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        body.has-sidebar .main-content {
+            margin-left: 250px;
+            width: calc(100vw - 250px);
+            max-width: calc(100vw - 250px);
         }
 
         .messages {
-            max-width: 1200px;
-            margin: 20px auto;
-            padding: 0 20px;
+            margin-bottom: 20px;
         }
 
         .message {
@@ -112,97 +321,241 @@
             margin-bottom: 15px;
             border-radius: 8px;
             font-weight: 500;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 14px;
+        }
+
+        .message-text {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .message-close {
+            background: transparent;
+            border: none;
+            color: rgba(232, 236, 255, 0.65);
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            padding: 0;
+            margin-top: 1px;
+            flex: 0 0 auto;
+            transition: color 160ms ease, transform 160ms ease;
+        }
+
+        .message-close:hover {
+            color: rgba(232, 236, 255, 0.92);
+            transform: translateY(-1px);
         }
 
         .message.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+            background: rgba(212, 237, 218, 0.1);
+            color: #4ade80;
+            border: 1px solid rgba(212, 237, 218, 0.2);
         }
 
         .message.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+            background: rgba(248, 215, 218, 0.1);
+            color: #f87171;
+            border: 1px solid rgba(248, 215, 218, 0.2);
         }
 
         .message.warning {
-            background: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeeba;
+            background: rgba(255, 243, 205, 0.1);
+            color: #fbbf24;
+            border: 1px solid rgba(255, 243, 205, 0.2);
         }
 
         .message.info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-
-        .footer {
-            background: #2f3136;
-            color: #dcddde;
-            text-align: center;
-            padding: 20px;
-            margin-top: 50px;
+            background: rgba(209, 236, 241, 0.1);
+            color: #60a5fa;
+            border: 1px solid rgba(209, 236, 241, 0.2);
         }
 
         @media (max-width: 768px) {
-            .header-content {
-                flex-direction: column;
-                text-align: center;
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s;
             }
 
-            .nav {
-                justify-content: center;
+            .main-content {
+                margin-left: 0;
+            }
+
+            .breadcrumbs {
+                display: none;
             }
         }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
-<body>
-    <div class="header">
-        <div class="header-content">
-            <div class="logo">
-                <div>👑 Crowned Trader</div>
-                <p>Professional Trading Signal Management</p>
+<body class="{% if user.is_authenticated %}has-sidebar{% endif %}">
+    <!-- Top Header Bar -->
+    <div class="top-header">
+        <div class="header-left">
+            <div class="brand">
+                <div class="brand-badge">
+                    <img src="{% static 'signals/logo.svg' %}" alt="Crowned Trader" />
+                </div>
+                <div class="brand-text">
+                    <div class="brand-title">Crowned Trader</div>
+                    <div class="brand-subtitle">SIGNAL MANAGEMENT</div>
+                </div>
             </div>
+            <div class="breadcrumbs">
+                {% block breadcrumbs %}
+                <a href="{% url 'dashboard' %}">Dashboard</a>
+                <span>/</span>
+                <span>{% block current_page %}Dashboard{% endblock %}</span>
+                {% endblock %}
+            </div>
+        </div>
+        <div class="header-right">
+            <span class="notification-icon">🔔</span>
+            {% if user.is_authenticated %}
+            <a href="{% url 'user_logout' %}" class="btn-logout">Logout</a>
+            {% else %}
+            <a href="{% url 'user_login' %}" class="btn-logout">Login</a>
+            {% endif %}
+        </div>
+    </div>
 
-            <div class="nav">
-                {% if user.is_authenticated %}
-                    <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">📊 Dashboard</a>
-                    <a href="{% url 'signal_types_list' %}" class="{% if 'signal_type' in request.resolver_match.url_name %}active{% endif %}">🔧 Signal Types</a>
-                    {% if user.is_superuser %}
-                    <a href="{% url 'user_management' %}" class="{% if request.resolver_match.url_name == 'user_management' or request.resolver_match.url_name == 'user_create' or request.resolver_match.url_name == 'user_edit' %}active{% endif %}">👥 User Management</a>
-                    {% endif %}
-                    <div class="user-info">
-                        <a href="{% url 'profile' %}" class="{% if request.resolver_match.url_name == 'profile' or request.resolver_match.url_name == 'change_password' %}active{% endif %}">👤 Profile</a>
-                        <span>👤 {{ user.username }}</span>
-                        <a href="{% url 'user_logout' %}" class="btn-logout">Logout</a>
-                    </div>
-                {% else %}
-                    <a href="{% url 'user_login' %}" class="{% if request.resolver_match.url_name == 'user_login' %}active{% endif %}">🔐 Login</a>
+    <div class="app-layout">
+        <!-- Left Sidebar -->
+        {% if user.is_authenticated %}
+        <div class="sidebar">
+            <ul class="sidebar-nav">
+                <li>
+                    <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+                        <span class="sidebar-nav-icon"><img src="{% static 'signals/icons/dashboard.svg' %}" alt="" /></span>
+                        <span>Dashboard</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'signal_types_list' %}" class="{% if 'signal_type' in request.resolver_match.url_name %}active{% endif %}">
+                        <span class="sidebar-nav-icon"><img src="{% static 'signals/icons/signal_types.svg' %}" alt="" /></span>
+                        <span>Signal Types</span>
+                    </a>
+                </li>
+                {% if user.is_superuser %}
+                <li>
+                    <a href="{% url 'user_management' %}" class="{% if request.resolver_match.url_name == 'user_management' or request.resolver_match.url_name == 'user_create' or request.resolver_match.url_name == 'user_edit' %}active{% endif %}">
+                        <span class="sidebar-nav-icon"><img src="{% static 'signals/icons/user_management.svg' %}" alt="" /></span>
+                        <span>User Management</span>
+                    </a>
+                </li>
                 {% endif %}
+            </ul>
+            <div class="sidebar-user-profile">
+                <a class="user-profile-card" href="{% url 'profile' %}">
+                    <div class="user-avatar">{{ user.username|first|upper }}</div>
+                    <div class="user-info">
+                        <div class="user-name">{{ user.get_full_name|default:user.username }}</div>
+                        <div class="user-email">{{ user.email|default:"No email" }}</div>
+                    </div>
+                    <span class="user-arrow">→</span>
+                </a>
             </div>
         </div>
-    </div>
+        {% endif %}
 
-    {% if messages %}
-    <div class="messages">
-        {% for message in messages %}
-        <div class="message {{ message.tags }}">
-            {{ message }}
+        <!-- Main Content -->
+        <div class="main-content">
+            {% if messages %}
+            <div class="messages" id="flashMessages">
+                {% for message in messages %}
+                <div class="message {{ message.tags }}" data-msg data-tag="{{ message.tags|default:'info' }}" data-text="{{ message|escape }}">
+                    <div class="message-text">{{ message }}</div>
+                    <button type="button" class="message-close" aria-label="Dismiss">×</button>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="messages" id="flashMessages" style="display:none;"></div>
+            {% endif %}
+
+            {% block content %}{% endblock %}
         </div>
-        {% endfor %}
-    </div>
-    {% endif %}
-
-    <div class="container">
-        {% block content %}{% endblock %}
     </div>
 
-    <div class="footer">
-        <p>&copy; 2025 Crowned Trader Dashboard | Built by Hams</p>
-    </div>
+    <script>
+    (function () {
+      const STORAGE_KEY = 'ct_flash_messages_v1';
+      const container = document.getElementById('flashMessages');
+      if (!container) return;
+
+      function readStored() {
+        try {
+          const raw = sessionStorage.getItem(STORAGE_KEY);
+          if (!raw) return null;
+          const parsed = JSON.parse(raw);
+          if (!parsed || !Array.isArray(parsed.messages)) return null;
+          return parsed;
+        } catch {
+          return null;
+        }
+      }
+
+      function writeStored(messages) {
+        try {
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ messages }));
+        } catch {
+          // ignore
+        }
+      }
+
+      function getDomMessages() {
+        return Array.from(container.querySelectorAll('[data-msg]')).map((el) => ({
+          tag: el.getAttribute('data-tag') || 'info',
+          text: el.getAttribute('data-text') || el.textContent || ''
+        }));
+      }
+
+      function render(messages) {
+        if (!messages || messages.length === 0) {
+          container.style.display = 'none';
+          container.innerHTML = '';
+          return;
+        }
+        container.style.display = '';
+        container.innerHTML = messages.map((m, idx) => {
+          const safeText = String(m.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const tag = (m.tag || 'info').toString();
+          return `
+            <div class="message ${tag}" data-idx="${idx}">
+              <div class="message-text">${safeText}</div>
+              <button type="button" class="message-close" aria-label="Dismiss">×</button>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // If server rendered messages exist, persist them; otherwise restore from storage.
+      const domMessages = getDomMessages();
+      if (domMessages.length > 0) {
+        writeStored(domMessages);
+      } else {
+        const stored = readStored();
+        if (stored?.messages?.length) render(stored.messages);
+      }
+
+      container.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest && e.target.closest('.message-close');
+        if (!btn) return;
+        const msgEl = btn.closest('.message');
+        if (!msgEl) return;
+        msgEl.remove();
+        const remaining = Array.from(container.querySelectorAll('.message')).map((el) => ({
+          tag: (el.className.match(/\b(success|error|warning|info)\b/) || [])[1] || 'info',
+          text: (el.querySelector('.message-text')?.textContent || '').trim()
+        }));
+        writeStored(remaining);
+        if (remaining.length === 0) container.style.display = 'none';
+      });
+    })();
+    </script>
 
     {% block extra_js %}{% endblock %}
 </body>

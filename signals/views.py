@@ -375,64 +375,60 @@ def profile(request):
             discord_channel_webhook=''
         )
     
+    password_form = PasswordChangeForm(user=user)
+    email_value = user.email
+
     if request.method == 'POST':
-        username = request.POST.get('username', '').strip()
-        email = request.POST.get('email', '').strip()
-        
-        # Validate required fields
-        errors = []
-        if not username:
-            errors.append('Username is required.')
-        if not email:
-            errors.append('Email is required.')
-        
-        if errors:
-            for error in errors:
-                messages.error(request, error)
-            return render(request, 'signals/profile.html', {
-                'user': user,
-                'profile': profile
-            })
-        
-        # Check if username already exists (for other users)
-        if username != user.username and User.objects.filter(username=username).exists():
-            messages.error(request, 'Username already exists.')
-            return render(request, 'signals/profile.html', {
-                'user': user,
-                'profile': profile
-            })
-        
-        # Update user (only username and email)
-        user.username = username
-        user.email = email
-        user.save()
-        
-        messages.success(request, 'Profile updated successfully!')
-        return redirect('profile')
-    
+        action = (request.POST.get('action') or '').strip() or 'update_email'
+
+        if action == 'change_password':
+            password_form = PasswordChangeForm(user=user, data=request.POST)
+            if password_form.is_valid():
+                updated_user = password_form.save()
+                update_session_auth_hash(request, updated_user)  # keep user logged in
+                messages.success(request, 'Your password has been changed successfully!')
+                return redirect('profile')
+            messages.error(request, 'Please correct the password errors below.')
+        else:
+            email_value = request.POST.get('email', '').strip()
+
+            errors = []
+            if not email_value:
+                errors.append('Email is required.')
+
+            if errors:
+                for error in errors:
+                    messages.error(request, error)
+            else:
+                user.email = email_value
+                user.save()
+                messages.success(request, 'Profile updated successfully!')
+                return redirect('profile')
+
+    # Stats for profile UI
+    signals_created = Signal.objects.filter(user=user).count()
+    active_channels_count = DiscordChannel.objects.filter(user=user, is_active=True).count()
+    default_channel = (
+        DiscordChannel.objects.filter(user=user, is_default=True).first()
+        or DiscordChannel.objects.filter(user=user, is_active=True).first()
+        or DiscordChannel.objects.filter(user=user).first()
+    )
+
     return render(request, 'signals/profile.html', {
         'user': user,
-        'profile': profile
+        'profile': profile,
+        'signals_created': signals_created,
+        'active_channels_count': active_channels_count,
+        'default_channel': default_channel,
+        'password_form': password_form,
+        'email_value': email_value,
     })
 
 @login_required
 def change_password(request):
     """Change password view"""
-    if request.method == 'POST':
-        form = PasswordChangeForm(user=request.user, data=request.POST)
-        if form.is_valid():
-            user = form.save()
-            update_session_auth_hash(request, user)  # Important: keeps user logged in after password change
-            messages.success(request, 'Your password has been changed successfully!')
-            return redirect('profile')
-        else:
-            messages.error(request, 'Please correct the errors below.')
-    else:
-        form = PasswordChangeForm(user=request.user)
-    
-    return render(request, 'signals/change_password.html', {
-        'form': form
-    })
+    # Password change is now handled inline on the Profile page.
+    return redirect('profile')
 
 @login_required
 def dashboard(request):
@@ -504,18 +500,16 @@ def dashboard(request):
     )
     signal_types_data = []
     for st in signal_types:
-        # Variables and fields_template are already JSON-serializable (lists/dicts)
-        # We'll pass them as JSON strings and parse in JavaScript
-        variables_json = json.dumps(st.variables) if st.variables else '[]'
-        fields_json = json.dumps(st.fileds_template) if st.fileds_template else '[]'
+        # JSONField values are already JSON-serializable (lists/dicts); pass them as native
+        # objects and use Django's json_script in the template.
         signal_types_data.append({
             'id': st.id,
-            'variables': variables_json,
+            'variables': st.variables or [],
             'title_template': st.title_template or '',
             'description_template': st.description_template or '',
             'footer_template': st.footer_template or '',
             'color': st.color or '#000000',
-            'fields_template': fields_json,
+            'fields_template': st.fileds_template or [],
             'show_title_default': getattr(st, 'show_title_default', True),
             'show_description_default': getattr(st, 'show_description_default', True)
         })
@@ -588,6 +582,16 @@ def user_management(request):
             Q(email__icontains=search_query) |
             Q(discord_channels__channel_name__icontains=search_query)
         ).distinct()
+
+    # Role filter (for UI dropdown)
+    role_filter = request.GET.get('role', 'all').strip().lower() or 'all'
+    # Admin role is no longer exposed in the UI; treat it as "all" for old links.
+    if role_filter == 'admin':
+        role_filter = 'all'
+    if role_filter == 'superuser':
+        users = users.filter(is_superuser=True)
+    elif role_filter == 'user':
+        users = users.filter(is_staff=False, is_superuser=False)
     
     # Pagination
     paginator = Paginator(users, 25)  # Show 25 users per page
@@ -597,7 +601,8 @@ def user_management(request):
     return render(request, 'signals/user_management.html', {
         'users': page_obj,
         'page_obj': page_obj,
-        'search_query': search_query
+        'search_query': search_query,
+        'role_filter': role_filter,
     })
 
 @login_required
@@ -619,6 +624,7 @@ def user_create(request):
             channel_name = request.POST.get(f'channel_name_{index}', '').strip()
             webhook_url = request.POST.get(f'webhook_url_{index}', '').strip()
             is_default = request.POST.get(f'is_default_{index}') == 'on'
+            channel_is_active = request.POST.get(f'is_active_{index}', 'on') == 'on'
             
             # If we have at least one field, consider it a channel attempt
             if channel_name or webhook_url:
@@ -626,6 +632,7 @@ def user_create(request):
                     'name': channel_name,
                     'url': webhook_url,
                     'is_default': is_default,
+                    'is_active': channel_is_active,
                     'index': index
                 })
                 index += 1
@@ -652,6 +659,18 @@ def user_create(request):
         if not valid_channels:
             errors.append('At least one Discord channel with both channel name and webhook URL is required.')
         
+        # Ensure exactly one default channel when valid channels exist
+        if valid_channels:
+            if not any(c.get('is_default') for c in valid_channels):
+                valid_channels[0]['is_default'] = True
+            else:
+                seen_default = False
+                for c in valid_channels:
+                    if c.get('is_default') and not seen_default:
+                        seen_default = True
+                    elif c.get('is_default') and seen_default:
+                        c['is_default'] = False
+
         if errors:
             for error in errors:
                 messages.error(request, error)
@@ -660,7 +679,8 @@ def user_create(request):
                 'username': username,
                 'email': email,
                 'is_superuser': is_superuser_check,
-                'is_active': is_active
+                'is_active': is_active,
+                'channels_data': valid_channels or channels,
             })
         
         # Check if username already exists
@@ -671,7 +691,8 @@ def user_create(request):
                 'username': username,
                 'email': email,
                 'is_superuser': is_superuser_check,
-                'is_active': is_active
+                'is_active': is_active,
+                'channels_data': valid_channels or channels,
             })
         
         # Create user
@@ -701,7 +722,8 @@ def user_create(request):
                     user=user,
                     channel_name=channel['name'],
                     webhook_url=channel['url'],
-                    is_default=channel['is_default']
+                    is_default=channel['is_default'],
+                    is_active=channel.get('is_active', True),
                 )
                 channels_created += 1
             except Exception as e:
@@ -728,14 +750,14 @@ def user_create(request):
 @user_passes_test(is_superuser)
 def user_edit(request, user_id):
     """Edit an existing user"""
-    user = get_object_or_404(User, id=user_id)
+    managed_user = get_object_or_404(User, id=user_id)
     
     # Prevent editing superuser by non-superusers (extra safety)
     if not request.user.is_superuser:
         messages.error(request, 'You do not have permission to edit users.')
         return redirect('user_management')
     
-    # Handle Discord channel management
+    # Handle legacy Discord channel management (older edit UI)
     if request.method == 'POST' and 'action' in request.POST:
         action = request.POST.get('action')
         
@@ -749,7 +771,7 @@ def user_edit(request, user_id):
             else:
                 try:
                     channel = DiscordChannel.objects.create(
-                        user=user,
+                        user=managed_user,
                         channel_name=channel_name,
                         webhook_url=webhook_url,
                         is_default=is_default
@@ -757,7 +779,7 @@ def user_edit(request, user_id):
                     messages.success(request, f'Discord channel "{channel_name}" added successfully!')
                 except Exception as e:
                     messages.error(request, f'Error adding channel: {str(e)}')
-            return redirect('user_edit', user_id=user.id)
+            return redirect('user_edit', user_id=managed_user.id)
         
         elif action == 'update_channel':
             channel_id = request.POST.get('channel_id')
@@ -767,7 +789,7 @@ def user_edit(request, user_id):
             is_active = request.POST.get('is_active') == 'on'
             
             try:
-                channel = DiscordChannel.objects.get(id=channel_id, user=user)
+                channel = DiscordChannel.objects.get(id=channel_id, user=managed_user)
                 channel.channel_name = channel_name
                 channel.webhook_url = webhook_url
                 channel.is_default = is_default
@@ -778,18 +800,18 @@ def user_edit(request, user_id):
                 messages.error(request, 'Channel not found.')
             except Exception as e:
                 messages.error(request, f'Error updating channel: {str(e)}')
-            return redirect('user_edit', user_id=user.id)
+            return redirect('user_edit', user_id=managed_user.id)
         
         elif action == 'delete_channel':
             channel_id = request.POST.get('channel_id')
             try:
-                channel = DiscordChannel.objects.get(id=channel_id, user=user)
+                channel = DiscordChannel.objects.get(id=channel_id, user=managed_user)
                 channel_name = channel.channel_name
                 channel.delete()
                 messages.success(request, f'Discord channel "{channel_name}" deleted successfully!')
             except DiscordChannel.DoesNotExist:
                 messages.error(request, 'Channel not found.')
-            return redirect('user_edit', user_id=user.id)
+            return redirect('user_edit', user_id=managed_user.id)
     
     # Handle user update
     if request.method == 'POST':
@@ -798,6 +820,29 @@ def user_edit(request, user_id):
         is_superuser_check = request.POST.get('is_superuser') == 'on'
         is_active = request.POST.get('is_active') == 'on'
         new_password = request.POST.get('password', '').strip()
+
+        # Collect Discord channels from POST data (same format as create)
+        channels = []
+        index = 0
+        while True:
+            channel_id = request.POST.get(f'channel_id_{index}', '').strip()
+            channel_name = request.POST.get(f'channel_name_{index}', '').strip()
+            webhook_url = request.POST.get(f'webhook_url_{index}', '').strip()
+            is_default = request.POST.get(f'is_default_{index}') == 'on'
+            channel_is_active = request.POST.get(f'is_active_{index}', 'on') == 'on'
+
+            if channel_id or channel_name or webhook_url:
+                channels.append({
+                    'id': channel_id or None,
+                    'name': channel_name,
+                    'url': webhook_url,
+                    'is_default': is_default,
+                    'is_active': channel_is_active,
+                    'index': index
+                })
+                index += 1
+            else:
+                break
         
         # Validate required fields
         errors = []
@@ -805,58 +850,118 @@ def user_edit(request, user_id):
             errors.append('Username is required.')
         if not email:
             errors.append('Email is required.')
+
+        # Validate Discord channels - require at least one complete channel
+        valid_channels = []
+        for idx, channel in enumerate(channels):
+            if channel['name'] and channel['url']:
+                valid_channels.append(channel)
+            elif channel['name'] or channel['url']:
+                errors.append(f'Channel {idx + 1}: Both channel name and webhook URL are required.')
+
+        if not valid_channels:
+            errors.append('At least one Discord channel with both channel name and webhook URL is required.')
+
+        # Ensure exactly one default channel when valid channels exist
+        if valid_channels:
+            if not any(c.get('is_default') for c in valid_channels):
+                valid_channels[0]['is_default'] = True
+            else:
+                seen_default = False
+                for c in valid_channels:
+                    if c.get('is_default') and not seen_default:
+                        seen_default = True
+                    elif c.get('is_default') and seen_default:
+                        c['is_default'] = False
         
         if errors:
             for error in errors:
                 messages.error(request, error)
-            discord_channels = DiscordChannel.objects.filter(user=user).order_by('-is_default', 'channel_name')
             return render(request, 'signals/user_form.html', {
                 'form_type': 'edit',
-                'user': user,
+                'managed_user': managed_user,
                 'username': username,
                 'email': email,
                 'is_superuser': is_superuser_check,
                 'is_active': is_active,
-                'discord_channels': discord_channels
+                'channels_data': valid_channels or channels,
             })
         
         # Check if username already exists (for other users)
-        if username != user.username and User.objects.filter(username=username).exists():
+        if username != managed_user.username and User.objects.filter(username=username).exists():
             messages.error(request, 'Username already exists.')
-            discord_channels = DiscordChannel.objects.filter(user=user).order_by('-is_default', 'channel_name')
             return render(request, 'signals/user_form.html', {
                 'form_type': 'edit',
-                'user': user,
+                'managed_user': managed_user,
                 'username': username,
                 'email': email,
                 'is_superuser': is_superuser_check,
                 'is_active': is_active,
-                'discord_channels': discord_channels
+                'channels_data': valid_channels or channels,
             })
         
         # Update user
-        user.username = username
-        user.email = email
-        user.is_superuser = is_superuser_check
-        user.is_staff = is_superuser_check  # Staff status follows superuser status
-        user.is_active = is_active
+        managed_user.username = username
+        managed_user.email = email
+        managed_user.is_superuser = is_superuser_check
+        managed_user.is_staff = is_superuser_check  # Staff status follows superuser status
+        managed_user.is_active = is_active
         
         # Update password if provided
         if new_password:
-            user.set_password(new_password)
+            managed_user.set_password(new_password)
         
-        user.save()
+        managed_user.save()
+
+        # Sync Discord channels
+        existing = {str(c.id): c for c in DiscordChannel.objects.filter(user=managed_user)}
+        kept_ids = set()
+
+        for ch in valid_channels:
+            ch_id = (ch.get('id') or '').strip()
+            if ch_id and ch_id in existing:
+                obj = existing[ch_id]
+                obj.channel_name = ch['name']
+                obj.webhook_url = ch['url']
+                obj.is_default = bool(ch.get('is_default'))
+                obj.is_active = bool(ch.get('is_active', True))
+                obj.save()
+                kept_ids.add(ch_id)
+            else:
+                obj = DiscordChannel.objects.create(
+                    user=managed_user,
+                    channel_name=ch['name'],
+                    webhook_url=ch['url'],
+                    is_default=bool(ch.get('is_default')),
+                    is_active=bool(ch.get('is_active', True)),
+                )
+                kept_ids.add(str(obj.id))
+
+        # Delete removed channels
+        for ch_id, obj in existing.items():
+            if ch_id not in kept_ids:
+                obj.delete()
         
         messages.success(request, f'User "{username}" updated successfully!')
         return redirect('user_management')
     
-    # Get all Discord channels for this user
-    discord_channels = DiscordChannel.objects.filter(user=user).order_by('-is_default', 'channel_name')
+    # Prefill existing channels for the unified edit form UI
+    discord_channels = DiscordChannel.objects.filter(user=managed_user).order_by('-is_default', 'channel_name')
+    channels_data = [
+        {
+            'id': c.id,
+            'name': c.channel_name,
+            'url': c.webhook_url,
+            'is_default': c.is_default,
+            'is_active': c.is_active,
+        }
+        for c in discord_channels
+    ]
     
     return render(request, 'signals/user_form.html', {
         'form_type': 'edit',
-        'user': user,
-        'discord_channels': discord_channels
+        'managed_user': managed_user,
+        'channels_data': channels_data,
     })
 
 @login_required

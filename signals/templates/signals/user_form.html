@@ -2,472 +2,926 @@
 
 {% block title %}{% if form_type == 'create' %}Create User{% else %}Edit User{% endif %} - Crowned Trader Dashboard{% endblock %}
 
+{% block breadcrumbs %}
+<a href="{% url 'dashboard' %}">Dashboard</a>
+<span>/</span>
+<a href="{% url 'user_management' %}">User Management</a>
+<span>/</span>
+<span>{% if form_type == 'create' %}Create User{% else %}Edit User{% endif %}</span>
+{% endblock %}
+
 {% block extra_css %}
 <style>
-    .form-container {
-        max-width: 600px;
+    .uf-page {
+        /* Match app accent (yellow) */
+        --uf-primary: var(--accent);
+        --uf-primary-rgb: var(--accent-rgb);
+
+        width: 100%;
+        max-width: 980px;
         margin: 0 auto;
     }
 
-    .form-header {
-        margin-bottom: 30px;
-        text-align: center;
+    .uf-header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin: 10px 0 18px 0;
+        color: #e8ecff;
+        font-weight: 800;
+        font-size: 1.2em;
     }
 
-    .form-header h2 {
-        color: #333;
-        font-size: 2em;
-        margin: 0;
+    .uf-header svg {
+        width: 18px;
+        height: 18px;
+        color: rgba(var(--uf-primary-rgb), 0.95);
     }
 
-    .form-group {
-        margin-bottom: 25px;
+    .uf-card {
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        border-radius: 16px;
+        padding: 22px;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);
     }
 
-    .form-group label {
+    .uf-card + .uf-section {
+        margin-top: 34px;
+    }
+
+    .uf-form-grid {
+        display: grid;
+        gap: 18px;
+    }
+
+    .uf-row-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    .uf-label {
         display: block;
         margin-bottom: 8px;
-        color: #333;
-        font-weight: 600;
+        color: rgba(232, 236, 255, 0.92);
+        font-weight: 700;
+        font-size: 0.95em;
     }
 
-    .form-group input[type="text"],
-    .form-group input[type="email"],
-    .form-group input[type="password"],
-    .form-group input[type="url"] {
+    .uf-input {
         width: 100%;
-        padding: 12px;
-        border: 2px solid #e0e0e0;
-        border-radius: 8px;
-        font-size: 1em;
-        transition: border-color 0.3s;
+        height: 44px;
+        padding: 0 14px;
+        border: 1px solid rgba(42, 55, 95, 0.65);
+        border-radius: 12px;
+        background: rgba(10, 16, 35, 0.72);
+        color: #e8ecff;
+        font-weight: 600;
+        transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
     }
 
-    .form-group input:focus {
+    .uf-input:focus {
         outline: none;
-        border-color: #667eea;
+        border-color: rgba(var(--uf-primary-rgb), 0.85);
+        box-shadow: 0 0 0 3px rgba(var(--uf-primary-rgb), 0.18);
     }
 
-    .form-group small {
-        display: block;
-        margin-top: 5px;
-        color: #666;
-        font-size: 0.9em;
+    .uf-help {
+        margin-top: 6px;
+        color: rgba(232, 236, 255, 0.55);
+        font-size: 0.88em;
     }
 
-    .checkbox-group {
+    .uf-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 10px;
+        justify-content: flex-start;
+    }
+
+    .btn-primary-purple {
+        background: var(--uf-primary);
+        color: #0b1020;
+        border: none;
+        border-radius: 12px;
+        height: 40px;
+        padding: 0 16px;
+        font-weight: 800;
+        cursor: pointer;
+        transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+        box-shadow: 0 12px 24px rgba(var(--uf-primary-rgb), 0.25);
+    }
+
+    .btn-primary-purple:hover {
+        transform: translateY(-1px);
+        background: color-mix(in srgb, var(--uf-primary) 85%, #ffffff 15%);
+        box-shadow: 0 16px 28px rgba(var(--uf-primary-rgb), 0.30);
+    }
+
+    .btn-cancel {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        color: rgba(232, 236, 255, 0.90);
+        border-radius: 12px;
+        height: 40px;
+        padding: 0 16px;
+        font-weight: 800;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+
+    .btn-cancel:hover {
+        background: rgba(255, 255, 255, 0.09);
+        border-color: rgba(42, 55, 95, 0.85);
+        transform: translateY(-1px);
+    }
+
+    /* switches */
+    .switch-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        background: rgba(10, 16, 35, 0.42);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .switch-meta {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .switch-title {
+        color: rgba(232, 236, 255, 0.90);
+        font-weight: 800;
+        margin: 0;
+        font-size: 0.98em;
+    }
+
+    .switch-desc {
+        color: rgba(232, 236, 255, 0.55);
+        margin: 6px 0 0 0;
+        font-size: 0.88em;
+        line-height: 1.35;
+    }
+
+    .mini-switch {
+        position: relative;
+        width: 40px;
+        height: 22px;
+        flex: 0 0 auto;
+        display: inline-block;
+    }
+
+    .mini-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .mini-slider {
+        position: absolute;
+        inset: 0;
+        cursor: pointer;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(42, 55, 95, 0.75);
+        transition: 180ms ease;
+    }
+
+    .mini-slider::before {
+        content: "";
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        left: 3px;
+        top: 50%;
+        transform: translateY(-50%);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 10px 16px rgba(0, 0, 0, 0.28);
+        transition: 180ms ease;
+    }
+
+    .mini-switch input:checked + .mini-slider {
+        background: rgba(var(--uf-primary-rgb), 0.30);
+        border-color: rgba(var(--uf-primary-rgb), 0.75);
+    }
+
+    .mini-switch input:checked + .mini-slider::before {
+        transform: translate(18px, -50%);
+        background: var(--uf-primary);
+    }
+
+    /* Discord Channels section */
+    .uf-section {
+        margin-top: 40px;
+    }
+
+    .uf-section-title {
         display: flex;
         align-items: center;
         gap: 10px;
-        margin-bottom: 15px;
+        margin: 0 0 6px 0;
+        color: #e8ecff;
+        font-weight: 800;
+        font-size: 1.15em;
     }
 
-    .checkbox-group input[type="checkbox"] {
-        width: 20px;
-        height: 20px;
-        cursor: pointer;
+    .uf-section-title svg {
+        width: 18px;
+        height: 18px;
+        color: rgba(var(--uf-primary-rgb), 0.95);
     }
 
-    .checkbox-group label {
-        margin: 0;
-        cursor: pointer;
-        font-weight: normal;
-    }
-    
-    .checkbox-group small {
-        display: block;
-        margin-left: 0;
-        margin-top: 5px;
+    .uf-section-subtitle {
+        margin: 0 0 14px 0;
+        color: rgba(232, 236, 255, 0.60);
+        font-size: 0.92em;
     }
 
-    .form-actions {
-        display: flex;
-        gap: 15px;
-        margin-top: 30px;
+    .uf-divider {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 14px 0 18px 0;
+    }
+
+    .btn-add-dashed {
+        width: 100%;
+        height: 46px;
+        border-radius: 14px;
+        border: 1px dashed rgba(42, 55, 95, 0.75);
+        background: rgba(10, 16, 35, 0.35);
+        color: rgba(232, 236, 255, 0.80);
+        display: inline-flex;
+        align-items: center;
         justify-content: center;
-    }
-
-    .btn {
-        padding: 12px 24px;
-        border: none;
-        border-radius: 8px;
-        font-size: 1em;
-        font-weight: 600;
+        gap: 10px;
+        font-weight: 800;
         cursor: pointer;
-        text-decoration: none;
-        display: inline-block;
-        transition: all 0.3s;
+        transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+        margin: 10px 0 14px 0;
     }
 
-    .btn-primary {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+    .btn-add-dashed:hover {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(42, 55, 95, 0.95);
+        transform: translateY(-1px);
     }
 
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    /* Channel cards list */
+    .channel-list {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        margin-top: 10px;
     }
 
-    .btn-secondary {
-        background: #6c757d;
-        color: white;
+    .channel-card-item {
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
     }
 
-    .btn-secondary:hover {
-        background: #5a6268;
-    }
-
-    .channel-card {
-        background: #fff;
-        border: 2px solid #e0e0e0;
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 15px;
-    }
-
-    .channel-header {
+    .channel-card-top {
         display: flex;
         justify-content: space-between;
-        align-items: start;
-        margin-bottom: 15px;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 10px;
     }
 
-    .channel-badge {
-        background: #667eea;
-        color: white;
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 0.8em;
-        margin-left: 10px;
+    .channel-card-title {
+        margin: 0;
+        color: #e8ecff;
+        font-weight: 900;
+        font-size: 1.02em;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
     }
 
-    .channel-badge.inactive {
-        background: #dc3545;
+    .channel-card-url {
+        margin: 6px 0 0 0;
+        color: rgba(232, 236, 255, 0.55);
+        font-size: 0.9em;
+        word-break: break-all;
+        line-height: 1.35;
     }
 
-    .channel-input-group {
-        background: #f8f9fa;
-        border: 2px solid #e0e0e0;
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 15px;
-        position: relative;
+    .channel-card-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex: 0 0 auto;
     }
 
-    .channel-input-group:first-of-type {
-        margin-top: 15px;
+    .icon-btn {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        background: rgba(255, 255, 255, 0.04);
+        color: rgba(232, 236, 255, 0.70);
+        cursor: pointer;
+        transition: background 160ms ease, border-color 160ms ease, transform 160ms ease, color 160ms ease;
+    }
+
+    .icon-btn:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(42, 55, 95, 0.85);
+        transform: translateY(-1px);
+        color: rgba(232, 236, 255, 0.92);
+    }
+
+    .icon-btn.danger {
+        color: rgba(255, 140, 140, 0.95);
+        border-color: rgba(255, 77, 77, 0.35);
+        background: rgba(255, 77, 77, 0.06);
+    }
+
+    .icon-btn.danger:hover {
+        background: rgba(255, 77, 77, 0.12);
+        border-color: rgba(255, 77, 77, 0.55);
+    }
+
+    .icon-btn svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+    }
+
+    .channel-card-switches {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 12px;
+    }
+
+    @media (max-width: 720px) {
+        .channel-card-switches {
+            grid-template-columns: 1fr;
+        }
     }
 
     .remove-channel-btn {
         position: absolute;
-        top: 10px;
-        right: 10px;
-        background: #dc3545;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        padding: 6px 12px;
-        font-size: 0.85em;
+        top: 14px;
+        right: 14px;
+        background: rgba(255, 77, 77, 0.10);
+        color: rgba(255, 140, 140, 0.95);
+        border: 1px solid rgba(255, 77, 77, 0.35);
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-weight: 800;
         cursor: pointer;
-        transition: all 0.3s;
+        transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
     }
 
     .remove-channel-btn:hover {
-        background: #c82333;
+        background: rgba(255, 77, 77, 0.14);
+        border-color: rgba(255, 77, 77, 0.55);
+        transform: translateY(-1px);
     }
 
-    .add-channel-btn {
-        background: #28a745;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 10px 20px;
-        font-size: 0.95em;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s;
-        margin-bottom: 15px;
-    }
-
-    .add-channel-btn:hover {
-        background: #218838;
-        transform: translateY(-2px);
-    }
-
-    .channel-input-group-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 15px;
+    .channel-input-group {
+        position: relative;
+        margin-top: 12px;
     }
 
     .channel-input-group-title {
-        color: #333;
-        font-weight: 600;
-        font-size: 1em;
+        margin: 0 0 10px 0;
+        color: rgba(232, 236, 255, 0.85);
+        font-weight: 800;
+    }
+
+    .channel-badge {
+        background: rgba(var(--uf-primary-rgb), 0.25);
+        border: 1px solid rgba(var(--uf-primary-rgb), 0.55);
+        color: var(--uf-primary);
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.78em;
+        font-weight: 900;
+        margin-left: 10px;
+    }
+
+    .channel-badge.inactive {
+        background: rgba(255, 77, 77, 0.10);
+        border-color: rgba(255, 77, 77, 0.35);
+        color: rgba(255, 140, 140, 0.95);
+    }
+
+    .btn-danger {
+        background: rgba(255, 77, 77, 0.10);
+        color: rgba(255, 140, 140, 0.95);
+        border: 1px solid rgba(255, 77, 77, 0.35);
+        border-radius: 10px;
+        padding: 8px 14px;
+        font-weight: 900;
+        cursor: pointer;
+        transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+
+    .btn-danger:hover {
+        background: rgba(255, 77, 77, 0.14);
+        border-color: rgba(255, 77, 77, 0.55);
+        transform: translateY(-1px);
+    }
+
+    /* Modal */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 18px;
+        z-index: 9999;
+    }
+
+    .modal-overlay.open {
+        display: flex;
+    }
+
+    .modal-card {
+        width: 100%;
+        max-width: 560px;
+        background: rgba(15, 23, 42, 0.92);
+        border: 1px solid rgba(42, 55, 95, 0.70);
+        border-radius: 16px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+    }
+
+    .modal-head {
+        padding: 16px 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    .modal-title {
         margin: 0;
+        color: #e8ecff;
+        font-weight: 900;
+        font-size: 1.05em;
+    }
+
+    .modal-body {
+        padding: 18px;
+        display: grid;
+        gap: 16px;
+    }
+
+    .modal-actions {
+        padding: 16px 18px;
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    @media (max-width: 720px) {
+        .uf-row-2 {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="form-container">
-    <div class="form-header">
-        <h2>{% if form_type == 'create' %}➕ Create New User{% else %}✏️ Edit User{% endif %}</h2>
+<div class="uf-page">
+    <div class="uf-header">
+        {% if form_type == 'create' %}
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15 12c2.2 0 4-1.8 4-4S17.2 4 15 4s-4 1.8-4 4 1.8 4 4 4zm-8 0c2.2 0 4-1.8 4-4S9.2 4 7 4 3 5.8 3 8s1.8 4 4 4zm0 2c-3 0-7 1.5-7 4.5V21h14v-2.5C14 15.5 10 14 7 14zm16 1v-2h-2v2h-2v2h2v2h2v-2h2v-2h-2z"/></svg>
+        <span>Create User</span>
+        {% else %}
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.8 9.95l-3.75-3.75L3 17.25z"/></svg>
+        <span>Edit User</span>
+        {% endif %}
     </div>
 
-    <form method="post">
+    <div class="uf-card">
+    <form method="post" class="uf-form-grid">
         {% csrf_token %}
         
         <div class="form-group">
-            <label for="username">Username *</label>
-            <input type="text" id="username" name="username" 
-                   value="{% if form_type == 'edit' %}{{ user.username }}{% elif username %}{{ username }}{% endif %}" 
+            <label class="uf-label" for="username">Username *</label>
+            <input class="uf-input" type="text" id="username" name="username" 
+                   value="{% if form_type == 'edit' %}{{ managed_user.username }}{% elif username %}{{ username }}{% endif %}" 
                    required>
-            <small>Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.</small>
+            <div class="uf-help">Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.</div>
         </div>
 
         <div class="form-group">
-            <label for="email">Email *</label>
-            <input type="email" id="email" name="email" 
-                   value="{% if form_type == 'edit' %}{{ user.email }}{% elif email %}{{ email }}{% endif %}" 
+            <label class="uf-label" for="email">Email *</label>
+            <input class="uf-input" type="email" id="email" name="email" 
+                   value="{% if form_type == 'edit' %}{{ managed_user.email }}{% elif email %}{{ email }}{% endif %}" 
                    required>
-            <small>Required. A valid email address.</small>
+            <div class="uf-help">Required. A valid email address.</div>
         </div>
 
         <div class="form-group">
-            <label for="password">Password {% if form_type == 'edit' %}(leave blank to keep current password){% else %}*{% endif %}</label>
-            <input type="password" id="password" name="password" {% if form_type == 'create' %}required{% endif %}>
-            <small>{% if form_type == 'edit' %}Enter a new password only if you want to change it.{% else %}Required. Minimum 8 characters recommended.{% endif %}</small>
+            <label class="uf-label" for="password">Password {% if form_type == 'edit' %}(leave blank to keep current password){% else %}*{% endif %}</label>
+            <input class="uf-input" type="password" id="password" name="password" {% if form_type == 'create' %}required{% endif %}>
+            <div class="uf-help">{% if form_type == 'edit' %}Enter a new password only if you want to change it.{% else %}Required. Minimum 8 characters recommended.{% endif %}</div>
         </div>
 
-        <div class="checkbox-group">
-            <input type="checkbox" id="is_superuser" name="is_superuser" 
-                   {% if form_type == 'edit' and user.is_superuser %}checked{% elif form_type == 'create' and is_superuser %}checked{% endif %}>
-            <label for="is_superuser">Superuser Status</label>
-            <small style="margin-left: 10px; color: #666;">Designates that this user has all permissions without explicitly assigning them.</small>
+        <div class="switch-item">
+            <label class="mini-switch">
+                <input type="checkbox" id="is_superuser" name="is_superuser" 
+                       {% if form_type == 'edit' and managed_user.is_superuser %}checked{% elif form_type == 'create' and is_superuser %}checked{% endif %}>
+                <span class="mini-slider"></span>
+            </label>
+            <div class="switch-meta">
+                <div class="switch-title">Superuser Status</div>
+                <div class="switch-desc">Designates that this user has all permissions without explicitly assigning them.</div>
+            </div>
         </div>
 
         {% if form_type == 'edit' %}
-        <div class="checkbox-group">
-            <input type="checkbox" id="is_active" name="is_active" 
-                   {% if user.is_active %}checked{% endif %}>
-            <label for="is_active">Active Status</label>
-            <small style="margin-left: 10px; color: #666;">Designates whether this user should be treated as active. Uncheck this instead of deleting accounts.</small>
-        </div>
-        {% endif %}
-
-        {% if form_type == 'create' %}
-        <!-- Discord Channels Input for New User -->
-        <div id="discordChannelsSection" style="margin-top: 30px; padding-top: 30px; border-top: 2px solid #e0e0e0;">
-            <h3 style="color: #333; margin-bottom: 10px;">📡 Discord Channels *</h3>
-            <p style="color: #666; margin-bottom: 20px; font-size: 0.9em;">At least one Discord channel is required. You can add multiple channels.</p>
-            
-            <div id="channelsContainer">
-                <!-- Channel inputs will be added here dynamically -->
+        <div class="switch-item">
+            <label class="mini-switch">
+                <input type="checkbox" id="is_active" name="is_active" {% if managed_user.is_active %}checked{% endif %}>
+                <span class="mini-slider"></span>
+            </label>
+            <div class="switch-meta">
+                <div class="switch-title">Active Status</div>
+                <div class="switch-desc">Designates whether this user should be treated as active. Uncheck this instead of deleting accounts.</div>
             </div>
-            
-            <button type="button" id="addChannelBtn" class="add-channel-btn">➕ Add Another Channel</button>
         </div>
         {% endif %}
 
-        <div class="form-actions">
-            <button type="submit" class="btn btn-primary">
+        <!-- Discord Channels (same UI for create + edit) -->
+        <div id="discordChannelsSection" class="uf-section">
+            <div class="uf-divider"></div>
+            <h3 class="uf-section-title">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14l4-4V6a2 2 0 0 0-2-2z"/></svg>
+                <span>Discord Channels *</span>
+            </h3>
+            <p class="uf-section-subtitle">At least one Discord channel is required. You can add multiple channels and set one as default.</p>
+            
+            <div id="channelsList" class="channel-list"></div>
+            <div id="channelsHidden" style="display:none;"></div>
+
+            <button type="button" id="addChannelBtn" class="btn-add-dashed">＋ Add New Channel</button>
+        </div>
+
+        <div class="uf-actions">
+            <button type="submit" class="btn-primary-purple">
                 {% if form_type == 'create' %}Create User{% else %}Update User{% endif %}
             </button>
-            <a href="{% url 'user_management' %}" class="btn btn-secondary">Cancel</a>
+            <a href="{% url 'user_management' %}" class="btn-cancel">Cancel</a>
         </div>
     </form>
+    </div>
 
-    {% if form_type == 'edit' %}
-    <!-- Discord Channels Management Section -->
-    <div style="margin-top: 50px; padding-top: 30px; border-top: 2px solid #e0e0e0;">
-        <h3 style="color: #333; margin-bottom: 20px;">📡 Discord Channels</h3>
-        <p style="color: #666; margin-bottom: 20px;">Manage Discord channels for this user. Users can have multiple channels and set one as default.</p>
+    {% if channels_data %}
+    {{ channels_data|json_script:"channels-data" }}
+    {% endif %}
 
-        <!-- Add New Channel Form -->
-        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
-            <h4 style="color: #333; margin-bottom: 15px;">➕ Add New Channel</h4>
-            <form method="post" style="display: flex; flex-direction: column; gap: 15px;">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="add_channel">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; color: #333; font-weight: 600;">Channel Name *</label>
-                        <input type="text" name="channel_name" required style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px;">
-                    </div>
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; color: #333; font-weight: 600;">Webhook URL *</label>
-                        <input type="text" name="webhook_url" required style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px;">
-                    </div>
+    <!-- Add/Edit Channel Modal -->
+    <div class="modal-overlay" id="channelModal" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="channelModalTitle">
+            <div class="modal-head">
+                <h4 class="modal-title" id="channelModalTitle">Add Channel</h4>
+                <button type="button" class="icon-btn" id="closeChannelModal" aria-label="Close">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                        <path fill="currentColor" d="M18.3 5.7a1 1 0 0 1 0 1.4L13.4 12l4.9 4.9a1 1 0 1 1-1.4 1.4L12 13.4l-4.9 4.9a1 1 0 1 1-1.4-1.4L10.6 12 5.7 7.1a1 1 0 0 1 1.4-1.4L12 10.6l4.9-4.9a1 1 0 0 1 1.4 0z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="modalChannelIndex" value="">
+                <input type="hidden" id="modalChannelId" value="">
+                <div>
+                    <label class="uf-label" for="modalChannelName">Channel Name *</label>
+                    <input class="uf-input" id="modalChannelName" type="text" placeholder="e.g., trading-signals">
+                    <div class="uf-help">Name of the Discord channel</div>
                 </div>
                 <div>
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" name="is_default">
-                        <span style="color: #333;">Set as default channel</span>
+                    <label class="uf-label" for="modalWebhookUrl">Webhook URL *</label>
+                    <input class="uf-input" id="modalWebhookUrl" type="url" placeholder="https://discord.com/api/webhooks/...">
+                    <div class="uf-help">Discord webhook URL for this channel</div>
+                </div>
+                <div class="switch-item">
+                    <label class="mini-switch">
+                        <input type="checkbox" id="modalIsDefault">
+                        <span class="mini-slider"></span>
                     </label>
+                    <div class="switch-meta">
+                        <div class="switch-title">Default Channel</div>
+                        <div class="switch-desc">This will be the default channel for sending signals.</div>
+                    </div>
                 </div>
-                <button type="submit" class="btn btn-primary" style="align-self: flex-start;">Add Channel</button>
-            </form>
-        </div>
-
-        <!-- Existing Channels List -->
-        {% if discord_channels %}
-        <div style="display: flex; flex-direction: column; gap: 15px;">
-            {% for channel in discord_channels %}
-            <div class="channel-card">
-                <div class="channel-header">
-                    <div style="flex: 1;">
-                        <h4 style="color: #333; margin: 0 0 5px 0;">
-                            {{ channel.channel_name }}
-                            {% if channel.is_default %}
-                            <span class="channel-badge">Default</span>
-                            {% endif %}
-                            {% if not channel.is_active %}
-                            <span class="channel-badge inactive">Inactive</span>
-                            {% endif %}
-                        </h4>
-                        <p style="color: #666; margin: 0; font-size: 0.9em; word-break: break-all;">{{ channel.webhook_url }}</p>
+                <div class="switch-item">
+                    <label class="mini-switch">
+                        <input type="checkbox" id="modalIsActive" checked>
+                        <span class="mini-slider"></span>
+                    </label>
+                    <div class="switch-meta">
+                        <div class="switch-title">Active</div>
+                        <div class="switch-desc">Enable this channel.</div>
                     </div>
-                    <form method="post" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this channel?');">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="delete_channel">
-                        <input type="hidden" name="channel_id" value="{{ channel.id }}">
-                        <button type="submit" class="btn btn-secondary" style="background: #dc3545; padding: 8px 16px; font-size: 0.9em;">Delete</button>
-                    </form>
                 </div>
-                <form method="post" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="update_channel">
-                    <input type="hidden" name="channel_id" value="{{ channel.id }}">
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; color: #333; font-weight: 600;">Channel Name</label>
-                        <input type="text" name="channel_name" value="{{ channel.channel_name }}" required style="width: 100%; padding: 8px; border: 2px solid #e0e0e0; border-radius: 6px;">
-                    </div>
-                    <div>
-                        <label style="display: block; margin-bottom: 5px; color: #333; font-weight: 600;">Webhook URL</label>
-                        <input type="text" name="webhook_url" value="{{ channel.webhook_url }}" required style="width: 100%; padding: 8px; border: 2px solid #e0e0e0; border-radius: 6px;">
-                    </div>
-                    <div style="display: flex; gap: 15px; align-items: center;">
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <input type="checkbox" name="is_default" {% if channel.is_default %}checked{% endif %}>
-                            <span style="color: #333;">Default</span>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <input type="checkbox" name="is_active" {% if channel.is_active %}checked{% endif %}>
-                            <span style="color: #333;">Active</span>
-                        </label>
-                    </div>
-                    <div>
-                        <button type="submit" class="btn btn-primary" style="padding: 8px 16px; font-size: 0.9em;">Update Channel</button>
-                    </div>
-                </form>
             </div>
-            {% endfor %}
+            <div class="modal-actions">
+                <button type="button" class="btn-cancel" id="cancelChannelModal">Cancel</button>
+                <button type="button" class="btn-primary-purple" id="saveChannelModal">Save Channel</button>
+            </div>
         </div>
-        {% else %}
-        <p style="color: #666; font-style: italic;">No Discord channels configured. Add channels above.</p>
-        {% endif %}
     </div>
-    {% endif %}
 </div>
 {% endblock %}
 
 {% block extra_js %}
-{% if form_type == 'create' %}
 <script>
-let channelCount = 0;
-
-// Function to create a new channel input group
-function createChannelInput(index, channelData = null) {
-    const container = document.getElementById('channelsContainer');
-    const channelGroup = document.createElement('div');
-    channelGroup.className = 'channel-input-group';
-    channelGroup.dataset.index = index;
-    
-    const canRemove = index > 0; // Can remove if not the first one
-    
-    channelGroup.innerHTML = `
-        ${canRemove ? '<button type="button" class="remove-channel-btn" onclick="removeChannel(this)">✕ Remove</button>' : ''}
-        <div class="channel-input-group-header">
-            <h4 class="channel-input-group-title">Channel ${index + 1}</h4>
-        </div>
-        <div class="form-group">
-            <label for="channel_name_${index}">Channel Name *</label>
-            <input type="text" id="channel_name_${index}" name="channel_name_${index}" 
-                   value="${channelData ? (channelData.name || '') : ''}"
-                   placeholder="e.g., trading-signals" required>
-            <small>Name of the Discord channel</small>
-        </div>
-        <div class="form-group">
-            <label for="webhook_url_${index}">Webhook URL *</label>
-            <input type="url" id="webhook_url_${index}" name="webhook_url_${index}" 
-                   value="${channelData ? (channelData.url || '') : ''}"
-                   placeholder="https://discord.com/api/webhooks/..." required>
-            <small>Discord webhook URL for this channel</small>
-        </div>
-        <div class="checkbox-group">
-            <input type="checkbox" id="is_default_${index}" name="is_default_${index}" 
-                   ${channelData && channelData.is_default ? 'checked' : ''}>
-            <label for="is_default_${index}">Set as default channel</label>
-            <small style="margin-left: 10px; color: #666;">This will be the default channel for sending signals</small>
-        </div>
-    `;
-    
-    container.appendChild(channelGroup);
+function safeJsonParse(id) {
+    try {
+        const el = document.getElementById(id);
+        if (!el) return null;
+        return JSON.parse(el.textContent || 'null');
+    } catch (e) {
+        return null;
+    }
 }
 
-// Function to remove a channel input group
-function removeChannel(button) {
-    const channelGroup = button.closest('.channel-input-group');
-    channelGroup.remove();
-    updateChannelNumbers();
-}
+let channels = [];
 
-// Function to update channel numbers
-function updateChannelNumbers() {
-    const containers = document.querySelectorAll('.channel-input-group');
-    containers.forEach((container, index) => {
-        const title = container.querySelector('.channel-input-group-title');
-        if (title) {
-            title.textContent = `Channel ${index + 1}`;
-        }
-        // Update input IDs and names
-        const inputs = container.querySelectorAll('input, label');
-        inputs.forEach(input => {
-            if (input.id) {
-                input.id = input.id.replace(/_\d+$/, `_${index}`);
-            }
-            if (input.name) {
-                input.name = input.name.replace(/_\d+$/, `_${index}`);
-            }
-            if (input.htmlFor) {
-                input.htmlFor = input.htmlFor.replace(/_\d+$/, `_${index}`);
-            }
-        });
-        container.dataset.index = index;
-        
-        // Show/hide remove button - first channel cannot be removed
-        const removeBtn = container.querySelector('.remove-channel-btn');
-        if (removeBtn) {
-            if (index === 0) {
-                removeBtn.remove(); // Remove button completely for first channel
-            }
+function normalizeDefault(chs) {
+    if (!chs.length) return;
+    const anyDefault = chs.some(c => c.is_default);
+    if (!anyDefault) {
+        chs[0].is_default = true;
+        return;
+    }
+    let seen = false;
+    chs.forEach(c => {
+        if (c.is_default && !seen) {
+            seen = true;
+        } else if (c.is_default && seen) {
+            c.is_default = false;
         }
     });
 }
 
+function renderHiddenInputs() {
+    const holder = document.getElementById('channelsHidden');
+    if (!holder) return;
+    holder.innerHTML = '';
+    channels.forEach((c, i) => {
+        const fields = [
+            ['channel_id_' + i, c.id || ''],
+            ['channel_name_' + i, c.name || ''],
+            ['webhook_url_' + i, c.url || ''],
+        ];
+        fields.forEach(([name, value]) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            holder.appendChild(input);
+        });
+        const def = document.createElement('input');
+        def.type = 'hidden';
+        def.name = 'is_default_' + i;
+        def.value = c.is_default ? 'on' : '';
+        holder.appendChild(def);
+
+        const active = document.createElement('input');
+        active.type = 'hidden';
+        active.name = 'is_active_' + i;
+        active.value = c.is_active ? 'on' : '';
+        holder.appendChild(active);
+    });
+}
+
+function renderCards() {
+    const list = document.getElementById('channelsList');
+    if (!list) return;
+    if (!channels.length) {
+        list.innerHTML = `<div class="channel-card-item" style="color: rgba(232,236,255,0.65); font-style: italic;">No channels added yet.</div>`;
+        renderHiddenInputs();
+        return;
+    }
+
+    list.innerHTML = '';
+    channels.forEach((c, idx) => {
+        const card = document.createElement('div');
+        card.className = 'channel-card-item';
+        card.innerHTML = `
+            <div class="channel-card-top">
+                <div style="min-width:0; flex:1;">
+                    <div class="channel-card-title">
+                        <span>${escapeHtml(c.name || '')}</span>
+                        ${c.is_default ? `<span class="channel-badge">Default</span>` : ``}
+                        ${c.is_active ? `` : `<span class="channel-badge inactive">Inactive</span>`}
+                    </div>
+                    <div class="channel-card-url">${escapeHtml(c.url || '')}</div>
+                </div>
+                <div class="channel-card-actions">
+                    <button type="button" class="icon-btn" data-edit="${idx}" title="Edit">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                            <path fill="currentColor" d="M3 17.25V21h3.75L17.8 9.95l-3.75-3.75L3 17.25z"/>
+                        </svg>
+                    </button>
+                    <button type="button" class="icon-btn danger" data-del="${idx}" title="Remove">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                            <path fill="currentColor" d="M9 3h6l1 2h4a1 1 0 1 1 0 2h-1l-1.2 14.1A2 2 0 0 1 14.8 23H9.2a2 2 0 0 1-2-1.9L6 7H5a1 1 0 1 1 0-2h4l1-2z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="channel-card-switches">
+                <div class="switch-item">
+                    <label class="mini-switch">
+                        <input type="checkbox" ${c.is_default ? 'checked' : ''} data-default="${idx}">
+                        <span class="mini-slider"></span>
+                    </label>
+                    <div class="switch-meta">
+                        <div class="switch-title">Default</div>
+                        <div class="switch-desc">Use as default destination.</div>
+                    </div>
+                </div>
+                <div class="switch-item">
+                    <label class="mini-switch">
+                        <input type="checkbox" ${c.is_active ? 'checked' : ''} data-active="${idx}">
+                        <span class="mini-slider"></span>
+                    </label>
+                    <div class="switch-meta">
+                        <div class="switch-title">Active</div>
+                        <div class="switch-desc">Enable this channel.</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        list.appendChild(card);
+    });
+
+    renderHiddenInputs();
+}
+
+function escapeHtml(s) {
+    return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function openModal(mode, idx) {
+    const modal = document.getElementById('channelModal');
+    if (!modal) return;
+
+    const title = document.getElementById('channelModalTitle');
+    const indexEl = document.getElementById('modalChannelIndex');
+    const idEl = document.getElementById('modalChannelId');
+    const nameEl = document.getElementById('modalChannelName');
+    const urlEl = document.getElementById('modalWebhookUrl');
+    const defEl = document.getElementById('modalIsDefault');
+    const activeEl = document.getElementById('modalIsActive');
+
+    const isEdit = mode === 'edit' && typeof idx === 'number';
+    title.textContent = isEdit ? 'Edit Channel' : 'Add Channel';
+    indexEl.value = isEdit ? String(idx) : '';
+
+    const data = isEdit ? channels[idx] : { id: '', name: '', url: '', is_default: channels.length === 0, is_active: true };
+    idEl.value = data.id || '';
+    nameEl.value = data.name || '';
+    urlEl.value = data.url || '';
+    defEl.checked = !!data.is_default;
+    activeEl.checked = data.is_active !== false;
+
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    nameEl.focus();
+}
+
+function closeModal() {
+    const modal = document.getElementById('channelModal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
 // Add channel button handler
 document.addEventListener('DOMContentLoaded', function() {
-    // Create first channel input
-    createChannelInput(channelCount++);
+    const initial = safeJsonParse('channels-data');
+    channels = Array.isArray(initial) ? initial.map(c => ({
+        id: c.id || '',
+        name: c.name || '',
+        url: c.url || '',
+        is_default: !!c.is_default,
+        is_active: c.is_active !== false
+    })) : [];
+    normalizeDefault(channels);
+    renderCards();
     
     // Add channel button
     const addBtn = document.getElementById('addChannelBtn');
     if (addBtn) {
         addBtn.addEventListener('click', function() {
-            createChannelInput(channelCount++);
+            openModal('add');
+        });
+    }
+
+    const list = document.getElementById('channelsList');
+    if (list) {
+        list.addEventListener('click', (e) => {
+            const editBtn = e.target.closest && e.target.closest('[data-edit]');
+            const delBtn = e.target.closest && e.target.closest('[data-del]');
+            if (editBtn) {
+                const idx = Number(editBtn.getAttribute('data-edit'));
+                openModal('edit', idx);
+                return;
+            }
+            if (delBtn) {
+                const idx = Number(delBtn.getAttribute('data-del'));
+                channels.splice(idx, 1);
+                normalizeDefault(channels);
+                renderCards();
+                return;
+            }
+        });
+
+        list.addEventListener('change', (e) => {
+            const t = e.target;
+            if (!(t instanceof HTMLInputElement)) return;
+            if (t.hasAttribute('data-default')) {
+                const idx = Number(t.getAttribute('data-default'));
+                channels.forEach((c, i) => { c.is_default = (i === idx); });
+                renderCards();
+                return;
+            }
+            if (t.hasAttribute('data-active')) {
+                const idx = Number(t.getAttribute('data-active'));
+                channels[idx].is_active = t.checked;
+                renderHiddenInputs();
+                return;
+            }
+        });
+    }
+
+    // Modal wiring
+    const modal = document.getElementById('channelModal');
+    const closeBtn = document.getElementById('closeChannelModal');
+    const cancelBtn = document.getElementById('cancelChannelModal');
+    const saveBtn = document.getElementById('saveChannelModal');
+
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('open')) closeModal();
+        });
+    }
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+            const idxRaw = (document.getElementById('modalChannelIndex')?.value || '').trim();
+            const id = (document.getElementById('modalChannelId')?.value || '').trim();
+            const name = (document.getElementById('modalChannelName')?.value || '').trim();
+            const url = (document.getElementById('modalWebhookUrl')?.value || '').trim();
+            const is_default = !!document.getElementById('modalIsDefault')?.checked;
+            const is_active = !!document.getElementById('modalIsActive')?.checked;
+
+            if (!name || !url) {
+                alert('Please provide both Channel Name and Webhook URL.');
+                return;
+            }
+
+            if (idxRaw !== '') {
+                const idx = Number(idxRaw);
+                channels[idx] = { id, name, url, is_default, is_active };
+            } else {
+                channels.push({ id, name, url, is_default: is_default || channels.length === 0, is_active });
+            }
+            normalizeDefault(channels);
+            renderCards();
+            closeModal();
         });
     }
     
@@ -475,27 +929,23 @@ document.addEventListener('DOMContentLoaded', function() {
     const form = document.querySelector('form');
     if (form) {
         form.addEventListener('submit', function(e) {
-            const channelGroups = document.querySelectorAll('.channel-input-group');
-            let hasValidChannel = false;
-            
-            channelGroups.forEach(group => {
-                const nameInput = group.querySelector(`input[name^="channel_name_"]`);
-                const urlInput = group.querySelector(`input[name^="webhook_url_"]`);
-                
-                if (nameInput && urlInput && nameInput.value.trim() && urlInput.value.trim()) {
-                    hasValidChannel = true;
-                }
-            });
-            
-            if (!hasValidChannel) {
+            if (!channels.length) {
                 e.preventDefault();
-                alert('Please provide at least one Discord channel with both channel name and webhook URL.');
+                alert('Please add at least one Discord channel.');
+                openModal('add');
                 return false;
             }
+            // Ensure hidden inputs are up to date right before submit
+            normalizeDefault(channels);
+            renderHiddenInputs();
         });
+    }
+
+    // Create flow: encourage adding the first channel
+    if (!channels.length) {
+        // keep UI clean; user clicks "Add New Channel"
     }
 });
 </script>
-{% endif %}
 {% endblock %}
 

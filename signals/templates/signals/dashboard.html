@@ -1,22 +1,163 @@
 {% extends 'signals/base.html' %}
+{% load static %}
+
+{% block breadcrumbs %}
+<a href="{% url 'dashboard' %}">Dashboard</a>
+<span>/</span>
+<span>Submit Signal</span>
+{% endblock %}
 
 {% block extra_css %}
 <style>
+    .dashboard-page {
+        width: 100%;
+        max-width: none;
+        margin: 0;
+    }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 30px;
+    }
+
+    .page-title-section h1 {
+        color: #e0e0e0;
+        font-size: 2.5em;
+        font-weight: 700;
+        margin-bottom: 10px;
+    }
+
+    .page-title-section p {
+        color: #888;
+        font-size: 1.1em;
+    }
+
+    .page-actions {
+        display: flex;
+        gap: 12px;
+    }
+
+    .btn-cancel {
+        background: #2d2d2d;
+        color: #e0e0e0;
+        padding: 12px 24px;
+        border: 1px solid #444;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 600;
+        transition: all 0.3s;
+        cursor: pointer;
+    }
+
+    .btn-cancel:hover {
+        background: #353535;
+        border-color: #555;
+    }
+
+    .btn-publish {
+        background: var(--accent);
+        color: #1a1a1a;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .btn-publish:hover {
+        background: color-mix(in srgb, var(--accent) 85%, #ffffff 15%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3);
+    }
+
+    .content-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) clamp(420px, 34vw, 560px);
+        gap: 30px;
+        align-items: start;
+    }
+
     .form-container {
-        max-width: 800px;
-        margin: 0 auto;
+        max-width: none;
+        min-width: 0;
+    }
+
+    .form-section {
+        background: rgba(15, 23, 42, 0.72);
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 25px;
+        border: 1px solid rgba(42, 55, 95, 0.55);
+    }
+
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+
+    .section-divider {
+        height: 1px;
+        width: 100%;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 14px 0 18px 0;
+    }
+
+    .section-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+    }
+
+    .section-icon.purple {
+        background: #9333ea;
+        color: white;
+    }
+
+    .section-icon.green {
+        background: #10b981;
+        color: white;
+    }
+
+    .section-icon.blue {
+        background: #2563eb;
+        color: white;
+    }
+
+    .section-icon img {
+        width: 18px;
+        height: 18px;
+        display: block;
+        filter: invert(100%);
+    }
+
+    .section-title {
+        color: #e0e0e0;
+        font-size: 1.3em;
+        font-weight: 600;
     }
 
     .form-group {
-        margin-bottom: 25px;
+        margin-bottom: 20px;
     }
 
     .form-group label {
         display: block;
         margin-bottom: 8px;
-        color: #333;
+        color: #e0e0e0;
         font-weight: 600;
-        font-size: 1.05em;
+        font-size: 0.95em;
     }
     
     /* For checkbox inputs, adjust label display */
@@ -68,17 +209,68 @@
     .form-input, .form-textarea, .form-select {
         width: 100%;
         padding: 12px 15px;
-        border: 2px solid #e0e0e0;
-        border-radius: 8px;
+        border: 1px solid rgba(42, 55, 95, 0.65);
+        border-radius: 12px;
         font-size: 1em;
         transition: all 0.3s;
         font-family: inherit;
+        background: rgba(10, 16, 35, 0.72);
+        color: #e0e0e0;
+    }
+
+    .form-input:hover, .form-textarea:hover, .form-select:hover {
+        border-color: rgba(42, 55, 95, 0.9);
     }
 
     .form-input:focus, .form-textarea:focus, .form-select:focus {
         outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
+    }
+
+    /* Date input: dark calendar panel + tinted calendar icon */
+    .form-input[type="date"] {
+        color-scheme: dark;
+        accent-color: var(--accent);
+    }
+
+    .form-input[type="date"]::-webkit-calendar-picker-indicator {
+        cursor: pointer;
+        opacity: 0.95;
+        padding: 6px;
+        border-radius: 8px;
+        background-color: rgba(var(--accent-rgb), 0.14);
+        filter: invert(1);
+        transition: background-color 180ms ease, transform 180ms ease, opacity 180ms ease;
+    }
+
+    .form-input[type="date"]::-webkit-calendar-picker-indicator:hover {
+        background-color: rgba(var(--accent-rgb), 0.22);
+        opacity: 1;
+        transform: translateY(-1px);
+    }
+
+    .form-input[type="date"]::-webkit-calendar-picker-indicator:active {
+        transform: translateY(0);
+    }
+
+    .form-input::placeholder, .form-textarea::placeholder {
+        color: #666;
+    }
+
+    /* Select dropdown styling */
+    .form-select {
+        cursor: pointer;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        padding-right: 40px;
+    }
+
+    .form-select option {
+        background: #050816;
+        color: #e0e0e0;
     }
 
     .form-textarea {
@@ -91,9 +283,160 @@
         cursor: pointer;
     }
 
+    /* Mini switch (Embed options + Optional fields) */
+    .switch-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .switch-text {
+        color: #e8ecff;
+        font-weight: 500;
+        font-size: 0.95em;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .mini-switch {
+        position: relative;
+        width: 40px;
+        height: 22px;
+        flex: 0 0 auto;
+        display: inline-block;
+    }
+
+    .mini-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .mini-slider {
+        position: absolute;
+        inset: 0;
+        cursor: pointer;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(42, 55, 95, 0.75);
+        transition: 180ms ease;
+    }
+
+    .mini-slider::before {
+        content: "";
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        left: 3px;
+        top: 50%;
+        transform: translateY(-50%);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 10px 16px rgba(0, 0, 0, 0.28);
+        transition: 180ms ease;
+    }
+
+    .mini-switch input:checked + .mini-slider {
+        background: rgba(var(--accent-rgb), 0.35);
+        border-color: rgba(var(--accent-rgb), 0.75);
+    }
+
+    .mini-switch input:checked + .mini-slider::before {
+        transform: translate(18px, -50%);
+        background: var(--accent);
+    }
+
+    .mini-switch input:focus + .mini-slider {
+        box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.12);
+    }
+
+    /* Inner cards inside a form-section (Embed Options / Optional Fields) */
+    .sub-card {
+        margin-top: 20px;
+        padding: 16px;
+        background: rgba(15, 23, 42, 0.50);
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        border-radius: 12px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    /* Toggle switch (Equity / Shares) – matches screenshot */
+    .toggle-pill {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        width: 100%;
+        padding: 14px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 14px;
+        background: rgba(10, 16, 35, 0.62);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    .toggle-switch {
+        position: relative;
+        width: 46px;
+        height: 26px;
+        flex: 0 0 auto;
+    }
+
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .toggle-slider {
+        position: absolute;
+        inset: 0;
+        cursor: pointer;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(42, 55, 95, 0.75);
+        transition: 180ms ease;
+    }
+
+    .toggle-slider::before {
+        content: "";
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        left: 3px;
+        top: 50%;
+        transform: translateY(-50%);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 10px 18px rgba(0, 0, 0, 0.35);
+        transition: 180ms ease;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+        background: rgba(var(--accent-rgb), 0.35);
+        border-color: rgba(var(--accent-rgb), 0.75);
+    }
+
+    .toggle-switch input:checked + .toggle-slider::before {
+        transform: translate(20px, -50%);
+        background: var(--accent);
+    }
+
+    .toggle-switch input:focus + .toggle-slider {
+        box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.12);
+    }
+
+    .toggle-label {
+        color: #e8ecff;
+        font-weight: 600;
+        font-size: 0.95em;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
     .btn-submit {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+        background: var(--accent);
+        color: #1a1a1a;
         padding: 15px 40px;
         border: none;
         border-radius: 8px;
@@ -101,16 +444,35 @@
         font-weight: 600;
         cursor: pointer;
         transition: all 0.3s;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        box-shadow: 0 4px 15px rgba(var(--accent-rgb), 0.3);
     }
 
     .btn-submit:hover {
+        background: color-mix(in srgb, var(--accent) 85%, #ffffff 15%);
         transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        box-shadow: 0 6px 20px rgba(var(--accent-rgb), 0.4);
     }
 
     .btn-submit:active {
         transform: translateY(0);
+    }
+
+    /* Input with icon */
+    .input-with-icon {
+        position: relative;
+    }
+
+    .input-icon {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #888;
+        font-size: 18px;
+    }
+
+    .form-input.has-icon {
+        padding-right: 40px;
     }
 
     .recent-signals {
@@ -350,10 +712,21 @@
         padding: 0;
     }
 
-    /* Responsive design for preview */
+    /* Error messages */
+    .form-group .error-message {
+        color: #f87171;
+        margin-top: 5px;
+        font-size: 0.9em;
+    }
+
+    /* Responsive design */
     @media (max-width: 1200px) {
-        div[style*="display: flex"] {
-            flex-direction: column !important;
+        .content-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .form-container {
+            max-width: 100%;
         }
 
         div[style*="position: sticky"] {
@@ -362,82 +735,127 @@
             top: 0 !important;
             margin-top: 30px !important;
         }
+    }
 
-        div[style*="background: #2f3136"][style*="position: sticky"] {
-            position: relative !important;
-            top: 0 !important;
-            max-width: 600px !important;
-            margin: 0 auto !important;
+    @media (max-width: 768px) {
+        .page-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 20px;
+        }
+
+        .page-actions {
+            width: 100%;
+            justify-content: flex-end;
         }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div style="display: flex; gap: 30px; max-width: 1500px; margin: 0 auto; padding: 0 20px; align-items: flex-start;">
-    <div style="flex: 1; max-width: 800px;">
+<div class="dashboard-page">
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="page-title-section">
+            <h1>Submit New Signal</h1>
+            <p>Create and broadcast a new trading signal to your Discord community.</p>
+        </div>
+        <div class="page-actions">
+            <a class="btn-cancel" href="{% url 'dashboard' %}">Cancel</a>
+            <button type="submit" form="signalForm" class="btn-publish">
+                <span>📤</span>
+                <span>Publish Signal</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="content-layout">
         <div class="form-container">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 15px;">
-                <h2 id="dashboardTitle" style="color: #333; font-size: 2em; margin: 0;">📝 Submit New Signal</h2>
-            </div>
-            
             <form method="post" id="signalForm">
                 {% csrf_token %}
                 
-                <!-- Signal Type FIRST -->
-                <div class="form-group">
-                    <label for="{{ form.signal_type.id_for_label }}">Signal Type *</label>
-                    {{ form.signal_type }}
-                    {% if form.signal_type.errors %}
-                        <div style="color: #dc3545; margin-top: 5px; font-size: 0.9em;">{{ form.signal_type.errors }}</div>
+                <!-- Signal Configuration Section -->
+                <div class="form-section">
+                    <div class="section-header">
+                        <div class="section-icon blue"><img src="{% static 'signals/icons/layers.svg' %}" alt="" /></div>
+                        <div class="section-title">Signal Configuration</div>
+                    </div>
+                    <div class="section-divider"></div>
+                    
+                    <div class="form-group">
+                        <label for="{{ form.signal_type.id_for_label }}">Signal Type *</label>
+                        {{ form.signal_type }}
+                        {% if form.signal_type.errors %}
+                            <div style="color: #f87171; margin-top: 5px; font-size: 0.9em;">{{ form.signal_type.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Discord Channel Selection -->
+                    {% if discord_channels %}
+                    <div class="form-group">
+                        <label for="discord_channel">Destination Channel</label>
+                        <div class="input-with-icon">
+                            {% if discord_channels and discord_channels|length > 0 %}
+                                <select name="discord_channel" id="discord_channel" class="form-input has-icon" required>
+                                    {% for channel in discord_channels %}
+                                    <option value="{{ channel.id }}" {% if channel.is_default %}selected{% elif forloop.first %}selected{% endif %}>
+                                        {{ channel.channel_name }}{% if channel.is_default %} (Default){% endif %}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            {% else %}
+                                <select name="discord_channel" id="discord_channel" class="form-input has-icon" disabled>
+                                    <option selected>No Discord channels configured</option>
+                                </select>
+                                <small style="display:block; margin-top:8px; color:#9ca3af;">Add a Discord channel in Settings / User Management, then refresh.</small>
+                            {% endif %}
+                            <span class="input-icon">💬</span>
+                        </div>
+                    </div>
                     {% endif %}
                 </div>
 
-                <!-- Discord Channel Selection -->
-                {% if discord_channels %}
-                <div class="form-group">
-                    <label for="discord_channel">Discord Channel</label>
-                    <select name="discord_channel" id="discord_channel" class="form-input" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1em;" required>
-                        {% for channel in discord_channels %}
-                        <option value="{{ channel.id }}" {% if channel.is_default %}selected{% elif forloop.first %}selected{% endif %}>
-                            {{ channel.channel_name }}{% if channel.is_default %} (Default){% endif %}
-                        </option>
-                        {% endfor %}
-                    </select>
-                    <small>Discord channel to send this signal to.</small>
-                </div>
-                {% endif %}
+                <!-- Trade Details Section -->
+                <div class="form-section" id="tradeDetailsSection">
+                    <div class="section-header">
+                        <div class="section-icon green"><img src="{% static 'signals/icons/trending_up.svg' %}" alt="" /></div>
+                        <div class="section-title">Trade Details</div>
+                    </div>
+                    <div class="section-divider"></div>
 
-                <!-- Dynamic Form Fields Container -->
-                <div id="dynamicFields"></div>
+                    <!-- Dynamic Form Fields Container -->
+                    <div id="dynamicFields"></div>
 
-                <!-- Embed Display Options -->
-                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                    <div style="color: #333; font-size: 1em; margin-bottom: 12px; font-weight: 600;">📱 Embed Display Options</div>
-                    <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="showTitleCheckbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal; font-size: 0.95em; color: #333;">
-                                <input type="checkbox" id="showTitleCheckbox" class="form-checkbox" checked style="width: 18px; height: 18px; cursor: pointer;">
-                                Show title
-                            </label>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="showDescriptionCheckbox" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal; font-size: 0.95em; color: #333;">
-                                <input type="checkbox" id="showDescriptionCheckbox" class="form-checkbox" checked style="width: 18px; height: 18px; cursor: pointer;">
-                                Show description
-                            </label>
+                    <!-- Embed Display Options -->
+                    <div class="sub-card">
+                        <div style="color: #e0e0e0; font-size: 1em; margin-bottom: 12px; font-weight: 600;">📱 Embed Display Options</div>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <div class="switch-item">
+                                <label class="mini-switch">
+                                    <input type="checkbox" id="showTitleCheckbox" checked>
+                                    <span class="mini-slider"></span>
+                                </label>
+                                <label class="switch-text" for="showTitleCheckbox">Show title</label>
+                            </div>
+                            <div class="switch-item">
+                                <label class="mini-switch">
+                                    <input type="checkbox" id="showDescriptionCheckbox" checked>
+                                    <span class="mini-slider"></span>
+                                </label>
+                                <label class="switch-text" for="showDescriptionCheckbox">Show description</label>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Optional Fields Checkboxes -->
-                <div id="optionalFieldsSection" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; display: none;">
-                    <div style="color: #333; font-size: 1em; margin-bottom: 12px; font-weight: 600;">📋 Optional Fields</div>
-                    <div style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Select which optional fields to include in your Discord message:</div>
-                    <div id="optionalFieldsCheckboxesContainer" style="display: flex; flex-direction: column; gap: 10px;"></div>
-                    <!-- Container for variables that become visible when optional fields are selected -->
-                    <div id="optionalFieldsVariablesContainer" style="margin-top: 20px; display: none;">
-                        <div style="color: #333; font-size: 0.95em; margin-bottom: 12px; font-weight: 600; padding-top: 15px; border-top: 1px solid #dee2e6;">📝 Related Variables</div>
+                    <!-- Optional Fields Checkboxes -->
+                    <div id="optionalFieldsSection" class="sub-card" style="display: none;">
+                        <div style="color: #e0e0e0; font-size: 1em; margin-bottom: 12px; font-weight: 600;">📋 Optional Fields</div>
+                        <div style="color: #888; font-size: 0.9em; margin-bottom: 15px;">Select which optional fields to include in your Discord message:</div>
+                        <div id="optionalFieldsCheckboxesContainer" style="display: flex; flex-direction: column; gap: 10px;"></div>
+                        <!-- Container for variables that become visible when optional fields are selected -->
+                        <div id="optionalFieldsVariablesContainer" style="margin-top: 20px; display: none;">
+                            <div style="color: #e0e0e0; font-size: 0.95em; margin-bottom: 12px; font-weight: 600; padding-top: 15px; border-top: 1px solid #2d2d2d;">📝 Related Variables</div>
+                        </div>
                     </div>
                 </div>
 
@@ -446,42 +864,43 @@
                 <!-- Hidden field for data -->
                 <input type="hidden" name="data" id="id_data" value="{}" />
                 {% if form.data.errors %}
-                    <div style="color: #dc3545; margin-top: 10px; margin-bottom: 10px; padding: 10px; background-color: #f8d7da; border-radius: 5px; font-size: 0.9em;">
+                    <div style="color: #f87171; margin-top: 10px; margin-bottom: 10px; padding: 10px; background-color: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.2); border-radius: 5px; font-size: 0.9em;">
                         {{ form.data.errors }}
                     </div>
                 {% endif %}
                 {% if form.non_field_errors %}
-                    <div style="color: #dc3545; margin-top: 10px; margin-bottom: 10px; padding: 10px; background-color: #f8d7da; border-radius: 5px; font-size: 0.9em;">
+                    <div style="color: #f87171; margin-top: 10px; margin-bottom: 10px; padding: 10px; background-color: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.2); border-radius: 5px; font-size: 0.9em;">
                         {{ form.non_field_errors }}
                     </div>
                 {% endif %}
-
-                <div style="text-align: center; margin-top: 30px;">
-                    <button type="submit" class="btn-submit">🚀 Submit Signal</button>
-                </div>
             </form>
         </div>
-    </div>
 
-    <!-- Floating Preview Section -->
-    <div style="position: sticky; top: 20px; width: 480px; flex-shrink: 0; z-index: 10;">
-        <div style="background: #2f3136; border-radius: 8px; padding: 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); position: sticky; top: 20px;">
-            <div style="color: #dcddde; font-size: 0.9em; margin-bottom: 15px; text-align: center; padding-bottom: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
-                <strong>📱 Live Preview</strong>
-                <div style="font-size: 0.85em; margin-top: 5px; opacity: 0.8;">Updates in real-time</div>
-            </div>
-            <div id="discordPreview" style="max-width: 100%; margin: 0 auto;">
-                <div id="optionalFieldsControls" style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; display: none;">
-                    <div style="color: #dcddde; font-size: 0.85em; margin-bottom: 8px; font-weight: 600;">Optional Fields:</div>
-                    <div id="optionalFieldsCheckboxes" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        <!-- Live Preview Section -->
+        <div style="position: sticky; top: 90px; width: 100%; z-index: 10;">
+            <div class="form-section" style="margin-bottom: 0;">
+                <div class="section-header" style="margin-bottom: 0;">
+                    <div class="section-icon purple"><img src="{% static 'signals/icons/eye.svg' %}" alt="" /></div>
+                    <div class="section-title">Live Preview</div>
                 </div>
-                <div class="discord-embed">
-                    <div class="discord-embed-color-bar" id="previewColorBar"></div>
-                    <div class="discord-embed-content">
-                        <div class="discord-embed-title" id="previewTitle">Select a signal type to see preview</div>
-                        <div class="discord-embed-description" id="previewDescription"></div>
-                        <div class="discord-embed-fields" id="previewFields"></div>
-                        <div class="discord-embed-footer" id="previewFooter"></div>
+                <div class="section-divider"></div>
+                <div id="discordPreview" style="max-width: 100%; margin: 0 auto;">
+                    <div id="optionalFieldsControls" style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; display: none;">
+                        <div style="color: #dcddde; font-size: 0.85em; margin-bottom: 8px; font-weight: 600;">Optional Fields:</div>
+                        <div id="optionalFieldsCheckboxes" style="display: flex; flex-direction: column; gap: 8px;"></div>
+                    </div>
+                    <div class="discord-embed">
+                        <div class="discord-embed-color-bar" id="previewColorBar"></div>
+                        <div class="discord-embed-content">
+                            <div class="discord-embed-title" id="previewTitle">Select a signal type to see preview</div>
+                            <div class="discord-embed-description" id="previewDescription"></div>
+                            <div class="discord-embed-fields" id="previewFields"></div>
+                            <div class="discord-embed-footer" id="previewFooter"></div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; padding: 12px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px; display: flex; align-items: start; gap: 10px;">
+                        <span style="color: #60a5fa; font-size: 18px;">ℹ️</span>
+                        <p style="color: #9ca3af; font-size: 0.85em; margin: 0; line-height: 1.5;">This is how your signal will appear in Discord. Update the form to see changes in real-time.</p>
                     </div>
                 </div>
             </div>
@@ -518,22 +937,14 @@
 {% endblock %}
 
 {% block extra_js %}
+{{ signal_types_data|json_script:"signal-types-data" }}
 <script>
-// Store signal types data with full template information
-const signalTypesData = {
-    {% for st in signal_types_data %}
-    {{ st.id }}: {
-        variables: {{ st.variables|safe }},
-        title_template: '{{ st.title_template|escapejs }}',
-        description_template: '{{ st.description_template|escapejs }}',
-        footer_template: '{{ st.footer_template|escapejs }}',
-        color: '{{ st.color|default:"#000000" }}',
-        fields_template: {{ st.fields_template|safe }},
-        show_title_default: {{ st.show_title_default|yesno:"true,false" }},
-        show_description_default: {{ st.show_description_default|yesno:"true,false" }}
-    },
-    {% endfor %}
-};
+// Store signal types data with full template information (Django json_script)
+const signalTypesDataList = JSON.parse(document.getElementById('signal-types-data').textContent || '[]');
+const signalTypesData = {};
+signalTypesDataList.forEach((st) => {
+    signalTypesData[String(st.id)] = st;
+});
 
 // Debug: Log signalTypesData to console
 console.log('signalTypesData loaded:', signalTypesData);
@@ -553,6 +964,82 @@ function getInputType(variableType) {
         'boolean': 'checkbox'
     };
     return typeMap[variableType] || 'text';
+}
+
+// Treat optional flags robustly (boolean true vs string "true")
+function isTruthyOptionalFlag(value) {
+    return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function isOptionalField(field) {
+    return field && isTruthyOptionalFlag(field.optional);
+}
+
+function getNonRequiredVariableSet(signalType) {
+    const set = new Set();
+    const vars = (signalType && Array.isArray(signalType.variables)) ? signalType.variables : [];
+    vars.forEach((v) => {
+        // v is typically an object: {name, required, ...}
+        const name = (v && typeof v === 'object') ? v.name : null;
+        if (!name) return;
+        // Treat missing required as false (non-required)
+        const required = (v && typeof v === 'object') ? v.required : false;
+        if (required !== true) set.add(String(name));
+    });
+    return set;
+}
+
+function getRequiredVariableSet(signalType) {
+    const set = new Set();
+    const vars = (signalType && Array.isArray(signalType.variables)) ? signalType.variables : [];
+    vars.forEach((v) => {
+        const name = (v && typeof v === 'object') ? v.name : null;
+        if (!name) return;
+        const required = (v && typeof v === 'object') ? v.required : false;
+        if (required === true) set.add(String(name));
+    });
+    return set;
+}
+
+function getFieldReferencedVariables(field) {
+    const vars = new Set();
+    extractVariablesFromTemplate(field?.name || '').forEach(v => vars.add(v));
+    extractVariablesFromTemplate(field?.value || '').forEach(v => vars.add(v));
+    return vars;
+}
+
+function fieldReferencesAnyRequiredVariable(field, signalType) {
+    const required = getRequiredVariableSet(signalType);
+    if (required.size === 0) return false;
+    const vars = getFieldReferencedVariables(field);
+    for (const v of vars) {
+        if (required.has(v)) return true;
+    }
+    return false;
+}
+
+function isInferredOptionalField(field, signalType) {
+    if (!field || !signalType) return false;
+    const nonRequired = getNonRequiredVariableSet(signalType);
+    if (nonRequired.size === 0) return false;
+
+    const vars = getFieldReferencedVariables(field);
+
+    // Only infer optional if the field actually depends on variables,
+    // and ALL referenced variables are non-required (so required info isn't hideable).
+    if (vars.size === 0) return false;
+    for (const v of vars) {
+        if (!nonRequired.has(v)) return false;
+    }
+    return true;
+}
+
+function isOptionalFieldForSignalType(field, signalType) {
+    // Guardrail: required-variable fields should never be hideable
+    if (fieldReferencesAnyRequiredVariable(field, signalType)) return false;
+
+    // Honor explicit optional OR inferred optional (non-required variables only)
+    return isOptionalField(field) || isInferredOptionalField(field, signalType);
 }
 
 // Get label from variable or fall back to default
@@ -692,7 +1179,7 @@ function getUsedVariables(signalTypeId) {
         fields = fields || [];
         
         fields.forEach((field, index) => {
-            const isOptional = field.optional === true;
+            const isOptional = isOptionalFieldForSignalType(field, signalType);
             const fieldKey = `field_${signalTypeId}_${index}`;
             const isOptionalVisible = isOptional && optionalFieldsVisibility[fieldKey];
             
@@ -842,7 +1329,7 @@ function updatePreview() {
         const fieldValue = renderTemplate(field.value || '', formData);
         
         // Skip optional fields that are hidden
-        if (field.optional === true) {
+        if (isOptionalFieldForSignalType(field, signalType)) {
             const fieldKey = `field_${signalTypeId}_${index}`;
             if (!optionalFieldsVisibility[fieldKey]) {
                 return; // Skip this optional field
@@ -1090,21 +1577,11 @@ function createDynamicFields(signalTypeId) {
                 input.rows = 3;
                 // input.placeholder = 'Additional information (optional)';
             } else if (inputType === 'checkbox') {
-                // Handle boolean/checkbox
+                // Handle boolean/checkbox (special-case is_shares later for switch UI)
                 input = document.createElement('input');
                 input.type = 'checkbox';
                 input.className = 'form-checkbox';
                 input.checked = variable.default || false;
-                
-                // Apply optional fields checkbox style for is_shares (same as optional fields)
-                if (variable.name === 'is_shares') {
-                    input.style.width = '18px';
-                    input.style.height = '18px';
-                    input.style.cursor = 'pointer';
-                    input.style.margin = '0';
-                    input.style.verticalAlign = 'middle';
-                    input.style.flexShrink = '0';
-                }
             } else {
                 input = document.createElement('input');
                 input.className = 'form-input';
@@ -1149,26 +1626,36 @@ function createDynamicFields(signalTypeId) {
             formGroup.setAttribute('data-requires-options', 'true');
         }
         
-        // For checkboxes, append input first then label and add checkbox-group class
-        if (variable.type === 'boolean' || inputType === 'checkbox') {
+        // Special: render is_shares as a modern toggle switch pill (like screenshot)
+        if ((variable.type === 'boolean' || inputType === 'checkbox') && variable.name === 'is_shares') {
+            const pill = document.createElement('div');
+            pill.className = 'toggle-pill';
+
+            const switchWrap = document.createElement('label');
+            switchWrap.className = 'toggle-switch';
+
+            // ensure id/name match existing logic
+            input.id = `id_${variable.name}`;
+            input.name = variable.name;
+
+            const slider = document.createElement('span');
+            slider.className = 'toggle-slider';
+
+            switchWrap.appendChild(input);
+            switchWrap.appendChild(slider);
+
+            const text = document.createElement('div');
+            text.className = 'toggle-label';
+            text.textContent = (variable.label || 'Equity / Shares') + ' (Disable Options fields)';
+
+            pill.appendChild(switchWrap);
+            pill.appendChild(text);
+
+            // Don't use the normal label for this one
+            formGroup.appendChild(pill);
+        } else if (variable.type === 'boolean' || inputType === 'checkbox') {
+            // Regular checkbox booleans
             formGroup.classList.add('checkbox-group');
-            
-            // Apply optional fields checkbox wrapper style for is_shares (same as optional fields)
-            if (variable.name === 'is_shares') {
-                formGroup.style.display = 'flex';
-                formGroup.style.alignItems = 'center';
-                formGroup.style.gap = '8px';
-                label.style.cursor = 'pointer';
-                label.style.color = '#333';
-                label.style.fontSize = '0.95em';
-                label.style.fontWeight = 'normal';
-                label.style.margin = '8px';
-                label.style.padding = '0';
-                label.style.lineHeight = '18px';
-                label.style.display = 'inline-block';
-                label.style.verticalAlign = 'middle';
-            }
-            
             formGroup.appendChild(input);
             formGroup.appendChild(label);
         } else {
@@ -1272,7 +1759,8 @@ function updateVariableVisibility() {
         const isInOptionalContainer = currentParent === optionalFieldsVariablesContainer;
         
         if (isUsed) {
-            formGroup.style.display = 'block';
+            // Preserve checkbox-group alignment (inline style wins over CSS)
+            formGroup.style.display = formGroup.classList.contains('checkbox-group') ? 'flex' : 'block';
             
             // is_shares should always stay in main container, never move to optional container
             if (isSpecialControl && isInOptionalContainer) {
@@ -1358,7 +1846,7 @@ function createOptionalFieldsCheckboxes(signalTypeId) {
     // Find optional fields
     const optionalFields = [];
     fields.forEach((field, index) => {
-        if (field.optional === true) {
+        if (isOptionalFieldForSignalType(field, signalType)) {
             // Extract a readable name from the field
             let fieldName = field.name || field.value || `Field ${index + 1}`;
             // Remove markdown, emojis, and variable placeholders, then clean up
@@ -1389,30 +1877,30 @@ function createOptionalFieldsCheckboxes(signalTypeId) {
     optionalFields.forEach(({index, name, field}) => {
         const fieldKey = `field_${signalTypeId}_${index}`;
         
-        // Create checkbox container
-        const checkboxWrapper = document.createElement('div');
-        checkboxWrapper.style.display = 'flex';
-        checkboxWrapper.style.alignItems = 'center';
-        checkboxWrapper.style.gap = '8px';
-        
-        // Create checkbox
+        // Create row container
+        const row = document.createElement('div');
+        row.className = 'switch-item';
+
+        // Create checkbox (kept as checkbox for logic, styled as switch)
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.id = `optional_field_${fieldKey}`;
-        checkbox.className = 'form-checkbox';
         checkbox.checked = optionalFieldsVisibility[fieldKey] || false;
-        checkbox.style.width = '18px';
-        checkbox.style.height = '18px';
-        checkbox.style.cursor = 'pointer';
-        
-        // Create label
+
+        const switchWrap = document.createElement('label');
+        switchWrap.className = 'mini-switch';
+
+        const slider = document.createElement('span');
+        slider.className = 'mini-slider';
+
+        switchWrap.appendChild(checkbox);
+        switchWrap.appendChild(slider);
+
+        // Create text label
         const label = document.createElement('label');
+        label.className = 'switch-text';
         label.htmlFor = checkbox.id;
         label.textContent = name;
-        label.style.cursor = 'pointer';
-        label.style.color = '#333';
-        label.style.fontSize = '0.95em';
-        label.style.margin = '0';
         
         // Add change event listener
         checkbox.addEventListener('change', function() {
@@ -1421,9 +1909,9 @@ function createOptionalFieldsCheckboxes(signalTypeId) {
             updatePreview();
         });
         
-        checkboxWrapper.appendChild(checkbox);
-        checkboxWrapper.appendChild(label);
-        optionalFieldsContainer.appendChild(checkboxWrapper);
+        row.appendChild(switchWrap);
+        row.appendChild(label);
+        optionalFieldsContainer.appendChild(row);
     });
 }
 
@@ -1619,7 +2107,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 fields = fields || [];
                 
                 fields.forEach((field, index) => {
-                    if (field.optional === true) {
+                    if (isOptionalFieldForSignalType(field, currentSignalType)) {
                         const fieldKey = `field_${currentSignalTypeId}_${index}`;
                         if (optionalFieldsVisibility[fieldKey] === true) {
                             optionalFieldsIndices.push(index);
