@@ -31,8 +31,8 @@ db.sqlite3-journal
 Thumbs.db
 
 # Static files (if using collectstatic)
-staticfiles/
-static/
+/staticfiles/
+/static/
 
 # Media files
 media/

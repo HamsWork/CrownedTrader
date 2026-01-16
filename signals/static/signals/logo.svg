@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Crowned Trader logo">
+  <path fill="#0b1020" d="M10 50h44v6H10z"/>
+  <path fill="#0b1020" d="M12 20l10 10 10-16 10 16 10-10-6 26H18z"/>
+  <circle cx="16" cy="18" r="4" fill="#0b1020"/>
+  <circle cx="32" cy="10" r="4" fill="#0b1020"/>
+  <circle cx="48" cy="18" r="4" fill="#0b1020"/>
+</svg>
