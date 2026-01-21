@@ -10,11 +10,12 @@ pip install -r requirements.txt
 
 ## Step 2: Create Environment File
 
-Create a file named `.env` in the project root with your Discord bot configuration:
+Create a file named `.env` in the project root with your Discord + market data configuration:
 
 ```env
 DISCORD_BOT_TOKEN=YOUR_BOT_TOKEN
 DISCORD_CHANNEL_ID=YOUR_CHANNEL_ID
+POLYGON_API_KEY=YOUR_POLYGON_API_KEY
 ```
 
 ### How to Get a Discord Bot Token:

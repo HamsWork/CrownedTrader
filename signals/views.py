@@ -6,14 +6,126 @@ from django.contrib.auth.models import User
 from django.contrib.auth.forms import PasswordChangeForm
 from django.conf import settings
 from django.http import JsonResponse
+from django.views.decorators.http import require_GET
 from django.db.models import Q
 from django.core.paginator import Paginator
 from django.core.exceptions import ValidationError
+from datetime import datetime
+import logging
 import requests
 import re
 import json
+import html
 from .forms import SignalForm, SignalTypeForm
 from .models import Signal, SignalType, UserProfile, DiscordChannel
+from .tickers import get_us_tickers
+from .polygon_client import PolygonClient
+
+logger = logging.getLogger(__name__)
+
+TRADINGVIEW_SYMBOL_SEARCH_URL = "https://symbol-search.tradingview.com/symbol_search/"
+US_STOCK_EXCHANGES = {"NASDAQ", "NYSE", "AMEX"}
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _tv_headers():
+    return {
+        "Accept": "application/json",
+        "Origin": "https://www.tradingview.com",
+        "Referer": "https://www.tradingview.com/",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+    }
+
+
+def _normalize_exchange(ex: str) -> str:
+    ex = (ex or "").strip().upper()
+    # TradingView sometimes returns variants like "NasdaqNM" etc; best-effort normalize.
+    if "NASDAQ" in ex:
+        return "NASDAQ"
+    if "NYSE" in ex:
+        return "NYSE"
+    if "AMEX" in ex or "NYSEAMERICAN" in ex or "NYSE ARCA" in ex or "ARCA" in ex:
+        return "AMEX"
+    return ex
+
+
+def _strip_html(s: str) -> str:
+    """
+    TradingView symbol search can include highlighted HTML like <em>...</em>.
+    Return plain text.
+    """
+    s = str(s or "")
+    if not s:
+        return ""
+    s = _HTML_TAG_RE.sub("", s)
+    s = html.unescape(s)
+    return s.strip()
+
+
+def _search_tickers_tradingview(q: str, *, limit: int, include_etfs: bool) -> list[dict]:
+    """
+    Live symbol search via TradingView.
+    Returns list[{symbol, name}] limited and filtered to US exchanges.
+    """
+    q = (q or "").strip()
+    if not q:
+        return []
+
+    # TradingView returns mixed asset classes; filter down to stock/etf on US exchanges.
+    allowed_types = {"stock"}
+    if include_etfs:
+        allowed_types.add("etf")
+
+    params = {
+        "text": q,
+        # Disable HTML highlight markup (otherwise descriptions may contain <em> tags)
+        "hl": "0",
+        "lang": "en",
+        "domain": "production",
+    }
+    # Keep this fast; UI is debounced and will retry as user types.
+    resp = requests.get(
+        TRADINGVIEW_SYMBOL_SEARCH_URL,
+        params=params,
+        headers=_tv_headers(),
+        timeout=6,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+
+    results = []
+    if isinstance(payload, list):
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            sym = _strip_html(item.get("symbol") or item.get("name") or "").upper()
+            desc = _strip_html(item.get("description") or item.get("full_name") or "")
+            typ = str(item.get("type") or "").strip().lower()
+            ex = _normalize_exchange(str(item.get("exchange") or ""))
+
+            if not sym or typ not in allowed_types:
+                continue
+            if ex not in US_STOCK_EXCHANGES:
+                continue
+
+            results.append({"symbol": sym, "name": desc})
+
+    # Prefer prefix matches on symbol; then alphabetical.
+    q_upper = q.upper()
+    results.sort(key=lambda r: (0 if r["symbol"].startswith(q_upper) else 1, r["symbol"]))
+    if limit:
+        results = results[:limit]
+    return results
+
+
+def _normalize_symbol(symbol: str) -> str:
+    symbol = (symbol or "").strip().upper()
+    # Basic allowlist: alnum plus "." and "-" (BRK.B, BF.B, etc)
+    if not symbol:
+        return ""
+    if not all(ch.isalnum() or ch in ".-" for ch in symbol):
+        return ""
+    return symbol
 
 DISCORD_EMBED_TITLE_MAX_CHARS = 256
 DISCORD_EMBED_DESCRIPTION_MAX_CHARS = 4096
@@ -201,20 +313,106 @@ def hex_to_int(color_hex):
     except (ValueError, AttributeError):
         return 0x808080  # Default gray
 
-def render_template(template_string, variables):
-    """Render template string by replacing {{variable}} placeholders with actual values"""
+def _get_stock_price(symbol: str, quote_cache=None):
+    """
+    Best-effort stock price lookup for template modifiers like {{ticker::stock_price}}.
+    Prefers PolygonClient (if POLYGON_API_KEY is set), falls back to Yahoo quote.
+    """
+    sym = _normalize_symbol(symbol)
+    if not sym:
+        return None
+
+    cache = quote_cache if isinstance(quote_cache, dict) else None
+    if cache is not None and sym in cache:
+        return cache[sym]
+
+    price = None
+
+    polygon_key = getattr(settings, "POLYGON_API_KEY", "") or ""
+    if polygon_key:
+        try:
+            client = PolygonClient(polygon_key)
+            q = client.get_latest_quote(sym)
+            if q and q.get("p") is not None:
+                price = float(q["p"])
+        except Exception:
+            price = None
+
+    # NOTE: Intentionally no Yahoo fallback here.
+    # If Polygon is unavailable (missing key, entitlement, rate limit), return None.
+
+    if cache is not None:
+        cache[sym] = price
+
+    return price
+
+
+def _get_company_name(symbol: str, info_cache=None) -> str:
+    """
+    Best-effort company name lookup for template modifiers like {{ticker::company_name}}.
+    Polygon-only (returns empty string if unavailable).
+    """
+    sym = _normalize_symbol(symbol)
+    if not sym:
+        return ""
+
+    cache = info_cache if isinstance(info_cache, dict) else None
+    key = f"name:{sym}"
+    if cache is not None and key in cache:
+        return cache[key] or ""
+
+    polygon_key = getattr(settings, "POLYGON_API_KEY", "") or ""
+    name = ""
+    if polygon_key:
+        try:
+            client = PolygonClient(polygon_key)
+            name = client.get_company_name(sym) or ""
+        except Exception:
+            name = ""
+
+    if cache is not None:
+        cache[key] = name
+
+    return name
+
+
+def render_template(template_string, variables, quote_cache=None):
+    """
+    Render template string by replacing {{variable}} placeholders with actual values.
+
+    Supports modifiers:
+      - {{ticker::stock_price}} -> current stock price for the ticker symbol
+    """
     if not template_string:
         return ""
-    
-    def replace_var(match):
-        var_name = match.group(1).strip()
-        return str(variables.get(var_name, ""))
-    
-    # Replace {{variable}} patterns
-    result = re.sub(r'\{\{(\w+)\}\}', replace_var, template_string)
-    return result
 
-def render_fields_template(fields_template, variables, optional_fields_indices=None):
+    def replace_var(match):
+        var_name = (match.group(1) or "").strip()
+        modifier = (match.group(2) or "").strip()
+
+        if modifier == "stock_price":
+            # Convention: ticker variable holds a symbol string.
+            symbol = variables.get(var_name, "") if isinstance(variables, dict) else ""
+            price = _get_stock_price(str(symbol or ""), quote_cache=quote_cache)
+            # Default when unavailable: 0.0
+            return f"{price:.2f}" if isinstance(price, (int, float)) else "0.0"
+
+        if modifier == "company_name":
+            symbol = variables.get(var_name, "") if isinstance(variables, dict) else ""
+            return _get_company_name(str(symbol or ""), info_cache=quote_cache)
+
+        # Convenience: allow "namespaced" access like {{ticker::strike}} meaning {{strike}}.
+        # (The base name is ignored; modifier is treated as the target variable.)
+        if modifier in ("is_shares", "strike", "expiration", "option_type", "option_price"):
+            val = variables.get(modifier, "") if isinstance(variables, dict) else ""
+            return str(val) if val is not None else ""
+
+        return str(variables.get(var_name, "")) if isinstance(variables, dict) else ""
+
+    # Replace {{variable}} and {{variable::modifier}} patterns
+    return re.sub(r"\{\{(\w+)(?:::(\w+))?\}\}", replace_var, template_string)
+
+def render_fields_template(fields_template, variables, optional_fields_indices=None, quote_cache=None):
     """Render fields template from JSONField
     
     Args:
@@ -245,8 +443,8 @@ def render_fields_template(fields_template, variables, optional_fields_indices=N
                 continue  # Skip this optional field
         
         rendered_field = {
-            "name": render_template(field.get('name', ''), variables),
-            "value": render_template(field.get('value', ''), variables),
+            "name": render_template(field.get('name', ''), variables, quote_cache=quote_cache),
+            "value": render_template(field.get('value', ''), variables, quote_cache=quote_cache),
             "inline": field.get('inline', False),
             "optional": field.get('optional', False)
         }
@@ -303,12 +501,13 @@ def get_signal_template(signal):
     color_int = hex_to_int(signal_type.color)
     
     # Render templates
-    title = render_template(signal_type.title_template, data_copy) if show_title else None
-    description = render_template(signal_type.description_template, data_copy) if show_description else None
-    footer = render_template(signal_type.footer_template, data_copy)
+    quote_cache = {}
+    title = render_template(signal_type.title_template, data_copy, quote_cache=quote_cache) if show_title else None
+    description = render_template(signal_type.description_template, data_copy, quote_cache=quote_cache) if show_description else None
+    footer = render_template(signal_type.footer_template, data_copy, quote_cache=quote_cache)
     
     # Render fields with optional field filtering
-    fields = render_fields_template(signal_type.fileds_template, data_copy, optional_fields_indices)
+    fields = render_fields_template(signal_type.fileds_template, data_copy, optional_fields_indices, quote_cache=quote_cache)
     
     embed = {
         "color": color_int,
@@ -563,6 +762,341 @@ def get_signal_type_variables(request):
         })
     except SignalType.DoesNotExist:
         return JsonResponse({'error': 'Signal type not found'}, status=404)
+
+
+@login_required
+@require_GET
+def us_tickers(request):
+    """
+    API endpoint for a cached list of US ticker symbols used by ticker dropdowns.
+
+    Query params:
+      - source: "tradingview" (live) or "cache" (us_tickers.json); default: tradingview when q is provided, else cache
+      - q: optional search string (matches symbol substring or name substring)
+      - limit: optional max results (capped)
+    """
+    source = (request.GET.get("source") or "").strip().lower()
+    q = (request.GET.get("q") or "").strip()
+    limit_raw = (request.GET.get("limit") or "").strip()
+
+    limit = 0
+    if limit_raw:
+        try:
+            limit = int(limit_raw)
+        except ValueError:
+            limit = 0
+    # Hard cap to avoid accidentally returning huge payloads when used for search UX.
+    if limit < 0:
+        limit = 0
+    if limit > 200:
+        limit = 200
+
+    # Default behavior:
+    # - For live search UX (q provided): TradingView (unless explicitly overridden)
+    # - For full list load (no q): cached file (fast, avoids huge remote calls)
+    if not source:
+        source = "tradingview" if q else "cache"
+
+    include_etfs = True  # keep consistent with existing behavior unless you want a flag later
+
+    if source == "tradingview":
+        # Live search only (TradingView endpoint is search-oriented, not a full-universe dump).
+        try:
+            tickers = _search_tickers_tradingview(q, limit=limit or 40, include_etfs=include_etfs) if q else []
+            return JsonResponse({"tickers": tickers, "source": "tradingview"})
+        except Exception as e:
+            # Fall back to cache to keep UI usable.
+            # (We intentionally don't expose internal error details to the client.)
+            tickers = []
+            # Continue into cache flow below.
+
+    # Cache flow (fallback or explicit)
+    tickers_all = list(get_us_tickers() or [])
+    tickers = tickers_all
+
+    if q:
+        q_upper = q.upper()
+        q_lower = q.lower()
+        filtered = []
+        for t in tickers_all:
+            if not isinstance(t, dict):
+                continue
+            sym = str(t.get("symbol") or "").strip().upper()
+            name = str(t.get("name") or "").strip()
+            if not sym:
+                continue
+            if q_upper in sym or (name and q_lower in name.lower()):
+                filtered.append({"symbol": sym, "name": name})
+        filtered.sort(key=lambda r: (0 if r["symbol"].startswith(q_upper) else 1, r["symbol"]))
+        tickers = filtered
+
+    if limit:
+        tickers = tickers[:limit]
+
+    return JsonResponse({"tickers": tickers, "source": "cache"})
+
+
+@login_required
+@require_GET
+def quote(request):
+    """
+    Quote endpoint used by the dashboard to auto-fill the current price.
+
+    Query params:
+      - symbol: ticker symbol (e.g. AAPL)
+    """
+    
+    symbol = _normalize_symbol(request.GET.get("symbol") or "")
+    
+    if not symbol:
+        logger.error(f"Symbol is required")
+        return JsonResponse({"error": "symbol is required"}, status=400)
+    
+    logger.info(f"Quote request for symbol: {symbol}")
+
+    # Polygon-only
+    polygon_key = getattr(settings, "POLYGON_API_KEY", "") or ""
+    if not polygon_key:
+        return JsonResponse(
+            {"error": "POLYGON_API_KEY is not set", "source": "polygon"},
+            status=502,
+        )
+
+    client = PolygonClient(polygon_key)
+    q = client.get_latest_quote(symbol)
+    if q and q.get("p") is not None:
+        company_name = ""
+        try:
+            company_name = client.get_company_name(symbol) or ""
+        except Exception:
+            company_name = ""
+        return JsonResponse(
+            {
+                "symbol": symbol,
+                "price": q.get("p"),
+                "bid": q.get("bid"),
+                "ask": q.get("ask"),
+                "company_name": company_name,
+                "source": "polygon",
+            }
+        )
+
+    # Polygon configured but no quote returned
+    payload = {"error": "quote fetch failed", "source": "polygon", "symbol": symbol}
+    if getattr(settings, "DEBUG", False):
+        payload["polygon_error"] = getattr(client, "last_error", None)
+    return JsonResponse(payload, status=502)
+
+
+@login_required
+@require_GET
+def option_suggest(request):
+    """
+    Suggest an at-the-money (ATM) option (nearest expiration) and return its price.
+
+    Query params:
+      - symbol: ticker symbol (e.g. AAPL)
+      - side: "call" or "put"
+    """
+    symbol = _normalize_symbol(request.GET.get("symbol") or "")
+    side = (request.GET.get("side") or "").strip().lower()
+    if side not in ("call", "put"):
+        return JsonResponse({"error": "side must be call or put"}, status=400)
+    if not symbol:
+        return JsonResponse({"error": "symbol is required"}, status=400)
+
+    # Fetch underlying price first (prefer Polygon if configured; fallback Yahoo)
+    polygon_key = getattr(settings, "POLYGON_API_KEY", "") or ""
+    quote_url = "https://query2.finance.yahoo.com/v7/finance/quote"
+    opt_url = f"https://query2.finance.yahoo.com/v7/finance/options/{symbol}"
+
+    try:
+        underlying_price = None
+        if polygon_key:
+            client = PolygonClient(polygon_key)
+            underlying_price = client.get_share_current_price(symbol)
+
+        if underlying_price is None:
+            qresp = requests.get(quote_url, params={"symbols": symbol}, timeout=6)
+            qresp.raise_for_status()
+            qpayload = qresp.json() if qresp.content else {}
+            qresult = ((qpayload.get("quoteResponse") or {}).get("result") or [])
+            if not qresult:
+                return JsonResponse({"error": "symbol not found"}, status=404)
+            underlying = qresult[0] or {}
+            underlying_price = underlying.get("regularMarketPrice")
+            if underlying_price is None:
+                return JsonResponse({"error": "underlying price unavailable"}, status=502)
+
+        oresp = requests.get(opt_url, timeout=8)
+        oresp.raise_for_status()
+        opayload = oresp.json() if oresp.content else {}
+        chain = ((opayload.get("optionChain") or {}).get("result") or [])
+        if not chain:
+            return JsonResponse({"error": "options unavailable"}, status=404)
+
+        chain0 = chain[0] or {}
+        expirations = chain0.get("expirationDates") or []
+        options = chain0.get("options") or []
+        if not expirations or not options:
+            return JsonResponse({"error": "options unavailable"}, status=404)
+
+        # Yahoo returns an options list matching a particular expiration (usually first in response).
+        opt0 = options[0] or {}
+        contracts = opt0.get("calls" if side == "call" else "puts") or []
+        if not contracts:
+            return JsonResponse({"error": "no contracts"}, status=404)
+
+        # Pick strike closest to underlying price.
+        best = None
+        best_dist = None
+        for c in contracts:
+            strike = c.get("strike")
+            if strike is None:
+                continue
+            dist = abs(float(strike) - float(underlying_price))
+            if best is None or dist < best_dist:
+                best = c
+                best_dist = dist
+
+        if not best:
+            return JsonResponse({"error": "no contracts"}, status=404)
+
+        bid = best.get("bid")
+        ask = best.get("ask")
+        last_price = best.get("lastPrice")
+        mid = None
+        try:
+            if bid is not None and ask is not None and float(bid) > 0 and float(ask) > 0:
+                mid = (float(bid) + float(ask)) / 2.0
+        except Exception:
+            mid = None
+
+        option_price = mid if mid is not None else last_price
+
+        # expiration in the response is seconds since epoch; convert to YYYY-MM-DD in UTC.
+        exp_epoch = best.get("expiration")
+        exp_date = ""
+        if exp_epoch:
+            try:
+                exp_date = datetime.utcfromtimestamp(int(exp_epoch)).strftime("%Y-%m-%d")
+            except Exception:
+                exp_date = ""
+
+        return JsonResponse(
+            {
+                "symbol": symbol,
+                "underlying_price": underlying_price,
+                "side": side,
+                "contract": best.get("contractSymbol") or "",
+                "strike": best.get("strike"),
+                "expiration": exp_date,
+                "option_price": option_price,
+                "bid": bid,
+                "ask": ask,
+                "source": "yahoo",
+            }
+        )
+    except requests.RequestException:
+        return JsonResponse({"error": "option fetch failed"}, status=502)
+
+
+@login_required
+@require_GET
+def option_quote(request):
+    """
+    Quote a specific option contract from Polygon based on:
+      - symbol (AAPL)
+      - expiration (YYYY-MM-DD)
+      - strike (float)
+      - side (call/put or CALL/PUT)
+    """
+    symbol = _normalize_symbol(request.GET.get("symbol") or "")
+    expiration = (request.GET.get("expiration") or "").strip()
+    strike_raw = (request.GET.get("strike") or "").strip()
+    side_raw = (request.GET.get("side") or "").strip().lower()
+
+    if not symbol:
+        return JsonResponse({"error": "symbol is required"}, status=400)
+    if not expiration:
+        return JsonResponse({"error": "expiration is required"}, status=400)
+    if not strike_raw:
+        return JsonResponse({"error": "strike is required"}, status=400)
+
+    side = "call" if "call" in side_raw or side_raw == "c" else ("put" if "put" in side_raw or side_raw == "p" else "")
+    if side not in ("call", "put"):
+        return JsonResponse({"error": "side must be call or put"}, status=400)
+
+    try:
+        strike = float(strike_raw)
+    except ValueError:
+        return JsonResponse({"error": "invalid strike"}, status=400)
+
+    # Parse YYYY-MM-DD -> YYMMDD
+    try:
+        exp_dt = datetime.strptime(expiration, "%Y-%m-%d")
+    except ValueError:
+        return JsonResponse({"error": "expiration must be YYYY-MM-DD"}, status=400)
+
+    exp_yyMMdd = exp_dt.strftime("%y%m%d")
+    strike_formatted = f"{int(round(strike * 1000)):08d}"
+    cp = "C" if side == "call" else "P"
+    contract = f"O:{symbol}{exp_yyMMdd}{cp}{strike_formatted}"
+
+    polygon_key = getattr(settings, "POLYGON_API_KEY", "") or ""
+    if not polygon_key:
+        return JsonResponse({"error": "POLYGON_API_KEY is not set", "source": "polygon"}, status=502)
+
+    client = PolygonClient(polygon_key)
+    q = client.get_option_quote(contract)
+    if q and q.get("price") is not None:
+        return JsonResponse(
+            {
+                "symbol": symbol,
+                "expiration": expiration,
+                "strike": strike,
+                "side": side,
+                "contract": contract,
+                "price": q.get("price"),
+                "bid": q.get("bid"),
+                "ask": q.get("ask"),
+                "mid": q.get("mid"),
+                "timestamp": q.get("timestamp"),
+                "source": "polygon",
+            }
+        )
+
+    # If the exact strike isn't a listed contract (common when strike defaults to stock price),
+    # snap to the nearest listed strike and quote that contract instead.
+    nearest = client.find_nearest_option_contract(underlying=symbol, expiration=expiration, side=side, target_strike=strike)
+    if nearest and nearest.get("contract"):
+        resolved_contract = nearest["contract"]
+        resolved_strike = nearest.get("strike")
+        q2 = client.get_option_quote(resolved_contract)
+        if q2 and q2.get("price") is not None:
+            return JsonResponse(
+                {
+                    "symbol": symbol,
+                    "expiration": expiration,
+                    "side": side,
+                    "requested_strike": strike,
+                    "requested_contract": contract,
+                    "strike": resolved_strike,
+                    "contract": resolved_contract,
+                    "price": q2.get("price"),
+                    "bid": q2.get("bid"),
+                    "ask": q2.get("ask"),
+                    "mid": q2.get("mid"),
+                    "timestamp": q2.get("timestamp"),
+                    "source": "polygon",
+                    "resolved": True,
+                }
+            )
+
+    payload = {"error": "option quote failed", "source": "polygon", "contract": contract}
+    if getattr(settings, "DEBUG", False):
+        payload["polygon_error"] = getattr(client, "last_error", None)
+    return JsonResponse(payload, status=502)
 
 def is_superuser(user):
     """Check if user is superuser"""
@@ -990,15 +1524,21 @@ def signal_types_list(request):
     return render(request, 'signals/signal_types_list.html', {
         'user_signal_types': user_signal_types,
         'system_signal_types': system_signal_types,
+        'is_superuser': request.user.is_superuser,
     })
 
 @login_required
 def signal_type_create(request):
     """Create a new signal type"""
+    can_create_system = request.user.is_superuser
     if request.method == 'POST':
-        form = SignalTypeForm(request.POST, user=request.user)
+        make_system = can_create_system and (request.POST.get('is_system') in ('1', 'true', 'on', 'yes'))
+        owner = None if make_system else request.user
+        form = SignalTypeForm(request.POST, user=owner)
         if form.is_valid():
-            form.save()
+            obj = form.save(commit=False)
+            obj.user = owner
+            obj.save()
             messages.success(request, 'Signal type created successfully!')
             return redirect('signal_types_list')
     else:
@@ -1006,7 +1546,11 @@ def signal_type_create(request):
     
     return render(request, 'signals/signal_type_form.html', {
         'form': form,
-        'form_type': 'create'
+        'form_type': 'create',
+        'is_default': False,
+        'is_locked': False,
+        'can_edit_default': can_create_system,
+        'is_system_checked': False,
     })
 
 @login_required
@@ -1016,30 +1560,44 @@ def signal_type_edit(request, signal_type_id):
     
     # Check if this is a system default template (user is None)
     is_default = signal_type.user is None
+    can_edit_default = request.user.is_superuser
+    is_locked = is_default and not can_edit_default
     
     # Check if user has permission to edit this signal type
-    if signal_type.user and signal_type.user != request.user:
+    if (not request.user.is_superuser) and signal_type.user and signal_type.user != request.user:
         messages.error(request, 'You do not have permission to edit this signal type.')
         return redirect('signal_types_list')
     
     # Prevent editing default templates
-    if is_default and request.method == 'POST':
+    if is_locked and request.method == 'POST':
         messages.warning(request, 'System default templates are read-only and cannot be modified.')
         return redirect('signal_types_list')
     
     if request.method == 'POST':
-        form = SignalTypeForm(request.POST, instance=signal_type, user=request.user)
+        # Superusers may save as system template (user=NULL); others always save as their own.
+        make_system = can_edit_default and (request.POST.get('is_system') in ('1', 'true', 'on', 'yes'))
+        owner = None if make_system else (signal_type.user or request.user)
+        if not can_edit_default:
+            owner = request.user
+
+        form = SignalTypeForm(request.POST, instance=signal_type, user=owner)
         if form.is_valid():
-            form.save()
+            obj = form.save(commit=False)
+            obj.user = owner
+            obj.save()
             messages.success(request, 'Signal type updated successfully!')
             return redirect('signal_types_list')
     else:
-        form = SignalTypeForm(instance=signal_type, user=request.user)
+        # Use the template owner for uniqueness validation
+        form = SignalTypeForm(instance=signal_type, user=signal_type.user)
     
     return render(request, 'signals/signal_type_form.html', {
         'form': form,
         'form_type': 'edit',
         'is_default': is_default,
+        'is_locked': is_locked,
+        'can_edit_default': can_edit_default,
+        'is_system_checked': is_default,
         'signal_type': signal_type
     })
 
@@ -1047,9 +1605,13 @@ def signal_type_edit(request, signal_type_id):
 def signal_type_delete(request, signal_type_id):
     """Delete a signal type"""
     signal_type = get_object_or_404(SignalType, id=signal_type_id)
+    is_default = signal_type.user is None
     
     # Check if user has permission to delete this signal type
-    if signal_type.user and signal_type.user != request.user:
+    if is_default and (not request.user.is_superuser):
+        messages.error(request, 'You do not have permission to delete system default templates.')
+        return redirect('signal_types_list')
+    if (not request.user.is_superuser) and signal_type.user and signal_type.user != request.user:
         messages.error(request, 'You do not have permission to delete this signal type.')
         return redirect('signal_types_list')
     

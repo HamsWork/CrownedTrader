@@ -218,6 +218,99 @@
         color: #e0e0e0;
     }
 
+    /* Ticker search dropdown (ticker_select / ticker_type) */
+    .ticker-search {
+        position: relative;
+        width: 100%;
+    }
+
+    /* Ticker + is_shares inline row */
+    .ticker-type-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+    }
+
+    .ticker-type-row .ticker-search {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .ticker-type-row .toggle-pill {
+        flex: 0 0 auto;
+        width: auto;
+        padding: 10px 12px;
+        border-radius: 12px;
+    }
+
+    .ticker-type-row .toggle-label {
+        font-size: 0.9em;
+        max-width: 260px;
+    }
+
+    .ticker-search-dropdown {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        right: 0;
+        /* Keep results above other form controls */
+        z-index: 2000;
+        /* Opaque background so underlying controls (e.g. is_shares toggle) don't show through */
+        background: #0a1023;
+        border: 1px solid rgba(42, 55, 95, 0.85);
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        max-height: 280px;
+        overflow: auto;
+        padding: 6px;
+        display: none;
+    }
+
+    .ticker-search-dropdown.open {
+        display: block;
+    }
+
+    .ticker-search-item {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+        border: 1px solid transparent;
+        user-select: none;
+    }
+
+    .ticker-search-item:hover,
+    .ticker-search-item.active {
+        background: rgba(var(--accent-rgb), 0.10);
+        border-color: rgba(var(--accent-rgb), 0.25);
+    }
+
+    .ticker-search-symbol {
+        font-weight: 700;
+        color: #e5e7eb;
+        letter-spacing: 0.2px;
+    }
+
+    .ticker-search-name {
+        color: #9ca3af;
+        font-size: 0.92em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+        text-align: right;
+    }
+
+    .ticker-search-empty {
+        padding: 10px 10px;
+        color: #9ca3af;
+        font-size: 0.92em;
+    }
+
     .form-input:hover, .form-textarea:hover, .form-select:hover {
         border-color: rgba(42, 55, 95, 0.9);
     }
@@ -274,7 +367,8 @@
     }
 
     .form-textarea {
-        resize: vertical;
+        resize: none;
+        overflow-y: hidden;
     }
 
     .form-checkbox {
@@ -360,7 +454,7 @@
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
     }
 
-    /* Toggle switch (Equity / Shares) – matches screenshot */
+    /* Toggle switch (Is_Shares) */
     .toggle-pill {
         display: flex;
         align-items: center;
@@ -825,6 +919,8 @@
 
                     <!-- Dynamic Form Fields Container -->
                     <div id="dynamicFields"></div>
+                    <!-- Searchable dropdown source for US ticker symbols -->
+                    <datalist id="usTickerList"></datalist>
 
                     <!-- Embed Display Options -->
                     <div class="sub-card">
@@ -953,6 +1049,345 @@ console.log('Number of signal types:', Object.keys(signalTypesData).length);
 // Track visibility of optional fields (default: hidden)
 const optionalFieldsVisibility = {};
 
+// Cached US ticker list for searchable dropdowns (datalist)
+let usTickersLoaded = false;
+let usTickersLoadingPromise = null;
+
+function ensureUsTickersLoaded() {
+    if (usTickersLoaded) return Promise.resolve(true);
+    if (usTickersLoadingPromise) return usTickersLoadingPromise;
+
+    const listEl = document.getElementById('usTickerList');
+    if (!listEl) {
+        usTickersLoaded = true;
+        return Promise.resolve(false);
+    }
+
+    usTickersLoadingPromise = fetch('/api/us-tickers/', { credentials: 'same-origin' })
+        .then((res) => res.ok ? res.json() : Promise.reject(new Error('Failed to load tickers')))
+        .then((payload) => {
+            const tickers = Array.isArray(payload?.tickers) ? payload.tickers : [];
+            // Populate datalist with <option value="AAPL">Apple Inc.</option>
+            listEl.innerHTML = '';
+            tickers.forEach((t) => {
+                const sym = String(t?.symbol || '').trim().toUpperCase();
+                if (!sym) return;
+                const opt = document.createElement('option');
+                opt.value = sym;
+                const name = String(t?.name || '').trim();
+                if (name) opt.label = name;
+                listEl.appendChild(opt);
+            });
+            usTickersLoaded = true;
+            return true;
+        })
+        .catch((e) => {
+            console.warn('Ticker list load failed:', e);
+            usTickersLoaded = true; // Don't keep retrying aggressively
+            return false;
+        });
+
+    return usTickersLoadingPromise;
+}
+
+// --- Ticker search (typeahead) ---
+function debounce(fn, waitMs) {
+    let t = null;
+    return function(...args) {
+        clearTimeout(t);
+        t = setTimeout(() => fn.apply(this, args), waitMs);
+    };
+}
+
+function getTodayISODate() {
+    // YYYY-MM-DD in local time
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function autoResizeTextarea(textarea) {
+    if (!textarea) return;
+    // Grow/shrink based on content; prevent inner scrollbars.
+    textarea.style.height = 'auto';
+    textarea.style.overflowY = 'hidden';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+}
+
+function wireAutoResizeTextareas(root = document) {
+    const textareas = root.querySelectorAll ? root.querySelectorAll('textarea.form-textarea') : [];
+    textareas.forEach((ta) => {
+        // Avoid attaching multiple times
+        if (ta.dataset.autosizeWired === '1') return;
+        ta.dataset.autosizeWired = '1';
+        ta.style.resize = 'none';
+        ta.style.overflowY = 'hidden';
+        ta.addEventListener('input', () => autoResizeTextarea(ta));
+        // Initial sizing
+        setTimeout(() => autoResizeTextarea(ta), 0);
+    });
+}
+
+// Cache last fetched metadata per symbol so live preview can show company_name/stock_price
+const tickerMetaCache = {};
+
+async function fetchTickerSearch(query, { limit = 40, signal } = {}) {
+    const q = String(query || '').trim();
+    const url = `/api/us-tickers/?source=tradingview&q=${encodeURIComponent(q)}&limit=${encodeURIComponent(String(limit || 40))}`;
+    const res = await fetch(url, { credentials: 'same-origin', signal });
+    if (!res.ok) throw new Error('Failed to search tickers');
+    const payload = await res.json();
+    const tickers = Array.isArray(payload?.tickers) ? payload.tickers : [];
+    return tickers
+        .map(t => ({
+            symbol: String(t?.symbol || '').trim().toUpperCase(),
+            name: String(t?.name || '').trim()
+        }))
+        .filter(t => t.symbol);
+}
+
+function createTickerSearchControl(variable) {
+    const wrap = document.createElement('div');
+    wrap.className = 'ticker-search';
+
+    const input = document.createElement('input');
+    input.className = 'form-input';
+    input.type = 'text';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.placeholder = variable.hint || 'Search ticker (e.g., AAPL, TSLA)';
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'ticker-search-dropdown';
+
+    wrap.appendChild(input);
+    wrap.appendChild(dropdown);
+
+    let activeIndex = -1;
+    let currentItems = [];
+    let abortController = null;
+    let suppressSearch = false;
+
+    function closeDropdown() {
+        dropdown.classList.remove('open');
+        activeIndex = -1;
+    }
+
+    function openDropdown() {
+        dropdown.classList.add('open');
+    }
+
+    function renderItems(items, { loading = false } = {}) {
+        dropdown.innerHTML = '';
+        currentItems = items;
+        activeIndex = -1;
+
+        if (loading) {
+            const empty = document.createElement('div');
+            empty.className = 'ticker-search-empty';
+            empty.textContent = 'Searching...';
+            dropdown.appendChild(empty);
+            openDropdown();
+            return;
+        }
+
+        if (!items || items.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'ticker-search-empty';
+            empty.textContent = input.value.trim() ? 'No matches.' : 'Start typing to search tickers.';
+            dropdown.appendChild(empty);
+            openDropdown();
+            return;
+        }
+
+        items.forEach((t, idx) => {
+            const row = document.createElement('div');
+            row.className = 'ticker-search-item';
+            row.setAttribute('role', 'option');
+            row.dataset.index = String(idx);
+
+            const sym = document.createElement('div');
+            sym.className = 'ticker-search-symbol';
+            sym.textContent = t.symbol;
+
+            const name = document.createElement('div');
+            name.className = 'ticker-search-name';
+            name.textContent = t.name || '';
+
+            row.appendChild(sym);
+            row.appendChild(name);
+
+            const selectItem = (e) => {
+                // Prevent blur-before-select on some browsers.
+                if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                suppressSearch = true;
+                input.value = t.symbol;
+                closeDropdown();
+                // Trigger preview + hidden JSON update paths without re-opening the dropdown search.
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                // Drop focus to make it feel like a "selection".
+                try { input.blur(); } catch (_) {}
+                // Re-enable searching after this tick.
+                setTimeout(() => { suppressSearch = false; }, 0);
+            };
+
+            row.addEventListener('pointerdown', selectItem);
+            row.addEventListener('mousedown', selectItem);
+            row.addEventListener('click', selectItem);
+
+            dropdown.appendChild(row);
+        });
+
+        openDropdown();
+    }
+
+    const doSearch = debounce(async () => {
+        const q = input.value.trim();
+        if (abortController) abortController.abort();
+        abortController = new AbortController();
+        renderItems([], { loading: true });
+        try {
+            const items = await fetchTickerSearch(q, { limit: 40, signal: abortController.signal });
+            renderItems(items);
+        } catch (e) {
+            if (String(e?.name) === 'AbortError') return;
+            console.warn('Ticker search failed:', e);
+            renderItems([]);
+        }
+    }, 140);
+
+    input.addEventListener('focus', () => {
+        // Show suggestions box (empty state) immediately.
+        renderItems(currentItems || []);
+    });
+
+    input.addEventListener('blur', () => {
+        // Allow click selection first.
+        setTimeout(() => closeDropdown(), 120);
+    });
+
+    input.addEventListener('input', () => {
+        if (suppressSearch) return;
+        doSearch();
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (!dropdown.classList.contains('open')) return;
+        const items = Array.from(dropdown.querySelectorAll('.ticker-search-item'));
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = Math.min(activeIndex + 1, items.length - 1);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = Math.max(activeIndex - 1, 0);
+        } else if (e.key === 'Enter') {
+            if (activeIndex >= 0 && currentItems[activeIndex]) {
+                e.preventDefault();
+                suppressSearch = true;
+                input.value = currentItems[activeIndex].symbol;
+                closeDropdown();
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                try { input.blur(); } catch (_) {}
+                setTimeout(() => { suppressSearch = false; }, 0);
+            }
+            return;
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closeDropdown();
+            return;
+        } else {
+            return;
+        }
+
+        items.forEach((el, idx) => el.classList.toggle('active', idx === activeIndex));
+        const activeEl = items[activeIndex];
+        if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+    });
+
+    return { wrap, input };
+}
+
+// Auto-fill helpers (avoid overwriting user edits)
+function markUserTouched(el) {
+    if (!el) return;
+    el.dataset.userTouched = '1';
+    if (el.dataset.autoFilled === '1') el.dataset.autoFilled = '0';
+}
+
+function canAutoFill(el) {
+    if (!el) return false;
+    return el.dataset.userTouched !== '1';
+}
+
+function setValueIfAllowed(el, value) {
+    if (!el) return false;
+    const v = (value === null || value === undefined) ? '' : String(value);
+    const isEmpty = !String(el.value || '').trim();
+    const wasAuto = el.dataset.autoFilled === '1';
+    if (!canAutoFill(el)) return false;
+    if (!isEmpty && !wasAuto) return false;
+
+    el.value = v;
+    el.dataset.autoFilled = '1';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+}
+
+function findFieldByName(name) {
+    return document.querySelector(`#dynamicFields [name="${CSS.escape(name)}"], #optionalFieldsVariablesContainer [name="${CSS.escape(name)}"]`);
+}
+
+function getCurrentTickerSymbol() {
+    const el = findFieldByName('ticker') || findFieldByName('symbol');
+    const v = el ? String(el.value || '').trim().toUpperCase() : '';
+    return v;
+}
+
+async function fetchQuote(symbol) {
+    const sym = String(symbol || '').trim().toUpperCase();
+    if (!sym) return null;
+    const res = await fetch(`/api/quote/?symbol=${encodeURIComponent(sym)}`, { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    const payload = await res.json();
+    return payload && payload.price != null ? payload : null;
+}
+
+async function fetchOptionSuggest(symbol, side) {
+    const sym = String(symbol || '').trim().toUpperCase();
+    const s = String(side || '').trim().toLowerCase();
+    if (!sym || !['call','put'].includes(s)) return null;
+    const res = await fetch(`/api/option-suggest/?symbol=${encodeURIComponent(sym)}&side=${encodeURIComponent(s)}`, { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    return await res.json();
+}
+
+async function fetchOptionQuote(symbol, { strike, expiration, side } = {}) {
+    const sym = String(symbol || '').trim().toUpperCase();
+    const exp = String(expiration || '').trim();
+    const s = String(side || '').trim().toLowerCase();
+    const k = strike;
+    if (!sym || !exp || !k || !['call','put'].includes(s)) return null;
+    const url = `/api/option-quote/?symbol=${encodeURIComponent(sym)}&expiration=${encodeURIComponent(exp)}&strike=${encodeURIComponent(String(k))}&side=${encodeURIComponent(s)}`;
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) {
+        // Best-effort debug info (shows up in browser console)
+        try {
+            const errPayload = await res.json();
+            console.warn('Option quote failed:', res.status, errPayload);
+        } catch (_) {
+            console.warn('Option quote failed:', res.status);
+        }
+        return null;
+    }
+    const payload = await res.json();
+    return payload && payload.price != null ? payload : null;
+}
+
 // Map variable types to input field types
 function getInputType(variableType) {
     const typeMap = {
@@ -961,7 +1396,8 @@ function getInputType(variableType) {
         'float': 'number',
         'date': 'date',
         'text': 'textarea',
-        'boolean': 'checkbox'
+        'boolean': 'checkbox',
+        'ticker_type': 'text'
     };
     return typeMap[variableType] || 'text';
 }
@@ -1100,10 +1536,41 @@ function parseDiscordMarkdown(text) {
     return html;
 }
 
-// Render template by replacing {{variable}} placeholders
+// Render template by replacing {% templatetag openvariable %}variable{% templatetag closevariable %} placeholders (supports {% templatetag openvariable %}var::stock_price{% templatetag closevariable %})
 function renderTemplate(template, data) {
     if (!template) return '';
-    return template.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+    return template.replace(/\{\{(\w+)(?:::(\w+))?\}\}/g, (match, varName, modifier) => {
+        if (modifier === 'stock_price') {
+            // For preview: use whichever price field exists in the form data (already auto-filled).
+            const p = data.current_price ?? data.entry_price ?? data.price;
+            if (p !== undefined && p !== null && String(p).trim() !== '') return String(p);
+            const sym = (data && data[varName]) ? String(data[varName]).trim().toUpperCase() : '';
+            const cached = sym ? tickerMetaCache[sym] : null;
+            return (cached && cached.price != null) ? String(cached.price) : '0.0';
+        }
+        if (modifier === 'company_name') {
+            // Preview: use a provided company_name if present, else use cached metadata.
+            const name = data.company_name;
+            if (name !== undefined && name !== null && String(name).trim() !== '') return String(name);
+            const sym = (data && data[varName]) ? String(data[varName]).trim().toUpperCase() : '';
+            const cached = sym ? tickerMetaCache[sym] : null;
+            return (cached && cached.company_name) ? String(cached.company_name) : 'Company Name';
+        }
+        if (modifier === 'option_price') {
+            // Shares mode: options are disabled, so remove option_price from preview entirely.
+            const isSharesCheckbox = document.getElementById('id_is_shares');
+            const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+            if (isShares) return '';
+
+            // Prefer explicit fields if present; default to 0.0
+            const v = data.option_price ?? data.entry_price ?? data.price;
+            return (v !== undefined && v !== null && String(v).trim() !== '') ? String(v) : '0.0';
+        }
+        if (modifier && (modifier in data)) {
+            // Allow {% templatetag openvariable %}ticker::strike{% templatetag closevariable %} style access (treat modifier as the real variable name).
+            const v = data[modifier];
+            return (v !== undefined && v !== null) ? String(v) : '';
+        }
         return data[varName] !== undefined ? String(data[varName]) : match;
     });
 }
@@ -1112,11 +1579,18 @@ function renderTemplate(template, data) {
 function extractVariablesFromTemplate(template) {
     if (!template) return [];
     const variables = [];
-    const regex = /\{\{(\w+)\}\}/g;
+    const regex = /\{\{(\w+)(?:::(\w+))?\}\}/g;
     let match;
     while ((match = regex.exec(template)) !== null) {
-        if (!variables.includes(match[1])) {
-            variables.push(match[1]);
+        // Track base variable name and (for certain modifiers) also track the modifier as a "real" variable.
+        const base = match[1];
+        const modifier = match[2];
+        if (base && !variables.includes(base)) variables.push(base);
+
+        // If template uses {% templatetag openvariable %}ticker::strike{% templatetag closevariable %},
+        // treat "strike" as a used variable so the strike input is shown.
+        if (modifier && ['is_shares', 'strike', 'expiration', 'option_type'].includes(modifier)) {
+            if (!variables.includes(modifier)) variables.push(modifier);
         }
     }
     return variables;
@@ -1353,6 +1827,11 @@ function updatePreview() {
             if (fieldNameLower.includes('strike') || fieldNameLower.includes('expiration')){
                 return;
             }
+            // Also remove any field related to option_price in shares mode.
+            if (fieldNameLower.includes('option_price') || fieldValueLower.includes('option_price') ||
+                fieldNameLower.includes('option price') || fieldValueLower.includes('option price')) {
+                return;
+            }
         }
         
         // Store field data for rendering
@@ -1530,10 +2009,181 @@ function createDynamicFields(signalTypeId) {
     // Get used variables to determine visibility
     const { all: usedVariables, optionalOnly: optionalOnlyVariables } = getUsedVariables(signalTypeId);
     
+    let tickerTypeToggleSlot = null;
+    let isSharesPill = null;
+    let isSharesFormGroup = null;
+    const hasIsSharesVariable = Array.isArray(variables) && variables.some(v => v && v.name === 'is_shares');
+    const hasStrikeVariable = Array.isArray(variables) && variables.some(v => v && v.name === 'strike');
+    const hasExpirationVariable = Array.isArray(variables) && variables.some(v => v && v.name === 'expiration');
+    const hasOptionTypeVariable = Array.isArray(variables) && variables.some(v => v && v.name === 'option_type');
+    const hasOptionPriceVariable = Array.isArray(variables) && variables.some(v => v && v.name === 'option_price');
+
+    function createSyntheticIsSharesPill() {
+        // Create the same pill UI used for real is_shares variables, but without needing it in the template variables list.
+        const pill = document.createElement('div');
+        pill.className = 'toggle-pill';
+
+        const switchWrap = document.createElement('label');
+        switchWrap.className = 'toggle-switch';
+
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.className = 'form-checkbox';
+        input.id = 'id_is_shares';
+        input.name = 'is_shares';
+        input.checked = false;
+
+        const slider = document.createElement('span');
+        slider.className = 'toggle-slider';
+
+        switchWrap.appendChild(input);
+        switchWrap.appendChild(slider);
+
+        const text = document.createElement('div');
+        text.className = 'toggle-label';
+        text.textContent = 'Is_Shares (Disable Options fields)';
+
+        pill.appendChild(switchWrap);
+        pill.appendChild(text);
+
+        return { pill, input };
+    }
+
+    function createSyntheticOptionField(name) {
+        const formGroup = document.createElement('div');
+        formGroup.className = 'form-group';
+        formGroup.setAttribute('data-variable-name', name);
+        formGroup.setAttribute('data-requires-options', 'true');
+
+        const label = document.createElement('label');
+        label.textContent = ({
+            strike: 'Strike',
+            expiration: 'Expiration',
+            option_type: 'Option Type',
+        })[name] || name;
+        label.setAttribute('for', `id_${name}`);
+
+        let input;
+        if (name === 'strike') {
+            input = document.createElement('input');
+            input.type = 'number';
+            input.step = '0.01';
+            input.className = 'form-input';
+            input.placeholder = 'Enter strike price (e.g., 150.50)';
+        } else if (name === 'expiration') {
+            input = document.createElement('input');
+            input.type = 'date';
+            input.className = 'form-input';
+            const today = getTodayISODate();
+            input.min = today;
+            if (!input.value) input.value = today;
+        } else if (name === 'option_type') {
+            input = document.createElement('select');
+            input.className = 'form-select';
+            ['CALL', 'PUT'].forEach((opt) => {
+                const o = document.createElement('option');
+                o.value = opt;
+                o.textContent = opt;
+                input.appendChild(o);
+            });
+        } else {
+            input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-input';
+        }
+
+        input.id = `id_${name}`;
+        input.name = name;
+
+        formGroup.appendChild(label);
+        formGroup.appendChild(input);
+
+        // match event behavior of other dynamic inputs
+        input.addEventListener('input', updatePreview);
+        input.addEventListener('change', updatePreview);
+        input.addEventListener('input', () => markUserTouched(input));
+
+        // When synthetic strike/expiration/option_type changes, quote that exact contract and fill option_price.
+        if (['strike', 'expiration', 'option_type'].includes(name)) {
+            const maybeQuote = debounce(async () => {
+                const isSharesCheckbox = document.getElementById('id_is_shares');
+                const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+                if (isShares) return;
+
+                const sym = getCurrentTickerSymbol();
+                if (!sym) return;
+
+                const strikeEl = findFieldByName('strike');
+                const expEl = findFieldByName('expiration');
+                const optTypeEl = findFieldByName('option_type');
+                const strikeVal = strikeEl ? parseFloat(String(strikeEl.value || '').trim()) : NaN;
+                const expVal = expEl ? String(expEl.value || '').trim() : '';
+                const raw = optTypeEl ? String(optTypeEl.value || '').trim().toLowerCase() : '';
+                const side = raw.includes('put') ? 'put' : (raw.includes('call') ? 'call' : '');
+
+                if (!expVal || !side || !isFinite(strikeVal) || strikeVal <= 0) return;
+
+                const q = await fetchOptionQuote(sym, { strike: strikeVal, expiration: expVal, side });
+                if (!q) return;
+
+                const optionPriceEl = findFieldByName('option_price');
+                const entryPriceEl = findFieldByName('entry_price');
+                const priceEl = findFieldByName('price');
+                const contractEl = findFieldByName('option_contract');
+                const strikeEl2 = findFieldByName('strike');
+
+                setValueIfAllowed(optionPriceEl, q.price);
+                setValueIfAllowed(entryPriceEl, q.price);
+                setValueIfAllowed(priceEl, q.price);
+                setValueIfAllowed(contractEl, q.contract);
+                // If backend snapped to a nearest listed strike, reflect it in the UI.
+                if (q.strike != null) setValueIfAllowed(strikeEl2, q.strike);
+
+                updatePreview();
+            }, 250);
+
+            input.addEventListener('change', maybeQuote);
+            input.addEventListener('input', maybeQuote);
+        }
+
+        return formGroup;
+    }
+
+    function createSyntheticHiddenField(name, defaultValue = '') {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.id = `id_${name}`;
+        input.name = name;
+        input.value = String(defaultValue ?? '');
+        // Mark as auto-filled so setValueIfAllowed can overwrite it later.
+        input.dataset.autoFilled = '1';
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'form-group';
+        wrapper.classList.add('synthetic-hidden');
+        wrapper.style.display = 'none';
+        wrapper.setAttribute('data-variable-name', name);
+        wrapper.appendChild(input);
+
+        input.addEventListener('input', updatePreview);
+        input.addEventListener('change', updatePreview);
+        return wrapper;
+    }
+
+    function attachIsSharesToTickerType() {
+        if (!tickerTypeToggleSlot || !isSharesPill) return;
+        tickerTypeToggleSlot.innerHTML = '';
+        tickerTypeToggleSlot.appendChild(isSharesPill);
+        // Remove the original container if we rendered it separately first.
+        if (isSharesFormGroup && isSharesFormGroup.parentNode) {
+            isSharesFormGroup.parentNode.removeChild(isSharesFormGroup);
+        }
+    }
+
     variables.forEach(variable => {
         // Check if this variable is used
         // is_shares is a special control variable that should always be visible
-        const isSpecialControl = variable.name === 'is_shares';
+        const isSpecialControl = variable.name === 'is_shares' || variable.type === 'ticker_type';
         const isUsed = usedVariables.has(variable.name) || isSpecialControl;
         const isOptionalOnly = optionalOnlyVariables.has(variable.name);
         
@@ -1570,6 +2220,49 @@ function createDynamicFields(signalTypeId) {
                 }
                 input.appendChild(optionElement);
             });
+        } else if (variable.type === 'ticker_select') {
+            // If custom options exist, render a select; otherwise use the global US ticker datalist.
+            const hasOptions = Array.isArray(variable.options) && variable.options.length > 0;
+            if (hasOptions) {
+                input = document.createElement('select');
+                input.className = 'form-select';
+                variable.options.forEach(option => {
+                    const optionElement = document.createElement('option');
+                    optionElement.value = option;
+                    optionElement.textContent = option;
+                    if (variable.default && option === variable.default) {
+                        optionElement.selected = true;
+                    }
+                    input.appendChild(optionElement);
+                });
+            } else {
+                const control = createTickerSearchControl(variable);
+                input = control.input;
+                input._tickerSearchWrap = control.wrap;
+            }
+        } else if (variable.type === 'ticker_type') {
+            // Searchable input backed by server-side search (avoid loading full ticker universe)
+            const control = createTickerSearchControl(variable);
+            input = control.input;
+            input._tickerSearchWrap = control.wrap;
+
+            // If the template didn't define an is_shares variable, add the toggle inline by default.
+            if (!hasIsSharesVariable && !isSharesPill) {
+                const created = createSyntheticIsSharesPill();
+                isSharesPill = created.pill;
+                // Keep behavior consistent with normal inputs
+                created.input.addEventListener('input', updatePreview);
+                created.input.addEventListener('change', updatePreview);
+            }
+
+            // If template didn't define option fields, add them by default (they'll be hidden when is_shares is true).
+            formGroup._afterSyntheticGroups = [];
+            if (!hasStrikeVariable) formGroup._afterSyntheticGroups.push(createSyntheticOptionField('strike'));
+            if (!hasExpirationVariable) formGroup._afterSyntheticGroups.push(createSyntheticOptionField('expiration'));
+            if (!hasOptionTypeVariable) formGroup._afterSyntheticGroups.push(createSyntheticOptionField('option_type'));
+            // Ensure option_price is present in submitted JSON even if not defined in variables.
+            if (!hasOptionPriceVariable) formGroup._afterSyntheticGroups.push(createSyntheticHiddenField('option_price', '0.0'));
+
         } else {
             if (inputType === 'textarea') {
                 input = document.createElement('textarea');
@@ -1608,6 +2301,21 @@ function createDynamicFields(signalTypeId) {
         
         input.id = `id_${variable.name}`;
         input.name = variable.name;
+
+        // Allow auto-filling option_price even if it starts at the default "0.0"
+        if (variable.name === 'option_price') {
+            const v = String(input.value || '').trim();
+            if (v === '' || v === '0.0') {
+                input.dataset.autoFilled = '1';
+            }
+        }
+
+        // Expiration: default to today and disallow past dates
+        if (variable.name === 'expiration' && input && input.type === 'date') {
+            const today = getTodayISODate();
+            input.min = today;
+            if (!input.value) input.value = today;
+        }
         
         // Add HTML5 required attribute if field is required
         if (isRequired) {
@@ -1646,13 +2354,21 @@ function createDynamicFields(signalTypeId) {
 
             const text = document.createElement('div');
             text.className = 'toggle-label';
-            text.textContent = (variable.label || 'Equity / Shares') + ' (Disable Options fields)';
+            text.textContent = (variable.label || 'Is_Shares') + ' (Disable Options fields)';
 
             pill.appendChild(switchWrap);
             pill.appendChild(text);
 
-            // Don't use the normal label for this one
-            formGroup.appendChild(pill);
+            isSharesPill = pill;
+            isSharesFormGroup = formGroup;
+
+            // If ticker_type exists, embed this toggle inline next to it; otherwise fall back to normal placement.
+            if (tickerTypeToggleSlot) {
+                attachIsSharesToTickerType();
+            } else {
+                // Don't use the normal label for this one
+                formGroup.appendChild(pill);
+            }
         } else if (variable.type === 'boolean' || inputType === 'checkbox') {
             // Regular checkbox booleans
             formGroup.classList.add('checkbox-group');
@@ -1660,7 +2376,25 @@ function createDynamicFields(signalTypeId) {
             formGroup.appendChild(label);
         } else {
             formGroup.appendChild(label);
-            formGroup.appendChild(input);
+            // For ticker search inputs we created an extra wrapper; append it instead of the raw input.
+            if (input && input._tickerSearchWrap) {
+                // If this is ticker_type, render a row that can host the is_shares toggle inline.
+                if (variable.type === 'ticker_type') {
+                    const row = document.createElement('div');
+                    row.className = 'ticker-type-row';
+                    row.appendChild(input._tickerSearchWrap);
+                    const slot = document.createElement('div');
+                    slot.className = 'ticker-type-toggle-slot';
+                    row.appendChild(slot);
+                    formGroup.appendChild(row);
+                    tickerTypeToggleSlot = slot;
+                    attachIsSharesToTickerType();
+                } else {
+                    formGroup.appendChild(input._tickerSearchWrap);
+                }
+            } else {
+                formGroup.appendChild(input);
+            }
         }
         
         // Place in appropriate container based on whether it's optional-only and visible
@@ -1671,10 +2405,134 @@ function createDynamicFields(signalTypeId) {
         } else {
             dynamicFieldsContainer.appendChild(formGroup);
         }
+
+        // Insert any synthetic option fields (strike/expiration/option_type) right after ticker_type.
+        if (variable.type === 'ticker_type' && Array.isArray(formGroup._afterSyntheticGroups) && formGroup._afterSyntheticGroups.length > 0) {
+            formGroup._afterSyntheticGroups.forEach((g) => {
+                dynamicFieldsContainer.appendChild(g);
+            });
+        }
         
         // Add event listeners for real-time preview
         input.addEventListener('input', updatePreview);
         input.addEventListener('change', updatePreview);
+
+        // Track manual edits to avoid overwriting auto-filled values.
+        input.addEventListener('input', () => markUserTouched(input));
+
+        // Auto-fetch current price when selecting a ticker_type field.
+        if (variable.type === 'ticker_type') {
+            input.addEventListener('change', async () => {
+                const sym = String(input.value || '').trim().toUpperCase();
+                if (!sym) return;
+                const quote = await fetchQuote(sym);
+                if (!quote) return;
+
+                // Cache for live preview usage (company_name/stock_price modifiers).
+                tickerMetaCache[sym] = {
+                    price: quote.price,
+                    company_name: quote.company_name || '',
+                };
+
+                // Fill best available "price" field (current_price > entry_price > price)
+                const currentPriceEl = findFieldByName('current_price');
+                const entryPriceEl = findFieldByName('entry_price');
+                const priceEl = findFieldByName('price');
+                const companyNameEl = findFieldByName('company_name');
+                const strikeEl = findFieldByName('strike');
+                const isSharesCheckbox = document.getElementById('id_is_shares');
+                const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+
+                setValueIfAllowed(currentPriceEl, quote.price);
+                setValueIfAllowed(entryPriceEl, quote.price);
+                setValueIfAllowed(priceEl, quote.price);
+                setValueIfAllowed(companyNameEl, quote.company_name);
+                // Default strike to stock price (options mode only; don't overwrite user edits).
+                if (!isShares) {
+                    setValueIfAllowed(strikeEl, quote.price);
+                }
+
+                // Even if there is no explicit price/company_name input in the template,
+                // we still want the live preview to re-render using tickerMetaCache.
+                updatePreview();
+            });
+        }
+
+        // Auto-suggest option when user selects PUT/CALL (option_type)
+        if (variable.name === 'option_type') {
+            input.addEventListener('change', async () => {
+                const isSharesCheckbox = document.getElementById('id_is_shares');
+                const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+                if (isShares) return; // options disabled for shares mode
+
+                const raw = String(input.value || '').trim().toLowerCase();
+                const side = raw.includes('put') ? 'put' : (raw.includes('call') ? 'call' : '');
+                if (!side) return;
+
+                const sym = getCurrentTickerSymbol();
+                if (!sym) return;
+
+                const suggestion = await fetchOptionSuggest(sym, side);
+                if (!suggestion || suggestion.error) return;
+
+                const strikeEl = findFieldByName('strike');
+                const expEl = findFieldByName('expiration');
+                const entryPriceEl = findFieldByName('entry_price');
+                const priceEl = findFieldByName('price');
+                const contractEl = findFieldByName('option_contract');
+
+                setValueIfAllowed(strikeEl, suggestion.strike);
+                setValueIfAllowed(expEl, suggestion.expiration);
+                setValueIfAllowed(entryPriceEl, suggestion.option_price);
+                setValueIfAllowed(priceEl, suggestion.option_price);
+                setValueIfAllowed(contractEl, suggestion.contract);
+            });
+        }
+
+        // When ticker + strike + expiration + option_type are set, quote that exact contract and fill option_price.
+        // Use debounced input/change so typing strike updates the option price without requiring blur.
+        const optionFieldNames = new Set(['strike', 'expiration', 'option_type']);
+        if (optionFieldNames.has(variable.name)) {
+            const maybeQuote = debounce(async () => {
+                const isSharesCheckbox = document.getElementById('id_is_shares');
+                const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+                if (isShares) return;
+
+                const sym = getCurrentTickerSymbol();
+                if (!sym) return;
+
+                const strikeEl = findFieldByName('strike');
+                const expEl = findFieldByName('expiration');
+                const optTypeEl = findFieldByName('option_type');
+                const strikeVal = strikeEl ? parseFloat(String(strikeEl.value || '').trim()) : NaN;
+                const expVal = expEl ? String(expEl.value || '').trim() : '';
+                const raw = optTypeEl ? String(optTypeEl.value || '').trim().toLowerCase() : '';
+                const side = raw.includes('put') ? 'put' : (raw.includes('call') ? 'call' : '');
+
+                if (!expVal || !side || !isFinite(strikeVal) || strikeVal <= 0) return;
+
+                const q = await fetchOptionQuote(sym, { strike: strikeVal, expiration: expVal, side });
+                if (!q) return;
+
+                const optionPriceEl = findFieldByName('option_price');
+                const entryPriceEl = findFieldByName('entry_price');
+                const priceEl = findFieldByName('price');
+                const contractEl = findFieldByName('option_contract');
+                const strikeEl2 = findFieldByName('strike');
+
+                setValueIfAllowed(optionPriceEl, q.price);
+                setValueIfAllowed(entryPriceEl, q.price);
+                setValueIfAllowed(priceEl, q.price);
+                setValueIfAllowed(contractEl, q.contract);
+                // If backend snapped to a nearest listed strike, reflect it in the UI.
+                if (q.strike != null) setValueIfAllowed(strikeEl2, q.strike);
+
+                updatePreview();
+            }, 250);
+
+            input.addEventListener('change', maybeQuote);
+            input.addEventListener('input', maybeQuote);
+        }
     });
     
     // Set up is_shares checkbox handler
@@ -1683,6 +2541,40 @@ function createDynamicFields(signalTypeId) {
         isSharesCheckbox.addEventListener('change', function() {
             toggleOptionFields(this.checked);
             updateVariableVisibility(); // Update variable visibility when is_shares changes
+            // If switching back to options mode, reset option-related inputs to defaults.
+            if (!this.checked) {
+                const sym = getCurrentTickerSymbol();
+                const cached = sym ? tickerMetaCache[sym] : null;
+                const today = getTodayISODate();
+                const strikeEl = findFieldByName('strike');
+                const expEl = findFieldByName('expiration');
+                const optTypeEl = findFieldByName('option_type');
+                const optionPriceEl = findFieldByName('option_price');
+
+                const forceSet = (el, value) => {
+                    if (!el) return;
+                    el.value = String(value ?? '');
+                    el.dataset.autoFilled = '1';
+                    // Fire events so preview + option quote logic update.
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                };
+
+                // Defaults: expiration=today (and not in past), option_type=CALL
+                if (expEl) {
+                    expEl.min = today;
+                    forceSet(expEl, today);
+                }
+                forceSet(optTypeEl, 'CALL');
+
+                // Default strike to current stock price if known; otherwise keep existing value.
+                if (cached && cached.price != null) {
+                    forceSet(strikeEl, cached.price);
+                }
+
+                // Default option_price to 0.0; it will be overwritten by /api/option-quote/ once inputs are valid.
+                forceSet(optionPriceEl, '0.0');
+            }
             updatePreview();
         });
         // Initialize on page load
@@ -1708,6 +2600,10 @@ function createDynamicFields(signalTypeId) {
     
     // Update variable visibility after fields are created
     updateVariableVisibility();
+
+    // Auto-resize any textareas in the Send Signal panel (no scrollbars)
+    wireAutoResizeTextareas(document.getElementById('dynamicFields'));
+    wireAutoResizeTextareas(document.getElementById('optionalFieldsVariablesContainer'));
     
     // Update preview after fields are created
     updatePreview();
@@ -1746,6 +2642,13 @@ function updateVariableVisibility() {
     
     const dynamicFieldsContainer = document.getElementById('dynamicFields');
     const optionalFieldsVariablesContainer = document.getElementById('optionalFieldsVariablesContainer');
+
+    const isSharesCheckbox = document.getElementById('id_is_shares');
+    const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+    // If we have a ticker_type control, show option fields by default (unless is_shares is enabled).
+    const hasTickerTypeControl = !!document.querySelector('#dynamicFields .ticker-type-row, #optionalFieldsVariablesContainer .ticker-type-row');
+    const optionFieldNames = new Set(['strike', 'expiration', 'option_type']);
+    const forceShowOptionFields = hasTickerTypeControl && !isShares;
     
     // Update visibility of all variable inputs
     const variableInputs = document.querySelectorAll('#dynamicFields [data-variable-name], #optionalFieldsVariablesContainer [data-variable-name]');
@@ -1753,14 +2656,19 @@ function updateVariableVisibility() {
         const variableName = formGroup.getAttribute('data-variable-name');
         // is_shares is a special control variable that should always be visible
         const isSpecialControl = variableName === 'is_shares';
-        const isUsed = usedVariables.has(variableName) || isSpecialControl;
+        const isUsed = usedVariables.has(variableName) || isSpecialControl || (forceShowOptionFields && optionFieldNames.has(variableName));
         const isOptionalOnly = optionalOnlyVariables.has(variableName);
         const currentParent = formGroup.parentElement;
         const isInOptionalContainer = currentParent === optionalFieldsVariablesContainer;
         
         if (isUsed) {
-            // Preserve checkbox-group alignment (inline style wins over CSS)
-            formGroup.style.display = formGroup.classList.contains('checkbox-group') ? 'flex' : 'block';
+            // Keep synthetic hidden fields hidden (but still included in data).
+            if (formGroup.classList.contains('synthetic-hidden')) {
+                formGroup.style.display = 'none';
+            } else {
+                // Preserve checkbox-group alignment (inline style wins over CSS)
+                formGroup.style.display = formGroup.classList.contains('checkbox-group') ? 'flex' : 'block';
+            }
             
             // is_shares should always stay in main container, never move to optional container
             if (isSpecialControl && isInOptionalContainer) {

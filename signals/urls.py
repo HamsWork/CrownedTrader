@@ -5,6 +5,10 @@ urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('history/', views.signals_history, name='signals_history'),
     path('api/signal-type-variables/', views.get_signal_type_variables, name='get_signal_type_variables'),
+    path('api/us-tickers/', views.us_tickers, name='us_tickers'),
+    path('api/quote/', views.quote, name='quote'),
+    path('api/option-suggest/', views.option_suggest, name='option_suggest'),
+    path('api/option-quote/', views.option_quote, name='option_quote'),
     # Authentication URLs
     path('login/', views.user_login, name='user_login'),
     path('logout/', views.user_logout, name='user_logout'),

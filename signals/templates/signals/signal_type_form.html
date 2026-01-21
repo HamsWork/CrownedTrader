@@ -6,7 +6,7 @@
 {% block breadcrumbs %}
 <a href="{% url 'signal_types_list' %}">Signal Types</a>
 <span>/</span>
-<span>{% if form_type == 'create' %}Create New Type{% else %}{% if is_default %}View Template{% else %}Edit Template{% endif %}{% endif %}</span>
+<span>{% if form_type == 'create' %}Create New Type{% else %}{% if is_locked %}View Template{% else %}Edit Template{% endif %}{% endif %}</span>
 {% endblock %}
 
 {% block extra_css %}
@@ -1123,12 +1123,12 @@
 <div class="stf-page">
 <div class="page-header">
     <div class="page-title">
-        <h1>{% if form_type == 'create' %}Create Signal Type{% else %}{% if is_default %}View Signal Template{% else %}Edit Signal Template{% endif %}{% endif %}</h1>
+        <h1>{% if form_type == 'create' %}Create Signal Type{% else %}{% if is_locked %}View Signal Template{% else %}Edit Signal Template{% endif %}{% endif %}</h1>
         <p>Define a new signal structure, variables, and Discord output format.</p>
     </div>
     <div class="page-actions">
         <a class="btn-cancel" href="{% url 'signal_types_list' %}">Cancel</a>
-        {% if is_default %}
+        {% if is_locked %}
             <button class="btn-save" type="button" disabled>💾 Save Signal Type</button>
         {% else %}
             <button class="btn-save" type="submit" form="signalTypeForm">💾 Save Signal Type</button>
@@ -1140,7 +1140,7 @@
     <div class="form-content">
         <div class="form-container">
             <div class="form-header">
-                {% if is_default %}
+                {% if is_locked %}
                 <div style="background: rgba(var(--accent-rgb), 0.10); border: 1px solid rgba(var(--accent-rgb), 0.35); border-radius: 14px; padding: 14px 16px; margin-top: 0; text-align: left;">
                     <strong>🔒 System Default Template (Read-Only)</strong>
                     <p style="margin: 8px 0 0 0; color: rgba(232, 236, 255, 0.75); font-size: 0.95em;">
@@ -1148,11 +1148,35 @@
                         Create your own custom signal type to make changes.
                     </p>
                 </div>
+                {% elif is_default and can_edit_default %}
+                <div style="background: rgba(16, 185, 129, 0.10); border: 1px solid rgba(16, 185, 129, 0.30); border-radius: 14px; padding: 14px 16px; margin-top: 0; text-align: left;">
+                    <strong>🛠️ System Template (Editable as Superuser)</strong>
+                    <p style="margin: 8px 0 0 0; color: rgba(232, 236, 255, 0.75); font-size: 0.95em;">
+                        You are a superuser, so you can edit and save system templates.
+                    </p>
+                </div>
                 {% endif %}
             </div>
 
-            <form method="post" id="signalTypeForm" data-read-only="{% if is_default %}1{% else %}0{% endif %}" {% if is_default %}onsubmit="return false;"{% endif %}>
+            <form method="post" id="signalTypeForm" data-read-only="{% if is_locked %}1{% else %}0{% endif %}" {% if is_locked %}onsubmit="return false;"{% endif %}>
         {% csrf_token %}
+
+        {% if can_edit_default %}
+        <div class="form-section" style="margin-bottom: 22px;">
+            <div class="section-header">
+                <div class="section-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Z"/></svg>
+                </div>
+                <h3 class="form-section-title">Ownership</h3>
+            </div>
+            <div class="section-divider"></div>
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="id_is_system" name="is_system" value="on" {% if is_system_checked %}checked{% endif %}>
+                <label for="id_is_system">Save as <strong>system</strong> signal type (user = NULL)</label>
+            </div>
+            <small>Superusers can create/edit system templates. Uncheck to keep it as a user-owned template.</small>
+        </div>
+        {% endif %}
         
         <!-- Basic Information -->
         <div class="form-section">
@@ -1167,13 +1191,13 @@
             <div class="form-group">
                 <label for="{{ form.name.id_for_label }}">
                     Name *
-                    {% if is_default %}
+                    {% if is_locked %}
                     <span class="lock-inline" aria-hidden="true">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg>
                     </span>
                     {% endif %}
                 </label>
-                {% if is_default %}
+                {% if is_locked %}
                     <div style="position: relative;">
                         <input type="text" id="{{ form.name.id_for_label }}" class="form-input" value="{{ form.name.value }}" readonly>
                     </div>
@@ -1189,15 +1213,15 @@
             <div class="form-group">
                 <label for="{{ form.color.id_for_label }}">
                     Color
-                    {% if is_default %}
+                    {% if is_locked %}
                     <span class="lock-inline" aria-hidden="true">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg>
                     </span>
                     {% endif %}
                 </label>
                 <div class="color-input-group">
-                    <input type="color" id="colorPicker" value="{{ form.color.value|default:'#000000' }}" {% if is_default %}readonly disabled style="cursor: not-allowed;"{% else %}onchange="document.getElementById('id_color').value = this.value"{% endif %}>
-                    {% if is_default %}
+                    <input type="color" id="colorPicker" value="{{ form.color.value|default:'#000000' }}" {% if is_locked %}readonly disabled style="cursor: not-allowed;"{% else %}onchange="document.getElementById('id_color').value = this.value"{% endif %}>
+                    {% if is_locked %}
                         <div style="position: relative; flex: 1;">
                             <input type="text" id="id_color" class="form-input" value="{{ form.color.value|default:'#000000' }}" readonly>
                         </div>
@@ -1226,7 +1250,7 @@
                 Use <code>{% templatetag openvariable %}variable_name{% templatetag closevariable %}</code> syntax in templates to reference these variables.
             </div>
             <div id="variablesContainer" class="dynamic-list"></div>
-            {% if not is_default %}
+            {% if not is_locked %}
             <button type="button" class="btn-add-wide" onclick="addVariable()">
                 <span class="plus">+</span>
                 <span>Add Variable</span>
@@ -1269,6 +1293,7 @@
                             <strong style="color: #333;">Examples:</strong>
                             <ul style="margin: 8px 0 0 0; padding-left: 20px; color: #666;">
                                 <li>Title: <code>🚨 {% templatetag openvariable %}ticker{% templatetag closevariable %} Trade Alert</code></li>
+                            <li>Live stock price: <code>${% templatetag openvariable %}ticker::stock_price{% templatetag closevariable %}</code> <span style="color: #6b7280;">(defaults to 0.0)</span></li>
                                 <li>Description: <code>Price: ${% templatetag openvariable %}price{% templatetag closevariable %} | Strike: {% templatetag openvariable %}strike{% templatetag closevariable %}</code></li>
                                 <li>Field Value: <code>{% templatetag openvariable %}expiration{% templatetag closevariable %} expires at {% templatetag openvariable %}time{% templatetag closevariable %}</code></li>
                             </ul>
@@ -1303,13 +1328,13 @@
             <div class="form-group">
                 <label for="{{ form.title_template.id_for_label }}">
                     Title Template *
-                    {% if is_default %}
+                    {% if is_locked %}
                     <span class="lock-inline" aria-hidden="true">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg>
                     </span>
                     {% endif %}
                 </label>
-                {% if is_default %}
+                {% if is_locked %}
                     <div style="position: relative;">
                         <textarea id="{{ form.title_template.id_for_label }}" class="form-textarea" readonly style="resize: none;">{{ form.title_template.value|default:'' }}</textarea>
                     </div>
@@ -1325,13 +1350,13 @@
             <div class="form-group">
                 <label for="{{ form.description_template.id_for_label }}">
                     Description Template
-                    {% if is_default %}
+                    {% if is_locked %}
                     <span class="lock-inline" aria-hidden="true">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg>
                     </span>
                     {% endif %}
                 </label>
-                {% if is_default %}
+                {% if is_locked %}
                     <div style="position: relative;">
                         <textarea id="{{ form.description_template.id_for_label }}" class="form-textarea" readonly style="resize: none;">{{ form.description_template.value|default:'' }}</textarea>
                     </div>
@@ -1347,13 +1372,13 @@
             <div class="form-group">
                 <label for="{{ form.footer_template.id_for_label }}">
                     Footer Template
-                    {% if is_default %}
+                    {% if is_locked %}
                     <span class="lock-inline" aria-hidden="true">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg>
                     </span>
                     {% endif %}
                 </label>
-                {% if is_default %}
+                {% if is_locked %}
                     <div style="position: relative;">
                         <textarea id="{{ form.footer_template.id_for_label }}" class="form-textarea" readonly style="resize: none;">{{ form.footer_template.value|default:'' }}</textarea>
                     </div>
@@ -1372,7 +1397,7 @@
                 <div style="display: flex; flex-direction: column; gap: 10px;">
                     <div class="switch-item">
                         <label class="mini-switch">
-                            {% if is_default %}
+                            {% if is_locked %}
                                 <input type="checkbox" id="{{ form.show_title_default.id_for_label }}" disabled checked>
                             {% else %}
                                 {{ form.show_title_default }}
@@ -1380,7 +1405,7 @@
                             <span class="mini-slider"></span>
                         </label>
                         <label class="switch-text" for="{{ form.show_title_default.id_for_label }}">Show title by default</label>
-                        {% if is_default %}
+                        {% if is_locked %}
                             <span class="readonly-indicator" style="position: static; margin-left: 6px;">🔒</span>
                         {% endif %}
                     </div>
@@ -1390,7 +1415,7 @@
                     
                     <div class="switch-item">
                         <label class="mini-switch">
-                            {% if is_default %}
+                            {% if is_locked %}
                                 <input type="checkbox" id="{{ form.show_description_default.id_for_label }}" disabled checked>
                             {% else %}
                                 {{ form.show_description_default }}
@@ -1398,7 +1423,7 @@
                             <span class="mini-slider"></span>
                         </label>
                         <label class="switch-text" for="{{ form.show_description_default.id_for_label }}">Show description by default</label>
-                        {% if is_default %}
+                        {% if is_locked %}
                             <span class="readonly-indicator" style="position: static; margin-left: 6px;">🔒</span>
                         {% endif %}
                     </div>
@@ -1424,7 +1449,7 @@
                 both supporting <code>{% templatetag openvariable %}variable{% templatetag closevariable %}</code> syntax. Use empty name/value for spacers.
             </div>
             <div id="fieldsContainer" class="dynamic-list"></div>
-            {% if not is_default %}
+            {% if not is_locked %}
             <div class="add-actions">
                 <button type="button" class="btn-add-wide" onclick="addField()">
                     <span class="plus">+</span>
@@ -1555,6 +1580,8 @@ function renderVariables() {
                         <option value="boolean" ${var_.type === 'boolean' ? 'selected' : ''}>Boolean</option>
                         <option value="text" ${var_.type === 'text' ? 'selected' : ''}>Text</option>
                         <option value="select" ${var_.type === 'select' ? 'selected' : ''}>Select</option>
+                        <option value="ticker_select" ${var_.type === 'ticker_select' ? 'selected' : ''}>Ticker Select</option>
+                        <option value="ticker_type" ${var_.type === 'ticker_type' ? 'selected' : ''}>Ticker Type</option>
                     </select>
                 </div>
             </div>
@@ -1573,12 +1600,12 @@ function renderVariables() {
                     ${isReadOnly ? '' : ''}
                 </div>
             </div>
-            ${var_.type === 'select' ? `
+            ${(var_.type === 'select' || var_.type === 'ticker_select') ? `
             <div class="form-group">
-                <label>Options * (comma-separated) ${isReadOnly ? `<span class="lock-inline" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg></span>` : ''}</label>
+                <label>${var_.type === 'ticker_select' ? 'Custom Tickers (optional)' : 'Options * (comma-separated)'} ${isReadOnly ? `<span class="lock-inline" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/></svg></span>` : ''}</label>
                 <input type="text" class="form-input${isReadOnly ? ' readonly' : ''}" value="${(var_.options || []).join(', ')}" 
                        ${isReadOnly ? 'readonly' : 'onchange="updateVariable(' + index + ', \'options\', this.value)"'} 
-                       placeholder="e.g., PUT, CALL">
+                       placeholder="${var_.type === 'ticker_select' ? 'e.g., AAPL, TSLA, NVDA (leave empty for all US tickers)' : 'e.g., PUT, CALL'}">
                 ${isReadOnly ? '' : ''}
             </div>
             ` : ''}
@@ -1788,17 +1815,63 @@ function generateSampleData() {
                 const options = Array.isArray(v.options) ? v.options : (v.options || '').split(',').map(o => o.trim());
                 sampleData[v.name] = v.default || (options[0] || 'Option');
                 break;
+            case 'ticker_select': {
+                const options = Array.isArray(v.options) ? v.options : (v.options || '').split(',').map(o => o.trim());
+                sampleData[v.name] = v.default || (options[0] || 'AAPL');
+                break;
+            }
+            case 'ticker_type':
+                sampleData[v.name] = v.default || 'AAPL';
+                break;
             default:
                 sampleData[v.name] = v.default || 'Sample';
         }
     });
+
+    // Defaults for namespaced option helpers (used via var::strike / var::expiration / var::option_type)
+    if (sampleData['expiration'] === undefined) {
+        // YYYY-MM-DD
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        sampleData['expiration'] = `${y}-${m}-${day}`;
+    }
+    if (sampleData['strike'] === undefined) {
+        sampleData['strike'] = '0.0';
+    }
+    if (sampleData['option_type'] === undefined) {
+        sampleData['option_type'] = 'CALL';
+    }
+    if (sampleData['option_price'] === undefined) {
+        sampleData['option_price'] = '0.0';
+    }
+
     return sampleData;
 }
 
-// Render template by replacing {{variable}} placeholders
+// Render template by replacing {% templatetag openvariable %}variable{% templatetag closevariable %} placeholders
+// (supports {% templatetag openvariable %}var::stock_price{% templatetag closevariable %})
 function renderTemplate(template, data) {
     if (!template) return '';
-    return template.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+    return template.replace(/\{\{(\w+)(?:::(\w+))?\}\}/g, (match, varName, modifier) => {
+        if (modifier === 'stock_price') {
+            // Template-builder preview doesn't fetch live quotes; default to 0.0
+            return '0.0';
+        }
+        if (modifier === 'company_name') {
+            // Template-builder preview doesn't fetch company details; show placeholder.
+            return 'Company Name';
+        }
+        // Defaults for namespaced option helpers
+        if (modifier === 'expiration') return data.expiration ?? (new Date().toISOString().slice(0, 10));
+        if (modifier === 'strike') return data.strike ?? '0.0';
+        if (modifier === 'option_type') return data.option_type ?? 'CALL';
+        if (modifier === 'option_price') return data.option_price ?? '0.0';
+        if (modifier && (modifier in data)) {
+            // Allow {% templatetag openvariable %}ticker::strike{% templatetag closevariable %} style access (treat modifier as the real variable name).
+            return data[modifier];
+        }
         return data[varName] !== undefined ? data[varName] : match;
     });
 }

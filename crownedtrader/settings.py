@@ -4,6 +4,7 @@ Django settings for crownedtrader project.
 
 from pathlib import Path
 import os
+import logging
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -130,6 +131,9 @@ DISCORD_WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL', '')
 # Option 2: Bot Token (requires bot permissions)
 DISCORD_BOT_TOKEN = os.environ.get('DISCORD_BOT_TOKEN', '')
 DISCORD_CHANNEL_ID = os.environ.get('DISCORD_CHANNEL_ID', '')
+
+# Market data (Polygon)
+POLYGON_API_KEY = os.environ.get('POLYGON_API_KEY', '')
 
 # Additional settings
 STATIC_ROOT = BASE_DIR / 'staticfiles'

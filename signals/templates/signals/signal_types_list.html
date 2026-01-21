@@ -460,7 +460,7 @@
         <div class="st-section-header">
             <h2>
                 System Default Signal Types
-                <span class="st-lock" aria-hidden="true" title="System templates are read-only">
+                <span class="st-lock" aria-hidden="true" title="{% if is_superuser %}System templates are editable for superusers{% else %}System templates are read-only{% endif %}">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                         <path fill="currentColor" d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2Zm-7-2a2 2 0 1 1 4 0v2h-4V7Zm7 12H7v-8h10v8Z"/>
                     </svg>

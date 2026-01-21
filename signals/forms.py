@@ -137,6 +137,8 @@ class VariableForm(forms.Form):
             ('boolean', 'Boolean'),
             ('text', 'Text'),
             ('select', 'Select'),
+            ('ticker_select', 'Ticker Select'),
+            ('ticker_type', 'Ticker Type'),
         ],
         required=True
     )
@@ -235,9 +237,10 @@ class SignalTypeForm(forms.ModelForm):
                     raise ValidationError(f'Invalid variable name "{var_name}". Use only letters, numbers, and underscores, starting with a letter or underscore.')
                 
                 var_type = var.get('type')
-                if var_type not in ['string', 'float', 'integer', 'date', 'boolean', 'text', 'select']:
+                if var_type not in ['string', 'float', 'integer', 'date', 'boolean', 'text', 'select', 'ticker_select', 'ticker_type']:
                     raise ValidationError(f'Invalid variable type: {var_type}')
                 
+                # ticker_select can use global US ticker list; custom options are optional.
                 if var_type == 'select' and not var.get('options'):
                     raise ValidationError(f'Select type variable "{var_name}" must have options.')
             
@@ -263,6 +266,21 @@ class SignalTypeForm(forms.ModelForm):
             return fields_template
         except json.JSONDecodeError:
             raise ValidationError('Invalid JSON format for fields template.')
+
+    def save(self, commit=True):
+        """
+        Persist the JSON editor fields into the model's JSONFields.
+
+        The UI edits `variables_json` and `fields_template_json`; these are not model
+        fields, so we must copy them into `SignalType.variables` and
+        `SignalType.fileds_template`.
+        """
+        instance = super().save(commit=False)
+        instance.variables = self.cleaned_data.get('variables_json') or []
+        instance.fileds_template = self.cleaned_data.get('fields_template_json') or []
+        if commit:
+            instance.save()
+        return instance
     
     def save(self, commit=True):
         instance = super().save(commit=False)
