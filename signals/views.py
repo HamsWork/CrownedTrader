@@ -415,6 +415,12 @@ def render_template(template_string, variables, quote_cache=None):
             "tp4_per",
             "tp5_per",
             "tp6_per",
+            "tp1_takeoff_per",
+            "tp2_takeoff_per",
+            "tp3_takeoff_per",
+            "tp4_takeoff_per",
+            "tp5_takeoff_per",
+            "tp6_takeoff_per",
             "sl_per",
             "tp1_price",
             "tp2_price",
@@ -430,7 +436,21 @@ def render_template(template_string, variables, quote_cache=None):
                     return f"{float(val):.3f}"
                 except Exception:
                     return "0.000"
-            if modifier in ("tp1_per", "tp2_per", "tp3_per", "tp4_per", "tp5_per", "tp6_per", "sl_per"):
+            if modifier in (
+                "tp1_per",
+                "tp2_per",
+                "tp3_per",
+                "tp4_per",
+                "tp5_per",
+                "tp6_per",
+                "tp1_takeoff_per",
+                "tp2_takeoff_per",
+                "tp3_takeoff_per",
+                "tp4_takeoff_per",
+                "tp5_takeoff_per",
+                "tp6_takeoff_per",
+                "sl_per",
+            ):
                 s = str(val).strip() if val is not None else ""
                 if not s:
                     return "0%"
@@ -575,7 +595,9 @@ def get_signal_template(signal):
                     price_str = f"{float(price_raw):.3f}" if price_raw is not None and str(price_raw).strip() != "" else "0.000"
                 except Exception:
                     price_str = "0.000"
-                tps.append(f"{price_str}({per_str})")
+                takeoff = str(data_copy.get(f"tp{i}_takeoff_per") or "").strip()
+                takeoff_str = takeoff if (takeoff and takeoff.endswith("%")) else (f"{takeoff}%" if takeoff else "")
+                tps.append(f"{price_str}({per_str}){f' - {takeoff_str}' if takeoff_str else ''}")
 
             sl_per = str(data_copy.get("sl_per") or "").strip()
             sl_per_str = sl_per if (sl_per and sl_per.endswith("%")) else (f"{sl_per}%" if sl_per else "")

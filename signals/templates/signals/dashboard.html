@@ -552,16 +552,32 @@
     }
 
     /* Trade Plan TP remove button (inline with label) */
-    .tp-row-header {
+    /* Take Profit row layout */
+    .tp-level-row {
+        background: rgba(10, 16, 35, 0.55);
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        border-radius: 12px;
+        padding: 12px;
+    }
+
+    .tp-level-row-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 8px;
+        margin-bottom: 10px;
     }
 
-    .tp-row-header label {
+    .tp-level-row-header label {
         margin: 0;
+        font-weight: 700;
+        color: #e5e7eb;
+    }
+
+    .tp-level-row-body {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
     }
 
     .tp-remove-btn {
@@ -588,6 +604,32 @@
         height: 14px;
         display: block;
         fill: currentColor;
+    }
+
+    .tp-level-row-body .form-group {
+        margin-bottom: 0;
+        min-width: 0;
+    }
+
+    .tp-level-row-body .form-group label {
+        margin-bottom: 6px;
+        font-weight: 600;
+        font-size: 0.88em;
+        color: #9ca3af;
+    }
+
+    .percent-input-wrap {
+        position: relative;
+    }
+
+    .percent-suffix {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #9ca3af;
+        font-weight: 700;
+        pointer-events: none;
     }
 
     /* Input with icon */
@@ -985,7 +1027,7 @@
                                 </label>
                                 <label class="switch-text" for="showTitleCheckbox">Show title</label>
                             </div>
-                            <div class="switch-item">
+                            <div class="switch-item" style="display: none;">
                                 <label class="mini-switch">
                                     <input type="checkbox" id="showDescriptionCheckbox" checked>
                                     <span class="mini-slider"></span>
@@ -1435,6 +1477,8 @@ function createSelectDropdownControlFromSelect(selectEl, { placeholder = '' } = 
                     selectEl.dispatchEvent(new Event('input', { bubbles: true }));
                     selectEl.dispatchEvent(new Event('change', { bubbles: true }));
                     closeDropdown();
+                    // Drop focus so next click/focus re-opens as expected
+                    try { input.blur(); } catch (_) {}
                 });
             }
 
@@ -1496,6 +1540,7 @@ function createSelectDropdownControlFromSelect(selectEl, { placeholder = '' } = 
                 selectEl.dispatchEvent(new Event('input', { bubbles: true }));
                 selectEl.dispatchEvent(new Event('change', { bubbles: true }));
                 closeDropdown();
+                try { input.blur(); } catch (_) {}
             }
             return;
         } else if (e.key === 'Escape') {
@@ -1887,7 +1932,7 @@ function renderTemplate(template, data) {
             const v = data.option_price ?? data.entry_price ?? data.price;
             return (v !== undefined && v !== null && String(v).trim() !== '') ? formatFloat3(v) : '0.000';
         }
-        if (modifier && ['tp1_per','tp2_per','tp3_per','tp4_per','tp5_per','tp6_per','sl_per'].includes(modifier)) {
+        if (modifier && ['tp1_per','tp2_per','tp3_per','tp4_per','tp5_per','tp6_per','sl_per','tp1_takeoff_per','tp2_takeoff_per','tp3_takeoff_per','tp4_takeoff_per','tp5_takeoff_per','tp6_takeoff_per'].includes(modifier)) {
             const v = data[modifier];
             if (v === undefined || v === null || String(v).trim() === '') return '0%';
             const s = String(v).trim();
@@ -1920,7 +1965,12 @@ function extractVariablesFromTemplate(template) {
 
         // If template uses {% templatetag openvariable %}ticker::strike{% templatetag closevariable %},
         // treat "strike" as a used variable so the strike input is shown.
-        if (modifier && ['is_shares', 'strike', 'expiration', 'option_type', 'tp1_per', 'tp2_per', 'tp3_per', 'tp4_per', 'tp5_per', 'tp6_per', 'sl_per', 'tp1_price', 'tp2_price', 'tp3_price', 'tp4_price', 'tp5_price', 'tp6_price', 'sl_price'].includes(modifier)) {
+        if (modifier && ['is_shares', 'strike', 'expiration', 'option_type',
+            'tp1_per', 'tp2_per', 'tp3_per', 'tp4_per', 'tp5_per', 'tp6_per',
+            'tp1_takeoff_per', 'tp2_takeoff_per', 'tp3_takeoff_per', 'tp4_takeoff_per', 'tp5_takeoff_per', 'tp6_takeoff_per',
+            'sl_per',
+            'tp1_price', 'tp2_price', 'tp3_price', 'tp4_price', 'tp5_price', 'tp6_price', 'sl_price'
+        ].includes(modifier)) {
             if (!variables.includes(modifier)) variables.push(modifier);
         }
     }
@@ -2229,7 +2279,9 @@ function updatePreview() {
                 if (!per) continue;
                 const price = String(formData[`tp${i}_price`] ?? '0.000').trim() || '0.000';
                 const perStr = per.endsWith('%') ? per : `${per}%`;
-                tps.push(`${price}(${perStr})`);
+                const takeoff = String(formData[`tp${i}_takeoff_per`] ?? '').trim();
+                const takeoffStr = takeoff ? (takeoff.endsWith('%') ? takeoff : `${takeoff}%`) : '';
+                tps.push(`${price}(${perStr})${takeoffStr ? ` - ${takeoffStr}` : ''}`);
             }
             const slPerRaw = String(formData['sl_per'] ?? '').trim();
             const slPriceRaw = String(formData['sl_price'] ?? '0.000').trim() || '0.000';
@@ -2539,7 +2591,7 @@ function createDynamicFields(signalTypeId) {
         return wrapper;
     }
 
-    function createSyntheticPercentField(name, defaultValue, labelText) {
+    function createSyntheticPercentField(name, defaultValue, labelText, { showPercentSuffix = false } = {}) {
         const formGroup = document.createElement('div');
         formGroup.className = 'form-group';
         formGroup.setAttribute('data-variable-name', name);
@@ -2559,7 +2611,19 @@ function createDynamicFields(signalTypeId) {
         input.value = String(defaultValue ?? '');
 
         formGroup.appendChild(label);
-        formGroup.appendChild(input);
+        if (showPercentSuffix) {
+            const wrap = document.createElement('div');
+            wrap.className = 'percent-input-wrap';
+            wrap.appendChild(input);
+            const suffix = document.createElement('span');
+            suffix.className = 'percent-suffix';
+            suffix.textContent = '%';
+            wrap.appendChild(suffix);
+            input.style.paddingRight = '34px';
+            formGroup.appendChild(wrap);
+        } else {
+            formGroup.appendChild(input);
+        }
 
         input.addEventListener('input', updatePreview);
         input.addEventListener('change', updatePreview);
@@ -2570,20 +2634,15 @@ function createDynamicFields(signalTypeId) {
         return formGroup;
     }
 
-    function createTakeProfitRow(level, defaultPer) {
-        const row = createSyntheticPercentField(`tp${level}_per`, defaultPer, `Take Profit ${level}`);
-        row.dataset.tpRow = '1';
-        row.dataset.tpLevel = String(level);
-
-        // Move remove button into the same line as the label (like the screenshot)
-        const labelEl = row.querySelector('label');
-        if (labelEl) labelEl.style.marginBottom = '0';
+    function createTakeProfitRow(level, defaultPer, defaultTakeoffPer) {
+        const rowWrap = document.createElement('div');
+        rowWrap.className = 'tp-level-row';
+        rowWrap.dataset.tpRow = '1';
+        rowWrap.dataset.tpLevel = String(level);
 
         const header = document.createElement('div');
-        header.className = 'tp-row-header';
-
-        // Insert header into the row BEFORE moving label into it (otherwise the header never gets attached)
-        row.insertBefore(header, row.firstChild);
+        header.className = 'tp-level-row-header';
+        rowWrap.appendChild(header);
 
         // Add a remove button (we'll only show it on the last row)
         const btn = document.createElement('button');
@@ -2602,42 +2661,60 @@ function createDynamicFields(signalTypeId) {
         btn.appendChild(icon);
         btn.appendChild(text);
 
-        // Rebuild header: label + remove
-        if (labelEl) header.appendChild(labelEl);
+        // Body: two columns (TP % and Take Off %)
+        const body = document.createElement('div');
+        body.className = 'tp-level-row-body';
+
+        // TP % input (label goes in header)
+        const tpGroup = createSyntheticPercentField(`tp${level}_per`, defaultPer, `TP %`, { showPercentSuffix: true });
+        const tpLabel = tpGroup.querySelector('label');
+        if (tpLabel) {
+            // Put "Take Profit N" in header, remove inner label to avoid duplication
+            tpLabel.textContent = `Take Profit ${level}`;
+            header.appendChild(tpLabel);
+        } else {
+            const fallbackLabel = document.createElement('label');
+            fallbackLabel.textContent = `Take Profit ${level}`;
+            header.appendChild(fallbackLabel);
+        }
         header.appendChild(btn);
 
-        btn.addEventListener('click', () => {
-            // Only remove last TP level (keeps numbering stable)
-            const container = row.parentElement;
-            if (!container) return;
-            const rows = Array.from(container.querySelectorAll('[data-tp-row="1"]'));
-            if (!rows.length) return;
-            const last = rows[rows.length - 1];
-            if (last !== row) return;
-            if (rows.length <= 1) return;
+        // If we moved the label, ensure it isn't still inside the group
+        const innerLabel = tpGroup.querySelector('label');
+        if (innerLabel) innerLabel.remove();
 
-            // Remove corresponding hidden price field too
-            const lvl = Number(row.dataset.tpLevel || '');
-            const priceGroup = document.querySelector(`#dynamicFields [data-variable-name="tp${lvl}_price"], #optionalFieldsVariablesContainer [data-variable-name="tp${lvl}_price"]`);
-            if (priceGroup && priceGroup.parentElement) priceGroup.parentElement.removeChild(priceGroup);
-
-            container.removeChild(row);
-            updateTpSlPrices();
-            updatePreview();
-
-            // Update remove button visibility
-            const remaining = Array.from(container.querySelectorAll('[data-tp-row="1"]'));
-            remaining.forEach((r) => {
-                const b = r.querySelector('.tp-row-header .tp-remove-btn');
-                if (b) b.style.display = 'none';
-            });
-            if (remaining.length > 1) {
-                const b = remaining[remaining.length - 1].querySelector('.tp-row-header .tp-remove-btn');
-                if (b) b.style.display = 'inline-flex';
+        // Add a small label above the level percent input (inside the row body)
+        const levelLabel = document.createElement('label');
+        levelLabel.textContent = 'Level %';
+        levelLabel.setAttribute('for', `id_tp${level}_per`);
+        const tpWrapEl = tpGroup.querySelector('.percent-input-wrap');
+        if (tpWrapEl) {
+            tpGroup.insertBefore(levelLabel, tpWrapEl);
+        } else {
+            const tpInput = tpGroup.querySelector('input, select, textarea');
+            if (tpInput && tpInput.parentElement === tpGroup) {
+                tpGroup.insertBefore(levelLabel, tpInput);
+            } else if (tpInput && tpInput.parentElement) {
+                tpGroup.insertBefore(levelLabel, tpInput.parentElement);
+            } else {
+                tpGroup.appendChild(levelLabel);
             }
-        });
+        }
 
-        return row;
+        // Right column: takeoff % (capital removed when TP hits)
+        const takeoffDefaults = { 1: 50, 2: 25, 3: 25 };
+        const takeoffGroup = createSyntheticPercentField(
+            `tp${level}_takeoff_per`,
+            (defaultTakeoffPer ?? takeoffDefaults[level] ?? 0),
+            'Take Off',
+            { showPercentSuffix: true }
+        );
+        takeoffGroup.dataset.tpTakeoffGroup = '1';
+
+        body.appendChild(tpGroup);
+        body.appendChild(takeoffGroup);
+        rowWrap.appendChild(body);
+        return rowWrap;
     }
 
     function createSyntheticTradePlanGroup(children) {
@@ -2793,48 +2870,89 @@ function createDynamicFields(signalTypeId) {
             tpRows.style.marginTop = '10px';
             tpContainer.appendChild(tpRows);
 
+            const tpHiddenHolder = document.createElement('div');
+            tpHiddenHolder.style.display = 'none';
+            tpContainer.appendChild(tpHiddenHolder);
+
             const ensureTpPriceHidden = (lvl) => {
                 const existing = findFieldByName(`tp${lvl}_price`);
                 if (existing) return;
-                // Add hidden price field alongside other synthetics
-                formGroup._afterSyntheticGroups.push(createSyntheticHiddenField(`tp${lvl}_price`, '0.000'));
+                const hiddenGroup = createSyntheticHiddenField(`tp${lvl}_price`, '0.000');
+                tpHiddenHolder.appendChild(hiddenGroup);
+            };
+
+            const removeTpPriceHidden = (lvl) => {
+                const priceGroup = document.querySelector(
+                    `#dynamicFields [data-variable-name="tp${lvl}_price"], #optionalFieldsVariablesContainer [data-variable-name="tp${lvl}_price"]`
+                );
+                if (priceGroup && priceGroup.parentElement) priceGroup.parentElement.removeChild(priceGroup);
+            };
+
+            const readTpState = () => {
+                const rows = Array.from(tpRows.querySelectorAll('[data-tp-row="1"]'));
+                return rows.map((r) => {
+                    const lvl = Number(r.dataset.tpLevel || '');
+                    const per = findFieldByName(`tp${lvl}_per`)?.value ?? '';
+                    const takeoff = findFieldByName(`tp${lvl}_takeoff_per`)?.value ?? '';
+                    return { per: String(per), takeoff: String(takeoff) };
+                });
+            };
+
+            const renderTpRows = (state) => {
+                tpRows.innerHTML = '';
+                const s = Array.isArray(state) ? state : [];
+                s.forEach((it, idx) => {
+                    const lvl = idx + 1;
+                    ensureTpPriceHidden(lvl);
+                    const perNum = Number(String(it?.per ?? '').trim());
+                    const takeoffNum = Number(String(it?.takeoff ?? '').trim());
+                    const perVal = Number.isFinite(perNum) ? perNum : (lvl * 10);
+                    const takeoffVal = Number.isFinite(takeoffNum) ? takeoffNum : (lvl === 1 ? 50 : (lvl === 2 ? 25 : (lvl === 3 ? 25 : 0)));
+                    const rowEl = createTakeProfitRow(lvl, perVal, takeoffVal);
+                    // Wire remove: allowed for TP2+; removing reindexes rows so tp1/tp2/... stay stable.
+                    const btn = rowEl.querySelector('.tp-level-row-header .tp-remove-btn');
+                    if (btn) {
+                        btn.addEventListener('click', () => {
+                            if (lvl <= 1) return;
+                            const current = readTpState();
+                            if (current.length <= 1) return;
+                            current.splice(lvl - 1, 1);
+                            removeTpPriceHidden(current.length + 1); // remove old highest tp_price
+                            renderTpRows(current);
+                        });
+                    }
+                    tpRows.appendChild(rowEl);
+                });
+                refreshTpRemoveButtons();
+                updateTpSlPrices();
+                updatePreview();
             };
 
             const refreshTpRemoveButtons = () => {
                 const rows = Array.from(tpRows.querySelectorAll('[data-tp-row="1"]'));
                 rows.forEach((r) => {
-                    const b = r.querySelector('.tp-row-header .tp-remove-btn');
-                    if (b) b.style.display = 'none';
+                    const b = r.querySelector('.tp-level-row-header .tp-remove-btn');
+                    if (!b) return;
+                    // Show remove on all rows except TP1
+                    const lvl = Number(r.dataset.tpLevel || '');
+                    b.style.display = (lvl > 1) ? 'inline-flex' : 'none';
                 });
-                if (rows.length > 1) {
-                    const b = rows[rows.length - 1].querySelector('.tp-row-header .tp-remove-btn');
-                    if (b) b.style.display = 'inline-flex';
-                }
                 addBtn.disabled = rows.length >= MAX_TP_LEVELS;
                 addBtn.style.opacity = addBtn.disabled ? '0.6' : '1';
             };
 
             // Initial TP defaults: 10%, 20%, 30%
-            [10, 20, 30].forEach((d, idx) => {
-                const lvl = idx + 1;
-                ensureTpPriceHidden(lvl);
-                tpRows.appendChild(createTakeProfitRow(lvl, d));
-            });
-            refreshTpRemoveButtons();
+            renderTpRows([{ per: '10', takeoff: '50' }, { per: '20', takeoff: '25' }, { per: '30', takeoff: '25' }]);
 
             addBtn.addEventListener('click', () => {
-                const rows = Array.from(tpRows.querySelectorAll('[data-tp-row="1"]'));
-                const next = rows.length + 1;
+                const state = readTpState();
+                const next = state.length + 1;
                 if (next > MAX_TP_LEVELS) return;
-                const defaultPer = next * 10; // 40, 50, 60...
-                ensureTpPriceHidden(next);
-                tpRows.appendChild(createTakeProfitRow(next, defaultPer));
-                refreshTpRemoveButtons();
-                updateTpSlPrices();
-                updatePreview();
+                state.push({ per: String(next * 10), takeoff: '0' });
+                renderTpRows(state);
             });
 
-            const slGroup = createSyntheticPercentField('sl_per', 10, 'Stop Loss');
+            const slGroup = createSyntheticPercentField('sl_per', 10, 'Stop Loss', { showPercentSuffix: true });
             const tradePlanChildren = [
                 tpContainer,
                 slGroup,
@@ -3085,6 +3203,10 @@ function createDynamicFields(signalTypeId) {
                 forceSet(findFieldByName('tp1_per'), '10');
                 forceSet(findFieldByName('tp2_per'), '20');
                 forceSet(findFieldByName('tp3_per'), '30');
+                // Default takeoff amounts (percent of capital removed at each TP)
+                forceSet(findFieldByName('tp1_takeoff_per'), '50');
+                forceSet(findFieldByName('tp2_takeoff_per'), '25');
+                forceSet(findFieldByName('tp3_takeoff_per'), '25');
                 forceSet(findFieldByName('sl_per'), '10');
 
                 // Default option_price to 0.000; it will be overwritten by /api/best-option/ once inputs are valid.
@@ -3179,6 +3301,7 @@ function updateVariableVisibility() {
     const optionFieldNames = new Set([
         'strike', 'expiration', 'option_type',
         'tp1_per', 'tp2_per', 'tp3_per', 'tp4_per', 'tp5_per', 'tp6_per',
+        'tp1_takeoff_per', 'tp2_takeoff_per', 'tp3_takeoff_per', 'tp4_takeoff_per', 'tp5_takeoff_per', 'tp6_takeoff_per',
         'sl_per',
     ]);
     const forceShowOptionFields = hasTickerTypeControl && !isShares;
