@@ -9,7 +9,7 @@ class SignalForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
-        # Set default signal_type to first available signal type (system defaults + user's custom types)
+        # Set default signal_type (prefer "Common Trade Alert" if it exists)
         if 'signal_type' in self.fields:
             if self.user:
                 signal_types = SignalType.objects.filter(
@@ -17,12 +17,14 @@ class SignalForm(forms.ModelForm):
                 )
             else:
                 signal_types = SignalType.objects.filter(user__isnull=True)
-            
-            first_signal_type = signal_types.first()
+
+            # Filter queryset to only show available signal types
+            self.fields['signal_type'].queryset = signal_types
+
+            preferred = signal_types.filter(name__iexact='Common Trade Alert').first()
+            first_signal_type = preferred or signal_types.first()
             if first_signal_type:
                 self.fields['signal_type'].initial = first_signal_type.id
-                # Filter queryset to only show available signal types
-                self.fields['signal_type'].queryset = signal_types
             # Remove the empty label (--------)
             self.fields['signal_type'].empty_label = None
     

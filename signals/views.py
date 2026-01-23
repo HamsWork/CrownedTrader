@@ -394,8 +394,8 @@ def render_template(template_string, variables, quote_cache=None):
             # Convention: ticker variable holds a symbol string.
             symbol = variables.get(var_name, "") if isinstance(variables, dict) else ""
             price = _get_stock_price(str(symbol or ""), quote_cache=quote_cache)
-            # Default when unavailable: 0.0
-            return f"{price:.2f}" if isinstance(price, (int, float)) else "0.0"
+            # Default when unavailable: 0.000
+            return f"{price:.3f}" if isinstance(price, (int, float)) else "0.000"
 
         if modifier == "company_name":
             symbol = variables.get(var_name, "") if isinstance(variables, dict) else ""
@@ -403,8 +403,38 @@ def render_template(template_string, variables, quote_cache=None):
 
         # Convenience: allow "namespaced" access like {{ticker::strike}} meaning {{strike}}.
         # (The base name is ignored; modifier is treated as the target variable.)
-        if modifier in ("is_shares", "strike", "expiration", "option_type", "option_price"):
+        if modifier in (
+            "is_shares",
+            "strike",
+            "expiration",
+            "option_type",
+            "option_price",
+            "tp1_per",
+            "tp2_per",
+            "tp3_per",
+            "tp4_per",
+            "tp5_per",
+            "tp6_per",
+            "sl_per",
+            "tp1_price",
+            "tp2_price",
+            "tp3_price",
+            "tp4_price",
+            "tp5_price",
+            "tp6_price",
+            "sl_price",
+        ):
             val = variables.get(modifier, "") if isinstance(variables, dict) else ""
+            if modifier in ("option_price", "tp1_price", "tp2_price", "tp3_price", "tp4_price", "tp5_price", "tp6_price", "sl_price"):
+                try:
+                    return f"{float(val):.3f}"
+                except Exception:
+                    return "0.000"
+            if modifier in ("tp1_per", "tp2_per", "tp3_per", "tp4_per", "tp5_per", "tp6_per", "sl_per"):
+                s = str(val).strip() if val is not None else ""
+                if not s:
+                    return "0%"
+                return s if s.endswith("%") else f"{s}%"
             return str(val) if val is not None else ""
 
         return str(variables.get(var_name, "")) if isinstance(variables, dict) else ""
@@ -508,6 +538,77 @@ def get_signal_template(signal):
     
     # Render fields with optional field filtering
     fields = render_fields_template(signal_type.fileds_template, data_copy, optional_fields_indices, quote_cache=quote_cache)
+
+    # Inject Trade Plan block (spacer + Trade Plan + Targets + Stop Loss) into the actual Discord embed.
+    # This mirrors the dashboard preview behavior, so users don't need to bake it into every template.
+    def _is_truthy(v) -> bool:
+        if isinstance(v, bool):
+            return v
+        s = str(v or "").strip().lower()
+        return s in ("1", "true", "yes", "y", "on")
+
+    is_shares = _is_truthy(data_copy.get("is_shares", False))
+    if not is_shares and isinstance(fields, list):
+        # Avoid duplicates if the template already includes a plan section
+        def _has_plan(existing_fields: list) -> bool:
+            for f in existing_fields:
+                n = str((f or {}).get("name") or "").lower()
+                v = str((f or {}).get("value") or "").lower()
+                if "trade plan" in n or "trade plan" in v:
+                    return True
+                if "targets" in n or "targets" in v:
+                    return True
+                if "stop loss" in n or "stop loss" in v:
+                    return True
+            return False
+
+        if not _has_plan(fields):
+            max_tp = 6
+            tps = []
+            for i in range(1, max_tp + 1):
+                per = str(data_copy.get(f"tp{i}_per") or "").strip()
+                if not per:
+                    continue
+                per_str = per if per.endswith("%") else f"{per}%"
+                price_raw = data_copy.get(f"tp{i}_price")
+                try:
+                    price_str = f"{float(price_raw):.3f}" if price_raw is not None and str(price_raw).strip() != "" else "0.000"
+                except Exception:
+                    price_str = "0.000"
+                tps.append(f"{price_str}({per_str})")
+
+            sl_per = str(data_copy.get("sl_per") or "").strip()
+            sl_per_str = sl_per if (sl_per and sl_per.endswith("%")) else (f"{sl_per}%" if sl_per else "")
+            sl_price_raw = data_copy.get("sl_price")
+            try:
+                sl_price_str = f"{float(sl_price_raw):.3f}" if sl_price_raw is not None and str(sl_price_raw).strip() != "" else "0.000"
+            except Exception:
+                sl_price_str = "0.000"
+
+            # Show Trade Plan even if option price isn't computed yet (defaults to 0.000)
+            if tps or sl_per_str or sl_price_str:
+                # Insert after last option-related field if possible, else append.
+                insert_at = len(fields)
+                for idx, f in enumerate(fields):
+                    n = str((f or {}).get("name") or "").lower()
+                    v = str((f or {}).get("value") or "").lower()
+                    if any(k in n for k in ("expiration", "strike", "option", "price")) or any(k in v for k in ("expiration", "strike", "option", "price")):
+                        insert_at = idx + 1
+
+                injected = []
+                injected.append({"name": "", "value": "\u200b", "inline": False})
+                injected.append({"name": "📝 **Trade Plan**", "value": "", "inline": False})
+                if tps:
+                    injected.append({"name": f"🎯 Targets: {', '.join(tps)}", "value": "", "inline": False})
+                injected.append(
+                    {
+                        "name": f"🛑 Stop Loss: {sl_price_str}{f'({sl_per_str})' if sl_per_str else ''}",
+                        "value": "",
+                        "inline": False,
+                    }
+                )
+
+                fields[insert_at:insert_at] = injected
     
     embed = {
         "color": color_int,
@@ -644,6 +745,11 @@ def dashboard(request):
                     signal_data = json.loads(signal_data) if signal_data else {}
                 except (json.JSONDecodeError, TypeError):
                     signal_data = {}
+
+            # Capture trade_type (global publish control) into signal_data for templates/history
+            trade_type = (request.POST.get('trade_type') or '').strip()
+            if trade_type and 'trade_type' not in signal_data:
+                signal_data['trade_type'] = trade_type
             
             # Get selected Discord channel if provided
             discord_channel_id = request.POST.get('discord_channel')
@@ -873,9 +979,9 @@ def quote(request):
         return JsonResponse(
             {
                 "symbol": symbol,
-                "price": q.get("p"),
-                "bid": q.get("bid"),
-                "ask": q.get("ask"),
+                "price": round(float(q.get("p")), 3),
+                "bid": (round(float(q.get("bid")), 3) if q.get("bid") is not None else None),
+                "ask": (round(float(q.get("ask")), 3) if q.get("ask") is not None else None),
                 "company_name": company_name,
                 "source": "polygon",
             }
@@ -1057,10 +1163,10 @@ def option_quote(request):
                 "strike": strike,
                 "side": side,
                 "contract": contract,
-                "price": q.get("price"),
-                "bid": q.get("bid"),
-                "ask": q.get("ask"),
-                "mid": q.get("mid"),
+                "price": round(float(q.get("price")), 3),
+                "bid": (round(float(q.get("bid")), 3) if q.get("bid") is not None else None),
+                "ask": (round(float(q.get("ask")), 3) if q.get("ask") is not None else None),
+                "mid": (round(float(q.get("mid")), 3) if q.get("mid") is not None else None),
                 "timestamp": q.get("timestamp"),
                 "source": "polygon",
             }
@@ -1083,10 +1189,10 @@ def option_quote(request):
                     "requested_contract": contract,
                     "strike": resolved_strike,
                     "contract": resolved_contract,
-                    "price": q2.get("price"),
-                    "bid": q2.get("bid"),
-                    "ask": q2.get("ask"),
-                    "mid": q2.get("mid"),
+                    "price": round(float(q2.get("price")), 3),
+                    "bid": (round(float(q2.get("bid")), 3) if q2.get("bid") is not None else None),
+                    "ask": (round(float(q2.get("ask")), 3) if q2.get("ask") is not None else None),
+                    "mid": (round(float(q2.get("mid")), 3) if q2.get("mid") is not None else None),
                     "timestamp": q2.get("timestamp"),
                     "source": "polygon",
                     "resolved": True,
@@ -1097,6 +1203,106 @@ def option_quote(request):
     if getattr(settings, "DEBUG", False):
         payload["polygon_error"] = getattr(client, "last_error", None)
     return JsonResponse(payload, status=502)
+
+
+@login_required
+@require_GET
+def best_option(request):
+    """
+    Pick the best option contract for an underlying according to trade_type rules.
+
+    Query params:
+      - symbol: underlying ticker (e.g. AAPL)
+      - trade_type: Scalp|Swing|Leap
+      - side: call|put (optional; defaults to call)
+
+    Returns:
+      { contract, strike, expiration, side, option_price, bid, ask, spread, delta, open_interest, dte, underlying_price }
+    """
+    symbol = _normalize_symbol(request.GET.get("symbol") or "")
+    trade_type = (request.GET.get("trade_type") or "").strip().lower() or "swing"
+    side = (request.GET.get("side") or "").strip().lower() or "call"
+    if side not in ("call", "put"):
+        return JsonResponse({"error": "side must be call or put"}, status=400)
+    if not symbol:
+        return JsonResponse({"error": "symbol is required"}, status=400)
+
+    polygon_key = getattr(settings, "POLYGON_API_KEY", "") or ""
+    if not polygon_key:
+        return JsonResponse({"error": "POLYGON_API_KEY is not set", "source": "polygon"}, status=502)
+
+    import datetime as dt
+
+    client = PolygonClient(polygon_key)
+    underlying_price = client.get_share_current_price(symbol)
+    if underlying_price is None:
+        payload = {"error": "underlying price unavailable", "source": "polygon"}
+        if getattr(settings, "DEBUG", False):
+            payload["polygon_error"] = getattr(client, "last_error", None)
+        return JsonResponse(payload, status=502)
+
+    today = dt.date.today()
+    # DTE windows per trade type
+    if trade_type == "scalp":
+        lo, hi = 1, 30
+    elif trade_type == "leap":
+        lo, hi = 60, 90
+    else:  # swing
+        lo, hi = 6, 45
+
+    exp_gte = (today + dt.timedelta(days=lo)).isoformat()
+    exp_lte = (today + dt.timedelta(days=hi)).isoformat()
+
+    snaps = client.get_option_chain_snapshots(
+        underlying=symbol,
+        side=side,
+        expiration_gte=exp_gte,
+        expiration_lte=exp_lte,
+        limit=250,
+        max_pages=4,
+        timeout=12,
+    )
+    if snaps is None:
+        payload = {"error": "options unavailable", "source": "polygon"}
+        if getattr(settings, "DEBUG", False):
+            payload["polygon_error"] = getattr(client, "last_error", None)
+            payload["query"] = {"expiration_gte": exp_gte, "expiration_lte": exp_lte, "side": side, "trade_type": trade_type}
+        return JsonResponse(payload, status=502)
+
+    best = client.pick_best_option_from_snapshots(
+        snapshots=snaps,
+        underlying_price=float(underlying_price),
+        trade_type=trade_type,
+        side=side,
+    )
+    if not best:
+        return JsonResponse(
+            {
+                "error": "No suitable option contract found",
+                "source": "polygon",
+                "symbol": symbol,
+                "underlying_price": underlying_price,
+                "side": side,
+                "trade_type": trade_type,
+            },
+            status=404,
+        )
+
+    best["symbol"] = symbol
+    best["side"] = side
+    best["trade_type"] = trade_type
+    try:
+        best["underlying_price"] = round(float(underlying_price), 3)
+    except Exception:
+        best["underlying_price"] = underlying_price
+    for k in ("option_price", "bid", "ask", "spread"):
+        if k in best and best.get(k) is not None:
+            try:
+                best[k] = round(float(best.get(k)), 3)
+            except Exception:
+                pass
+    best["source"] = "polygon_snapshot"
+    return JsonResponse(best)
 
 def is_superuser(user):
     """Check if user is superuser"""

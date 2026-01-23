@@ -551,6 +551,45 @@
         transform: translateY(0);
     }
 
+    /* Trade Plan TP remove button (inline with label) */
+    .tp-row-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+    }
+
+    .tp-row-header label {
+        margin: 0;
+    }
+
+    .tp-remove-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: transparent;
+        border: none;
+        padding: 0;
+        color: #ef4444;
+        font-weight: 600;
+        font-size: 0.92em;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .tp-remove-btn:hover {
+        color: #f87171;
+        text-decoration: underline;
+    }
+
+    .tp-remove-btn svg {
+        width: 14px;
+        height: 14px;
+        display: block;
+        fill: currentColor;
+    }
+
     /* Input with icon */
     .input-with-icon {
         position: relative;
@@ -907,6 +946,19 @@
                         </div>
                     </div>
                     {% endif %}
+
+                    <!-- Trade Type Selection -->
+                    <div class="form-group">
+                        <label for="trade_type">Trade Type</label>
+                        <div class="input-with-icon">
+                            <select name="trade_type" id="trade_type" class="form-input has-icon" required>
+                                <option value="Scalp" selected>Scalp</option>
+                                <option value="Swing">Swing</option>
+                                <option value="Leap">Leap</option>
+                            </select>
+                            <span class="input-icon">🎯</span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Trade Details Section -->
@@ -1311,6 +1363,184 @@ function createTickerSearchControl(variable) {
     return { wrap, input };
 }
 
+function createSelectDropdownControlFromSelect(selectEl, { placeholder = '' } = {}) {
+    const wrap = document.createElement('div');
+    wrap.className = 'ticker-search';
+
+    const input = document.createElement('input');
+    input.className = 'form-input';
+    input.type = 'text';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.placeholder = placeholder || 'Select...';
+    input.dataset.ignoreDynamic = '1'; // Important: don't include in signalData JSON
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'ticker-search-dropdown';
+
+    wrap.appendChild(input);
+    wrap.appendChild(dropdown);
+
+    const options = Array.from(selectEl.options || []).map(o => ({
+        value: String(o.value),
+        label: String(o.textContent || '').trim(),
+        disabled: !!o.disabled,
+    }));
+
+    let activeIndex = -1;
+    let currentItems = [];
+
+    function closeDropdown() {
+        dropdown.classList.remove('open');
+        activeIndex = -1;
+    }
+
+    function openDropdown() {
+        dropdown.classList.add('open');
+    }
+
+    function renderItems(items) {
+        dropdown.innerHTML = '';
+        currentItems = items;
+        activeIndex = -1;
+
+        if (!items.length) {
+            const empty = document.createElement('div');
+            empty.className = 'ticker-search-empty';
+            empty.textContent = 'No results';
+            dropdown.appendChild(empty);
+            return;
+        }
+
+        items.forEach((it, idx) => {
+            const row = document.createElement('div');
+            row.className = 'ticker-search-item';
+            row.dataset.index = String(idx);
+
+            const left = document.createElement('div');
+            left.className = 'ticker-search-symbol';
+            left.textContent = it.label || it.value;
+
+            row.appendChild(left);
+
+            if (it.disabled) {
+                row.style.opacity = '0.6';
+                row.style.pointerEvents = 'none';
+            } else {
+                row.addEventListener('mousedown', (e) => {
+                    // Use mousedown to beat blur
+                    e.preventDefault();
+                    selectEl.value = it.value;
+                    input.value = it.label || it.value;
+                    selectEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+                    closeDropdown();
+                });
+            }
+
+            dropdown.appendChild(row);
+        });
+    }
+
+    function syncFromSelect() {
+        const selOpt = selectEl.options[selectEl.selectedIndex];
+        const label = selOpt ? String(selOpt.textContent || '').trim() : '';
+        input.value = label || String(selectEl.value || '');
+    }
+
+    function filteredOptions(query) {
+        const q = String(query || '').trim().toLowerCase();
+        if (!q) return options.filter(o => o.value !== '');
+        return options.filter(o => (o.label || o.value).toLowerCase().includes(q));
+    }
+
+    input.addEventListener('focus', () => {
+        if (selectEl.disabled) return;
+        // Show all options on open (unlike ticker search). Filter only after typing.
+        renderItems(options.filter(o => o.value !== ''));
+        openDropdown();
+    });
+
+    input.addEventListener('input', () => {
+        if (selectEl.disabled) return;
+        renderItems(filteredOptions(input.value));
+        openDropdown();
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (!dropdown.classList.contains('open')) {
+            if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                e.preventDefault();
+                // Show all options on open; user can type to filter afterwards.
+                renderItems(options.filter(o => o.value !== ''));
+                openDropdown();
+            }
+            return;
+        }
+
+        const items = Array.from(dropdown.querySelectorAll('.ticker-search-item'));
+        if (!items.length) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = Math.min(activeIndex + 1, items.length - 1);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = Math.max(activeIndex - 1, 0);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const it = currentItems[activeIndex];
+            if (it && !it.disabled) {
+                selectEl.value = it.value;
+                input.value = it.label || it.value;
+                selectEl.dispatchEvent(new Event('input', { bubbles: true }));
+                selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+                closeDropdown();
+            }
+            return;
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closeDropdown();
+            return;
+        } else {
+            return;
+        }
+
+        items.forEach((el, idx) => el.classList.toggle('active', idx === activeIndex));
+        const activeEl = items[activeIndex];
+        if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+    });
+
+    input.addEventListener('blur', () => {
+        // Small delay so click can register
+        setTimeout(() => closeDropdown(), 120);
+    });
+
+    // Mirror select state (in case code updates it)
+    selectEl.addEventListener('change', syncFromSelect);
+
+    // Init
+    syncFromSelect();
+
+    // Disabled?
+    if (selectEl.disabled) {
+        input.disabled = true;
+    }
+
+    return { wrap, input };
+}
+
+function upgradeSelectToTickerDropdown(selectEl, { placeholder = '' } = {}) {
+    if (!selectEl || selectEl.dataset.upgradedDropdown === '1') return null;
+    selectEl.dataset.upgradedDropdown = '1';
+
+    const control = createSelectDropdownControlFromSelect(selectEl, { placeholder });
+    // Hide original select but keep it for form submission.
+    selectEl.style.display = 'none';
+    selectEl.insertAdjacentElement('afterend', control.wrap);
+    return control;
+}
+
 // Auto-fill helpers (avoid overwriting user edits)
 function markUserTouched(el) {
     if (!el) return;
@@ -1338,6 +1568,48 @@ function setValueIfAllowed(el, value) {
     return true;
 }
 
+function formatFloat3(value) {
+    if (value === null || value === undefined) return '';
+    const n = Number(value);
+    if (!Number.isFinite(n)) return String(value);
+    return n.toFixed(3);
+}
+
+function parsePercent(value) {
+    const s = String(value ?? '').trim();
+    if (!s) return NaN;
+    const cleaned = s.endsWith('%') ? s.slice(0, -1) : s;
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : NaN;
+}
+
+const MAX_TP_LEVELS = 6;
+
+function updateTpSlPrices() {
+    // Base is the option entry price if available.
+    const optionPriceEl = findFieldByName('option_price');
+    const entryPriceEl = findFieldByName('entry_price');
+    const priceEl = findFieldByName('price');
+    const baseRaw = (optionPriceEl && optionPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '';
+    const base = Number(String(baseRaw).trim());
+    if (!Number.isFinite(base) || base <= 0) return;
+
+    const slPer = parsePercent(findFieldByName('sl_per')?.value);
+
+    const slPriceEl = findFieldByName('sl_price');
+
+    for (let i = 1; i <= MAX_TP_LEVELS; i++) {
+        const perEl = findFieldByName(`tp${i}_per`);
+        const priceElN = findFieldByName(`tp${i}_price`);
+        if (!perEl || !priceElN) continue;
+        const tpPer = parsePercent(perEl.value);
+        if (Number.isFinite(tpPer)) {
+            setValueIfAllowed(priceElN, formatFloat3(base * (1 + tpPer / 100)));
+        }
+    }
+    if (Number.isFinite(slPer)) setValueIfAllowed(slPriceEl, formatFloat3(base * (1 - slPer / 100)));
+}
+
 function findFieldByName(name) {
     return document.querySelector(`#dynamicFields [name="${CSS.escape(name)}"], #optionalFieldsVariablesContainer [name="${CSS.escape(name)}"]`);
 }
@@ -1355,15 +1627,6 @@ async function fetchQuote(symbol) {
     if (!res.ok) return null;
     const payload = await res.json();
     return payload && payload.price != null ? payload : null;
-}
-
-async function fetchOptionSuggest(symbol, side) {
-    const sym = String(symbol || '').trim().toUpperCase();
-    const s = String(side || '').trim().toLowerCase();
-    if (!sym || !['call','put'].includes(s)) return null;
-    const res = await fetch(`/api/option-suggest/?symbol=${encodeURIComponent(sym)}&side=${encodeURIComponent(s)}`, { credentials: 'same-origin' });
-    if (!res.ok) return null;
-    return await res.json();
 }
 
 async function fetchOptionQuote(symbol, { strike, expiration, side } = {}) {
@@ -1386,6 +1649,64 @@ async function fetchOptionQuote(symbol, { strike, expiration, side } = {}) {
     }
     const payload = await res.json();
     return payload && payload.price != null ? payload : null;
+}
+
+function getSelectedTradeType() {
+    const el = document.getElementById('trade_type');
+    return String(el ? el.value : '').trim().toLowerCase() || 'swing';
+}
+
+async function fetchBestOption(symbol, { tradeType, side } = {}) {
+    const sym = String(symbol || '').trim().toUpperCase();
+    const tt = String(tradeType || '').trim().toLowerCase() || 'swing';
+    const s = String(side || '').trim().toLowerCase() || 'call';
+    if (!sym || !['call','put'].includes(s)) return null;
+    const url = `/api/best-option/?symbol=${encodeURIComponent(sym)}&trade_type=${encodeURIComponent(tt)}&side=${encodeURIComponent(s)}`;
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) {
+        try {
+            const errPayload = await res.json();
+            console.warn('Best option failed:', res.status, errPayload);
+        } catch (_) {
+            console.warn('Best option failed:', res.status);
+        }
+        return null;
+    }
+    return await res.json();
+}
+
+async function maybeAutoPickBestOption() {
+    const isSharesCheckbox = document.getElementById('id_is_shares');
+    const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+    if (isShares) return;
+
+    const sym = getCurrentTickerSymbol();
+    if (!sym) return;
+
+    const optTypeEl = findFieldByName('option_type');
+    const raw = optTypeEl ? String(optTypeEl.value || '').trim().toLowerCase() : '';
+    const side = raw.includes('put') ? 'put' : (raw.includes('call') ? 'call' : 'call');
+    const tradeType = getSelectedTradeType();
+
+    const best = await fetchBestOption(sym, { tradeType, side });
+    if (!best || best.error) return;
+
+    const strikeEl = findFieldByName('strike');
+    const expEl = findFieldByName('expiration');
+    const optionPriceEl = findFieldByName('option_price');
+    const entryPriceEl = findFieldByName('entry_price');
+    const priceEl = findFieldByName('price');
+    const contractEl = findFieldByName('option_contract');
+
+    setValueIfAllowed(strikeEl, best.strike);
+    setValueIfAllowed(expEl, best.expiration);
+    setValueIfAllowed(optionPriceEl, formatFloat3(best.option_price));
+    setValueIfAllowed(entryPriceEl, formatFloat3(best.option_price));
+    setValueIfAllowed(priceEl, formatFloat3(best.option_price));
+    setValueIfAllowed(contractEl, best.contract);
+
+    updateTpSlPrices();
+    updatePreview();
 }
 
 // Map variable types to input field types
@@ -1543,10 +1864,10 @@ function renderTemplate(template, data) {
         if (modifier === 'stock_price') {
             // For preview: use whichever price field exists in the form data (already auto-filled).
             const p = data.current_price ?? data.entry_price ?? data.price;
-            if (p !== undefined && p !== null && String(p).trim() !== '') return String(p);
+            if (p !== undefined && p !== null && String(p).trim() !== '') return formatFloat3(p);
             const sym = (data && data[varName]) ? String(data[varName]).trim().toUpperCase() : '';
             const cached = sym ? tickerMetaCache[sym] : null;
-            return (cached && cached.price != null) ? String(cached.price) : '0.0';
+            return (cached && cached.price != null) ? formatFloat3(cached.price) : '0.000';
         }
         if (modifier === 'company_name') {
             // Preview: use a provided company_name if present, else use cached metadata.
@@ -1564,7 +1885,17 @@ function renderTemplate(template, data) {
 
             // Prefer explicit fields if present; default to 0.0
             const v = data.option_price ?? data.entry_price ?? data.price;
-            return (v !== undefined && v !== null && String(v).trim() !== '') ? String(v) : '0.0';
+            return (v !== undefined && v !== null && String(v).trim() !== '') ? formatFloat3(v) : '0.000';
+        }
+        if (modifier && ['tp1_per','tp2_per','tp3_per','tp4_per','tp5_per','tp6_per','sl_per'].includes(modifier)) {
+            const v = data[modifier];
+            if (v === undefined || v === null || String(v).trim() === '') return '0%';
+            const s = String(v).trim();
+            return s.endsWith('%') ? s : `${s}%`;
+        }
+        if (modifier && ['tp1_price','tp2_price','tp3_price','tp4_price','tp5_price','tp6_price','sl_price'].includes(modifier)) {
+            const v = data[modifier];
+            return (v !== undefined && v !== null && String(v).trim() !== '') ? formatFloat3(v) : '0.000';
         }
         if (modifier && (modifier in data)) {
             // Allow {% templatetag openvariable %}ticker::strike{% templatetag closevariable %} style access (treat modifier as the real variable name).
@@ -1589,7 +1920,7 @@ function extractVariablesFromTemplate(template) {
 
         // If template uses {% templatetag openvariable %}ticker::strike{% templatetag closevariable %},
         // treat "strike" as a used variable so the strike input is shown.
-        if (modifier && ['is_shares', 'strike', 'expiration', 'option_type'].includes(modifier)) {
+        if (modifier && ['is_shares', 'strike', 'expiration', 'option_type', 'tp1_per', 'tp2_per', 'tp3_per', 'tp4_per', 'tp5_per', 'tp6_per', 'sl_per', 'tp1_price', 'tp2_price', 'tp3_price', 'tp4_price', 'tp5_price', 'tp6_price', 'sl_price'].includes(modifier)) {
             if (!variables.includes(modifier)) variables.push(modifier);
         }
     }
@@ -1734,6 +2065,10 @@ function updatePreview() {
     // Collect inputs from both main dynamicFields container and optional fields variables container
     const dynamicInputs = document.querySelectorAll('#dynamicFields input, #dynamicFields textarea, #dynamicFields select, #optionalFieldsVariablesContainer input, #optionalFieldsVariablesContainer textarea, #optionalFieldsVariablesContainer select');
     dynamicInputs.forEach(input => {
+        // Skip cosmetic controls (e.g. custom dropdown inputs) or unnamed elements
+        if (!input.name || input.dataset.ignoreDynamic === '1') {
+            return;
+        }
         // Skip option-related fields if is_shares is checked
         if (isShares && optionFields.includes(input.name)) {
             return;
@@ -1750,6 +2085,12 @@ function updatePreview() {
             formData[input.name] = input.value || '';
         }
     });
+
+    // Include non-dynamic publish controls
+    const tradeTypeEl = document.getElementById('trade_type');
+    if (tradeTypeEl && tradeTypeEl.value) {
+        formData['trade_type'] = tradeTypeEl.value;
+    }
     
     // Update color bar
     const color = signalType.color || '#000000';
@@ -1870,6 +2211,71 @@ function updatePreview() {
     
     // Use filtered fields for rendering
     const fieldsToRenderFinal = filteredFields;
+
+    // Inject Trade Plan preview block (Trade Plan / Targets / Stop Loss) below option-related fields
+    // so users don't need to manually add these lines into every signal type template.
+    if (!isShares) {
+        const alreadyHasPlan = fieldsToRenderFinal.some(it => {
+            const n = String(it.fieldName || '').toLowerCase();
+            const v = String(it.fieldValue || '').toLowerCase();
+            return n.includes('trade plan') || n.includes('game plan') || n.includes('targets') || n.includes('stop loss') ||
+                   v.includes('trade plan') || v.includes('game plan') || v.includes('targets') || v.includes('stop loss');
+        });
+
+        if (!alreadyHasPlan) {
+            const tps = [];
+            for (let i = 1; i <= MAX_TP_LEVELS; i++) {
+                const per = String(formData[`tp${i}_per`] ?? '').trim();
+                if (!per) continue;
+                const price = String(formData[`tp${i}_price`] ?? '0.000').trim() || '0.000';
+                const perStr = per.endsWith('%') ? per : `${per}%`;
+                tps.push(`${price}(${perStr})`);
+            }
+            const slPerRaw = String(formData['sl_per'] ?? '').trim();
+            const slPriceRaw = String(formData['sl_price'] ?? '0.000').trim() || '0.000';
+            const slPerStr = slPerRaw ? (slPerRaw.endsWith('%') ? slPerRaw : `${slPerRaw}%`) : '';
+
+            // Show Trade Plan even before option price is computed (defaults: 0.000)
+            if (tps.length || slPerRaw || slPriceRaw) {
+                // Find insertion index: after last option-related field (Expiration/Strike/Option/Price)
+                let insertAt = -1;
+                fieldsToRenderFinal.forEach((it, idx) => {
+                    const n = String(it.fieldName || '').toLowerCase();
+                    const v = String(it.fieldValue || '').toLowerCase();
+                    if (
+                        n.includes('expiration') || n.includes('strike') || n.includes('option') || n.includes('price') ||
+                        v.includes('expiration') || v.includes('strike') || v.includes('option') || v.includes('price')
+                    ) {
+                        insertAt = idx;
+                    }
+                });
+                insertAt = insertAt >= 0 ? insertAt + 1 : 0;
+
+                const injected = [];
+                // blank spacer between option data and Trade Plan
+                injected.push({ field: { inline: false }, index: -1000, fieldName: '', fieldValue: '\u200b' });
+                injected.push({ field: { inline: false }, index: -1001, fieldName: '📝 **Trade Plan**', fieldValue: '' });
+                if (tps.length) {
+                    injected.push({
+                        field: { inline: false },
+                        index: -1002,
+                        fieldName: `🎯 Targets: ${tps.join(', ')}`,
+                        fieldValue: '',
+                    });
+                }
+                if (slPriceRaw) {
+                    injected.push({
+                        field: { inline: false },
+                        index: -1003,
+                        fieldName: `🛑 Stop Loss: ${slPriceRaw}${slPerStr ? `(${slPerStr})` : ''}`,
+                        fieldValue: '',
+                    });
+                }
+
+                fieldsToRenderFinal.splice(insertAt, 0, ...injected);
+            }
+        }
+    }
     
     let currentInlineGroup = null;
     
@@ -2017,6 +2423,7 @@ function createDynamicFields(signalTypeId) {
     const hasExpirationVariable = Array.isArray(variables) && variables.some(v => v && v.name === 'expiration');
     const hasOptionTypeVariable = Array.isArray(variables) && variables.some(v => v && v.name === 'option_type');
     const hasOptionPriceVariable = Array.isArray(variables) && variables.some(v => v && v.name === 'option_price');
+    const hasOptionContractVariable = Array.isArray(variables) && variables.some(v => v && v.name === 'option_contract');
 
     function createSyntheticIsSharesPill() {
         // Create the same pill UI used for real is_shares variables, but without needing it in the template variables list.
@@ -2103,47 +2510,9 @@ function createDynamicFields(signalTypeId) {
         input.addEventListener('change', updatePreview);
         input.addEventListener('input', () => markUserTouched(input));
 
-        // When synthetic strike/expiration/option_type changes, quote that exact contract and fill option_price.
-        if (['strike', 'expiration', 'option_type'].includes(name)) {
-            const maybeQuote = debounce(async () => {
-                const isSharesCheckbox = document.getElementById('id_is_shares');
-                const isShares = isSharesCheckbox && isSharesCheckbox.checked;
-                if (isShares) return;
-
-                const sym = getCurrentTickerSymbol();
-                if (!sym) return;
-
-                const strikeEl = findFieldByName('strike');
-                const expEl = findFieldByName('expiration');
-                const optTypeEl = findFieldByName('option_type');
-                const strikeVal = strikeEl ? parseFloat(String(strikeEl.value || '').trim()) : NaN;
-                const expVal = expEl ? String(expEl.value || '').trim() : '';
-                const raw = optTypeEl ? String(optTypeEl.value || '').trim().toLowerCase() : '';
-                const side = raw.includes('put') ? 'put' : (raw.includes('call') ? 'call' : '');
-
-                if (!expVal || !side || !isFinite(strikeVal) || strikeVal <= 0) return;
-
-                const q = await fetchOptionQuote(sym, { strike: strikeVal, expiration: expVal, side });
-                if (!q) return;
-
-                const optionPriceEl = findFieldByName('option_price');
-                const entryPriceEl = findFieldByName('entry_price');
-                const priceEl = findFieldByName('price');
-                const contractEl = findFieldByName('option_contract');
-                const strikeEl2 = findFieldByName('strike');
-
-                setValueIfAllowed(optionPriceEl, q.price);
-                setValueIfAllowed(entryPriceEl, q.price);
-                setValueIfAllowed(priceEl, q.price);
-                setValueIfAllowed(contractEl, q.contract);
-                // If backend snapped to a nearest listed strike, reflect it in the UI.
-                if (q.strike != null) setValueIfAllowed(strikeEl2, q.strike);
-
-                updatePreview();
-            }, 250);
-
-            input.addEventListener('change', maybeQuote);
-            input.addEventListener('input', maybeQuote);
+        // When synthetic option_type changes, pick best option (strike/expiration are auto-selected).
+        if (name === 'option_type') {
+            input.addEventListener('change', () => maybeAutoPickBestOption());
         }
 
         return formGroup;
@@ -2168,6 +2537,132 @@ function createDynamicFields(signalTypeId) {
         input.addEventListener('input', updatePreview);
         input.addEventListener('change', updatePreview);
         return wrapper;
+    }
+
+    function createSyntheticPercentField(name, defaultValue, labelText) {
+        const formGroup = document.createElement('div');
+        formGroup.className = 'form-group';
+        formGroup.setAttribute('data-variable-name', name);
+        formGroup.setAttribute('data-requires-options', 'true');
+
+        const label = document.createElement('label');
+        label.textContent = labelText || name;
+        label.setAttribute('for', `id_${name}`);
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.step = '0.1';
+        input.min = '0';
+        input.className = 'form-input';
+        input.id = `id_${name}`;
+        input.name = name;
+        input.value = String(defaultValue ?? '');
+
+        formGroup.appendChild(label);
+        formGroup.appendChild(input);
+
+        input.addEventListener('input', updatePreview);
+        input.addEventListener('change', updatePreview);
+        input.addEventListener('input', () => markUserTouched(input));
+        input.addEventListener('input', () => updateTpSlPrices());
+        input.addEventListener('change', () => updateTpSlPrices());
+
+        return formGroup;
+    }
+
+    function createTakeProfitRow(level, defaultPer) {
+        const row = createSyntheticPercentField(`tp${level}_per`, defaultPer, `Take Profit ${level}`);
+        row.dataset.tpRow = '1';
+        row.dataset.tpLevel = String(level);
+
+        // Move remove button into the same line as the label (like the screenshot)
+        const labelEl = row.querySelector('label');
+        if (labelEl) labelEl.style.marginBottom = '0';
+
+        const header = document.createElement('div');
+        header.className = 'tp-row-header';
+
+        // Insert header into the row BEFORE moving label into it (otherwise the header never gets attached)
+        row.insertBefore(header, row.firstChild);
+
+        // Add a remove button (we'll only show it on the last row)
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tp-remove-btn';
+        btn.style.display = 'none';
+
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('viewBox', '0 0 24 24');
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M9 3h6l1 2h5v2H3V5h5l1-2zm1 7h2v9h-2v-9zm4 0h2v9h-2v-9zM7 10h2v9H7v-9z');
+        icon.appendChild(path);
+
+        const text = document.createElement('span');
+        text.textContent = 'Remove';
+        btn.appendChild(icon);
+        btn.appendChild(text);
+
+        // Rebuild header: label + remove
+        if (labelEl) header.appendChild(labelEl);
+        header.appendChild(btn);
+
+        btn.addEventListener('click', () => {
+            // Only remove last TP level (keeps numbering stable)
+            const container = row.parentElement;
+            if (!container) return;
+            const rows = Array.from(container.querySelectorAll('[data-tp-row="1"]'));
+            if (!rows.length) return;
+            const last = rows[rows.length - 1];
+            if (last !== row) return;
+            if (rows.length <= 1) return;
+
+            // Remove corresponding hidden price field too
+            const lvl = Number(row.dataset.tpLevel || '');
+            const priceGroup = document.querySelector(`#dynamicFields [data-variable-name="tp${lvl}_price"], #optionalFieldsVariablesContainer [data-variable-name="tp${lvl}_price"]`);
+            if (priceGroup && priceGroup.parentElement) priceGroup.parentElement.removeChild(priceGroup);
+
+            container.removeChild(row);
+            updateTpSlPrices();
+            updatePreview();
+
+            // Update remove button visibility
+            const remaining = Array.from(container.querySelectorAll('[data-tp-row="1"]'));
+            remaining.forEach((r) => {
+                const b = r.querySelector('.tp-row-header .tp-remove-btn');
+                if (b) b.style.display = 'none';
+            });
+            if (remaining.length > 1) {
+                const b = remaining[remaining.length - 1].querySelector('.tp-row-header .tp-remove-btn');
+                if (b) b.style.display = 'inline-flex';
+            }
+        });
+
+        return row;
+    }
+
+    function createSyntheticTradePlanGroup(children) {
+        const wrap = document.createElement('div');
+        wrap.className = 'sub-card trade-plan-group';
+        wrap.dataset.tradePlanGroup = '1';
+
+        const title = document.createElement('div');
+        title.style.color = '#e0e0e0';
+        title.style.fontSize = '1em';
+        title.style.marginBottom = '12px';
+        title.style.fontWeight = '600';
+        title.textContent = '📝 Trade Plan';
+
+        wrap.appendChild(title);
+        const body = document.createElement('div');
+        body.style.display = 'flex';
+        body.style.flexDirection = 'column';
+        body.style.gap = '12px';
+
+        (children || []).forEach((c) => {
+            if (c) body.appendChild(c);
+        });
+        wrap.appendChild(body);
+        return wrap;
     }
 
     function attachIsSharesToTickerType() {
@@ -2257,11 +2752,98 @@ function createDynamicFields(signalTypeId) {
 
             // If template didn't define option fields, add them by default (they'll be hidden when is_shares is true).
             formGroup._afterSyntheticGroups = [];
-            if (!hasStrikeVariable) formGroup._afterSyntheticGroups.push(createSyntheticOptionField('strike'));
-            if (!hasExpirationVariable) formGroup._afterSyntheticGroups.push(createSyntheticOptionField('expiration'));
+            // Strike/Expiration are auto-selected; keep them as hidden fields only.
+            if (!hasStrikeVariable) formGroup._afterSyntheticGroups.push(createSyntheticHiddenField('strike', ''));
+            if (!hasExpirationVariable) formGroup._afterSyntheticGroups.push(createSyntheticHiddenField('expiration', ''));
             if (!hasOptionTypeVariable) formGroup._afterSyntheticGroups.push(createSyntheticOptionField('option_type'));
+            // Add TP/SL inputs grouped under "Trade Plan" behind Option Type.
+            // Prices are auto-calculated from option_price and stored in hidden fields for template use.
+            const tpContainer = document.createElement('div');
+            tpContainer.dataset.requiresOptions = 'true';
+
+            const tpHeader = document.createElement('div');
+            tpHeader.style.display = 'flex';
+            tpHeader.style.alignItems = 'center';
+            tpHeader.style.justifyContent = 'space-between';
+            tpHeader.style.gap = '12px';
+
+            const tpTitle = document.createElement('div');
+            tpTitle.style.color = '#9ca3af';
+            tpTitle.style.fontSize = '0.95em';
+            tpTitle.style.fontWeight = '600';
+            tpTitle.textContent = 'Take Profit Levels';
+
+            const addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.textContent = 'Add Take Profit';
+            addBtn.className = 'btn-submit';
+            addBtn.style.padding = '8px 10px';
+            addBtn.style.fontSize = '0.85em';
+            addBtn.style.width = 'auto';
+            addBtn.style.borderRadius = '10px';
+
+            tpHeader.appendChild(tpTitle);
+            tpHeader.appendChild(addBtn);
+            tpContainer.appendChild(tpHeader);
+
+            const tpRows = document.createElement('div');
+            tpRows.style.display = 'flex';
+            tpRows.style.flexDirection = 'column';
+            tpRows.style.gap = '10px';
+            tpRows.style.marginTop = '10px';
+            tpContainer.appendChild(tpRows);
+
+            const ensureTpPriceHidden = (lvl) => {
+                const existing = findFieldByName(`tp${lvl}_price`);
+                if (existing) return;
+                // Add hidden price field alongside other synthetics
+                formGroup._afterSyntheticGroups.push(createSyntheticHiddenField(`tp${lvl}_price`, '0.000'));
+            };
+
+            const refreshTpRemoveButtons = () => {
+                const rows = Array.from(tpRows.querySelectorAll('[data-tp-row="1"]'));
+                rows.forEach((r) => {
+                    const b = r.querySelector('.tp-row-header .tp-remove-btn');
+                    if (b) b.style.display = 'none';
+                });
+                if (rows.length > 1) {
+                    const b = rows[rows.length - 1].querySelector('.tp-row-header .tp-remove-btn');
+                    if (b) b.style.display = 'inline-flex';
+                }
+                addBtn.disabled = rows.length >= MAX_TP_LEVELS;
+                addBtn.style.opacity = addBtn.disabled ? '0.6' : '1';
+            };
+
+            // Initial TP defaults: 10%, 20%, 30%
+            [10, 20, 30].forEach((d, idx) => {
+                const lvl = idx + 1;
+                ensureTpPriceHidden(lvl);
+                tpRows.appendChild(createTakeProfitRow(lvl, d));
+            });
+            refreshTpRemoveButtons();
+
+            addBtn.addEventListener('click', () => {
+                const rows = Array.from(tpRows.querySelectorAll('[data-tp-row="1"]'));
+                const next = rows.length + 1;
+                if (next > MAX_TP_LEVELS) return;
+                const defaultPer = next * 10; // 40, 50, 60...
+                ensureTpPriceHidden(next);
+                tpRows.appendChild(createTakeProfitRow(next, defaultPer));
+                refreshTpRemoveButtons();
+                updateTpSlPrices();
+                updatePreview();
+            });
+
+            const slGroup = createSyntheticPercentField('sl_per', 10, 'Stop Loss');
+            const tradePlanChildren = [
+                tpContainer,
+                slGroup,
+                createSyntheticHiddenField('sl_price', '0.000'),
+            ];
+            formGroup._afterSyntheticGroups.push(createSyntheticTradePlanGroup(tradePlanChildren));
             // Ensure option_price is present in submitted JSON even if not defined in variables.
-            if (!hasOptionPriceVariable) formGroup._afterSyntheticGroups.push(createSyntheticHiddenField('option_price', '0.0'));
+            if (!hasOptionPriceVariable) formGroup._afterSyntheticGroups.push(createSyntheticHiddenField('option_price', '0.000'));
+            if (!hasOptionContractVariable) formGroup._afterSyntheticGroups.push(createSyntheticHiddenField('option_contract', ''));
 
         } else {
             if (inputType === 'textarea') {
@@ -2332,6 +2914,14 @@ function createDynamicFields(signalTypeId) {
         // Add data attribute for conditional visibility based on is_shares
         if (variable.name === 'strike' || variable.name === 'expiration' || variable.name === 'option_type') {
             formGroup.setAttribute('data-requires-options', 'true');
+        }
+
+        // Strike/Expiration are auto-selected (best-option) and should not be user-editable.
+        if (variable.name === 'strike' || variable.name === 'expiration') {
+            formGroup.style.display = 'none';
+            // Avoid HTML5 required blocking submission; we still enforce via server-side + data JSON.
+            if (input) input.required = false;
+            if (input) input.dataset.autoFilled = '1';
         }
         
         // Special: render is_shares as a modern toggle switch pill (like screenshot)
@@ -2439,99 +3029,30 @@ function createDynamicFields(signalTypeId) {
                 const entryPriceEl = findFieldByName('entry_price');
                 const priceEl = findFieldByName('price');
                 const companyNameEl = findFieldByName('company_name');
-                const strikeEl = findFieldByName('strike');
                 const isSharesCheckbox = document.getElementById('id_is_shares');
                 const isShares = isSharesCheckbox && isSharesCheckbox.checked;
 
-                setValueIfAllowed(currentPriceEl, quote.price);
-                setValueIfAllowed(entryPriceEl, quote.price);
-                setValueIfAllowed(priceEl, quote.price);
+                setValueIfAllowed(currentPriceEl, formatFloat3(quote.price));
+                setValueIfAllowed(entryPriceEl, formatFloat3(quote.price));
+                setValueIfAllowed(priceEl, formatFloat3(quote.price));
                 setValueIfAllowed(companyNameEl, quote.company_name);
-                // Default strike to stock price (options mode only; don't overwrite user edits).
-                if (!isShares) {
-                    setValueIfAllowed(strikeEl, quote.price);
-                }
 
                 // Even if there is no explicit price/company_name input in the template,
                 // we still want the live preview to re-render using tickerMetaCache.
                 updatePreview();
+
+                // If option side/trade type are selected, auto-pick the best option now.
+                if (!isShares) {
+                    await maybeAutoPickBestOption();
+                }
             });
         }
 
-        // Auto-suggest option when user selects PUT/CALL (option_type)
+        // Auto-select best option when user selects PUT/CALL (option_type)
         if (variable.name === 'option_type') {
             input.addEventListener('change', async () => {
-                const isSharesCheckbox = document.getElementById('id_is_shares');
-                const isShares = isSharesCheckbox && isSharesCheckbox.checked;
-                if (isShares) return; // options disabled for shares mode
-
-                const raw = String(input.value || '').trim().toLowerCase();
-                const side = raw.includes('put') ? 'put' : (raw.includes('call') ? 'call' : '');
-                if (!side) return;
-
-                const sym = getCurrentTickerSymbol();
-                if (!sym) return;
-
-                const suggestion = await fetchOptionSuggest(sym, side);
-                if (!suggestion || suggestion.error) return;
-
-                const strikeEl = findFieldByName('strike');
-                const expEl = findFieldByName('expiration');
-                const entryPriceEl = findFieldByName('entry_price');
-                const priceEl = findFieldByName('price');
-                const contractEl = findFieldByName('option_contract');
-
-                setValueIfAllowed(strikeEl, suggestion.strike);
-                setValueIfAllowed(expEl, suggestion.expiration);
-                setValueIfAllowed(entryPriceEl, suggestion.option_price);
-                setValueIfAllowed(priceEl, suggestion.option_price);
-                setValueIfAllowed(contractEl, suggestion.contract);
+                await maybeAutoPickBestOption();
             });
-        }
-
-        // When ticker + strike + expiration + option_type are set, quote that exact contract and fill option_price.
-        // Use debounced input/change so typing strike updates the option price without requiring blur.
-        const optionFieldNames = new Set(['strike', 'expiration', 'option_type']);
-        if (optionFieldNames.has(variable.name)) {
-            const maybeQuote = debounce(async () => {
-                const isSharesCheckbox = document.getElementById('id_is_shares');
-                const isShares = isSharesCheckbox && isSharesCheckbox.checked;
-                if (isShares) return;
-
-                const sym = getCurrentTickerSymbol();
-                if (!sym) return;
-
-                const strikeEl = findFieldByName('strike');
-                const expEl = findFieldByName('expiration');
-                const optTypeEl = findFieldByName('option_type');
-                const strikeVal = strikeEl ? parseFloat(String(strikeEl.value || '').trim()) : NaN;
-                const expVal = expEl ? String(expEl.value || '').trim() : '';
-                const raw = optTypeEl ? String(optTypeEl.value || '').trim().toLowerCase() : '';
-                const side = raw.includes('put') ? 'put' : (raw.includes('call') ? 'call' : '');
-
-                if (!expVal || !side || !isFinite(strikeVal) || strikeVal <= 0) return;
-
-                const q = await fetchOptionQuote(sym, { strike: strikeVal, expiration: expVal, side });
-                if (!q) return;
-
-                const optionPriceEl = findFieldByName('option_price');
-                const entryPriceEl = findFieldByName('entry_price');
-                const priceEl = findFieldByName('price');
-                const contractEl = findFieldByName('option_contract');
-                const strikeEl2 = findFieldByName('strike');
-
-                setValueIfAllowed(optionPriceEl, q.price);
-                setValueIfAllowed(entryPriceEl, q.price);
-                setValueIfAllowed(priceEl, q.price);
-                setValueIfAllowed(contractEl, q.contract);
-                // If backend snapped to a nearest listed strike, reflect it in the UI.
-                if (q.strike != null) setValueIfAllowed(strikeEl2, q.strike);
-
-                updatePreview();
-            }, 250);
-
-            input.addEventListener('change', maybeQuote);
-            input.addEventListener('input', maybeQuote);
         }
     });
     
@@ -2545,9 +3066,6 @@ function createDynamicFields(signalTypeId) {
             if (!this.checked) {
                 const sym = getCurrentTickerSymbol();
                 const cached = sym ? tickerMetaCache[sym] : null;
-                const today = getTodayISODate();
-                const strikeEl = findFieldByName('strike');
-                const expEl = findFieldByName('expiration');
                 const optTypeEl = findFieldByName('option_type');
                 const optionPriceEl = findFieldByName('option_price');
 
@@ -2560,22 +3078,23 @@ function createDynamicFields(signalTypeId) {
                     el.dispatchEvent(new Event('change', { bubbles: true }));
                 };
 
-                // Defaults: expiration=today (and not in past), option_type=CALL
-                if (expEl) {
-                    expEl.min = today;
-                    forceSet(expEl, today);
-                }
+                // Default option_type=CALL (user can change to PUT which will recompute best-option)
                 forceSet(optTypeEl, 'CALL');
 
-                // Default strike to current stock price if known; otherwise keep existing value.
-                if (cached && cached.price != null) {
-                    forceSet(strikeEl, cached.price);
-                }
+                // Default TP/SL percent values
+                forceSet(findFieldByName('tp1_per'), '10');
+                forceSet(findFieldByName('tp2_per'), '20');
+                forceSet(findFieldByName('tp3_per'), '30');
+                forceSet(findFieldByName('sl_per'), '10');
 
-                // Default option_price to 0.0; it will be overwritten by /api/option-quote/ once inputs are valid.
-                forceSet(optionPriceEl, '0.0');
+                // Default option_price to 0.000; it will be overwritten by /api/best-option/ once inputs are valid.
+                forceSet(optionPriceEl, '0.000');
             }
             updatePreview();
+            if (!this.checked) {
+                // Recompute best option for current ticker/trade_type/side
+                maybeAutoPickBestOption();
+            }
         });
         // Initialize on page load
         toggleOptionFields(isSharesCheckbox.checked);
@@ -2604,6 +3123,11 @@ function createDynamicFields(signalTypeId) {
     // Auto-resize any textareas in the Send Signal panel (no scrollbars)
     wireAutoResizeTextareas(document.getElementById('dynamicFields'));
     wireAutoResizeTextareas(document.getElementById('optionalFieldsVariablesContainer'));
+
+    // Upgrade any <select> controls inside dynamic fields to match ticker dropdown styling
+    document.querySelectorAll('#dynamicFields select, #optionalFieldsVariablesContainer select').forEach((sel) => {
+        upgradeSelectToTickerDropdown(sel);
+    });
     
     // Update preview after fields are created
     updatePreview();
@@ -2628,6 +3152,11 @@ function toggleOptionFields(isShares) {
             }
         }
     });
+
+    // Also toggle the Trade Plan group wrapper (otherwise it can show as an empty card)
+    document.querySelectorAll('.trade-plan-group').forEach((g) => {
+        g.style.display = isShares ? 'none' : 'block';
+    });
 }
 
 // Update variable visibility based on which variables are currently used
@@ -2647,7 +3176,11 @@ function updateVariableVisibility() {
     const isShares = isSharesCheckbox && isSharesCheckbox.checked;
     // If we have a ticker_type control, show option fields by default (unless is_shares is enabled).
     const hasTickerTypeControl = !!document.querySelector('#dynamicFields .ticker-type-row, #optionalFieldsVariablesContainer .ticker-type-row');
-    const optionFieldNames = new Set(['strike', 'expiration', 'option_type']);
+    const optionFieldNames = new Set([
+        'strike', 'expiration', 'option_type',
+        'tp1_per', 'tp2_per', 'tp3_per', 'tp4_per', 'tp5_per', 'tp6_per',
+        'sl_per',
+    ]);
     const forceShowOptionFields = hasTickerTypeControl && !isShares;
     
     // Update visibility of all variable inputs
@@ -2902,6 +3435,13 @@ document.addEventListener('DOMContentLoaded', function() {
     
     const signalTypeSelect = document.querySelector('select[name="signal_type"]');
     const form = document.getElementById('signalForm');
+
+    // Upgrade top-level selects to match ticker dropdown styling
+    if (signalTypeSelect) upgradeSelectToTickerDropdown(signalTypeSelect, { placeholder: 'Select signal type' });
+    const discordChannelSelect = document.getElementById('discord_channel');
+    if (discordChannelSelect) upgradeSelectToTickerDropdown(discordChannelSelect, { placeholder: 'Select channel' });
+    const tradeTypeSelect = document.getElementById('trade_type');
+    if (tradeTypeSelect) upgradeSelectToTickerDropdown(tradeTypeSelect, { placeholder: 'Select trade type' });
     
     console.log('signalTypeSelect found:', !!signalTypeSelect);
     console.log('signalTypesData keys:', Object.keys(signalTypesData));
@@ -2945,6 +3485,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const isShares = isSharesCheckbox && isSharesCheckbox.checked;
             
             dynamicInputs.forEach(input => {
+                // Skip cosmetic controls (e.g. custom dropdown inputs) or unnamed elements
+                if (!input.name || input.dataset.ignoreDynamic === '1') {
+                    return;
+                }
                 // Skip validation if field is hidden due to is_shares
                 if (input.closest('[data-requires-options="true"]') && isShares) {
                     return;
@@ -2992,6 +3536,10 @@ document.addEventListener('DOMContentLoaded', function() {
             // Collect all dynamic field values into a JSON object
             const signalData = {};
             dynamicInputs.forEach(input => {
+                // Skip cosmetic controls (e.g. custom dropdown inputs) or unnamed elements
+                if (!input.name || input.dataset.ignoreDynamic === '1') {
+                    return;
+                }
                 // Handle checkbox
                 if (input.type === 'checkbox') {
                     signalData[input.name] = input.checked ? 'true' : 'false';
@@ -2999,6 +3547,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     signalData[input.name] = input.value;
                 }
             });
+
+            // Include non-dynamic publish controls
+            const tradeTypeEl = document.getElementById('trade_type');
+            if (tradeTypeEl && tradeTypeEl.value) {
+                signalData['trade_type'] = tradeTypeEl.value;
+            }
             
             // Collect optional field selections
             const optionalFieldsIndices = [];
@@ -3053,6 +3607,15 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Let form submit naturally if validation passes
+        });
+    }
+
+    // Recompute best option when trade type changes (Scalp/Swing/Leap)
+    const tradeTypeEl = document.getElementById('trade_type');
+    if (tradeTypeEl) {
+        tradeTypeEl.addEventListener('change', async () => {
+            await maybeAutoPickBestOption();
+            updatePreview();
         });
     }
 });

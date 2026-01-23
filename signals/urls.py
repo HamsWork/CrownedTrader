@@ -9,6 +9,7 @@ urlpatterns = [
     path('api/quote/', views.quote, name='quote'),
     path('api/option-suggest/', views.option_suggest, name='option_suggest'),
     path('api/option-quote/', views.option_quote, name='option_quote'),
+    path('api/best-option/', views.best_option, name='best_option'),
     # Authentication URLs
     path('login/', views.user_login, name='user_login'),
     path('logout/', views.user_logout, name='user_logout'),

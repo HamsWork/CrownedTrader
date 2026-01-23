@@ -285,3 +285,253 @@ class PolygonClient:
             "contract": best.get("ticker"),
             "strike": strike_val,
         }
+
+    def get_option_chain_snapshots(
+        self,
+        *,
+        underlying: str,
+        side: str,
+        expiration_gte: str,
+        expiration_lte: str,
+        limit: int = 250,
+        max_pages: int = 4,
+        timeout: int = 10,
+    ) -> Optional[list]:
+        """
+        Best-effort: return a list of option snapshots for an underlying using Polygon snapshot endpoint.
+
+        Uses:
+          /v3/snapshot/options/{underlying}
+
+        We rely on snapshot data because it typically includes:
+          - greeks.delta
+          - open_interest
+          - last_quote.bid / last_quote.ask (for spread)
+          - details.strike_price / details.expiration_date / details.ticker
+
+        Note: endpoint/fields depend on Polygon plan/entitlements; this is defensive and may return [].
+        """
+        u = (underlying or "").strip().upper()
+        s = (side or "").strip().lower()
+        if not u or s not in ("call", "put"):
+            return None
+
+        params = {
+            "contract_type": s,
+            "expiration_date.gte": expiration_gte,
+            "expiration_date.lte": expiration_lte,
+            "limit": int(limit or 250),
+        }
+
+        out: list = []
+        path = f"/v3/snapshot/options/{u}"
+        pages = 0
+        while pages < max_pages:
+            pages += 1
+            data = self._get(path, params=params, timeout=timeout)
+            if not data:
+                break
+            results = data.get("results") or []
+            if isinstance(results, list):
+                out.extend(results)
+            # Polygon snapshot endpoints sometimes return next_url for pagination.
+            next_url = data.get("next_url") or data.get("nextUrl")
+            if not next_url:
+                break
+            # Convert next_url into a path+params call by stripping base URL if present.
+            try:
+                if isinstance(next_url, str) and next_url.startswith(self.base_url):
+                    next_url = next_url[len(self.base_url):]
+                # next_url may already include apiKey; our _get always appends apiKey, so keep only path and clear params.
+                if isinstance(next_url, str) and "?" in next_url:
+                    next_path = next_url.split("?", 1)[0]
+                else:
+                    next_path = next_url
+                if isinstance(next_path, str) and next_path:
+                    path = next_path
+                    params = {}  # next_url already encodes query; we keep params empty to avoid collisions
+                else:
+                    break
+            except Exception:
+                break
+
+        return out
+
+    @staticmethod
+    def _coerce_float(x: Any) -> Optional[float]:
+        try:
+            if x is None:
+                return None
+            return float(x)
+        except Exception:
+            return None
+
+    def pick_best_option_from_snapshots(
+        self,
+        *,
+        snapshots: list,
+        underlying_price: float,
+        trade_type: str,
+        side: str = "call",
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Apply Scalp/Swing/Leap selection rules to a list of snapshot items.
+        Returns normalized dict: {contract, strike, expiration, side, option_price, bid, ask, spread, delta, open_interest, dte}
+        """
+        if not snapshots:
+            return None
+        try:
+            px = float(underlying_price)
+        except Exception:
+            return None
+        if px <= 0:
+            return None
+
+        import datetime as _dt
+
+        def _norm(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+            details = item.get("details") or {}
+            contract = (details.get("ticker") or item.get("ticker") or "").strip()
+            exp = (details.get("expiration_date") or "").strip()
+            strike = self._coerce_float(details.get("strike_price"))
+            if not contract or not exp or strike is None:
+                return None
+
+            greeks = item.get("greeks") or {}
+            delta = self._coerce_float(greeks.get("delta"))
+            oi = item.get("open_interest")
+            try:
+                oi_i = int(oi) if oi is not None else None
+            except Exception:
+                oi_i = None
+
+            last_quote = item.get("last_quote") or item.get("lastQuote") or {}
+            bid = self._coerce_float(last_quote.get("bid"))
+            ask = self._coerce_float(last_quote.get("ask"))
+            spread = None
+            if bid is not None and ask is not None and bid >= 0 and ask >= 0:
+                spread = ask - bid
+
+            # A usable "option_price" (mid preferred).
+            option_price = None
+            if bid is not None and ask is not None and bid > 0 and ask > 0:
+                option_price = (bid + ask) / 2.0
+            elif ask is not None and ask > 0:
+                option_price = ask
+            elif bid is not None and bid > 0:
+                option_price = bid
+            else:
+                lt = item.get("last_trade") or item.get("lastTrade") or {}
+                option_price = self._coerce_float(lt.get("price") or lt.get("p"))
+
+            # DTE
+            dte = None
+            try:
+                exp_d = _dt.date.fromisoformat(exp)
+                dte = (exp_d - _dt.date.today()).days
+            except Exception:
+                dte = None
+
+            return {
+                "contract": contract,
+                "expiration": exp,
+                "strike": strike,
+                "delta": delta,
+                "open_interest": oi_i,
+                "bid": bid,
+                "ask": ask,
+                "spread": spread,
+                "option_price": option_price,
+                "dte": dte,
+            }
+
+        rows = []
+        for it in snapshots:
+            if not isinstance(it, dict):
+                continue
+            r = _norm(it)
+            if r:
+                rows.append(r)
+        if not rows:
+            return None
+
+        tt = (trade_type or "").strip().lower()
+        if tt not in ("scalp", "swing", "leap"):
+            tt = "swing"
+
+        # Helper: score moneyness (target slightly OTM within ~2%).
+        def moneyness_score(strike: float, is_call: bool) -> float:
+            m = (strike - px) / px
+            target = 0.02 if is_call else -0.02
+            # Strongly prefer within +/-2%, then closeness to target.
+            return abs(m - target) + (0 if abs(m) <= 0.02 else 0.5 + abs(m))
+
+        s_side = (side or "").strip().lower()
+        if s_side not in ("call", "put"):
+            s_side = "call"
+        prefer_call = s_side == "call"
+
+        # Scalp: delta 0.35-0.60, OI>=500, spread<0.10, closest to 0.50; increasing DTE.
+        if tt == "scalp":
+            by_exp: Dict[str, list] = {}
+            for r in rows:
+                exp = r["expiration"]
+                by_exp.setdefault(exp, []).append(r)
+            for exp in sorted(by_exp.keys()):
+                candidates = []
+                for r in by_exp[exp]:
+                    d = r.get("delta")
+                    oi = r.get("open_interest") or 0
+                    spr = r.get("spread")
+                    if d is None:
+                        continue
+                    if not (0.35 <= abs(d) <= 0.60):
+                        continue
+                    if oi < 500:
+                        continue
+                    if spr is None or spr >= 0.10:
+                        continue
+                    candidates.append(r)
+                if not candidates:
+                    continue
+                # closest to 0.50 delta, then tighter spread, then higher OI
+                candidates.sort(key=lambda r: (abs(abs(r.get("delta") or 0) - 0.50), (r.get("spread") or 9e9), -(r.get("open_interest") or 0)))
+                return candidates[0]
+
+            # fallback: pick closest-to-0.50 delta ignoring OI/spread
+            rows2 = [r for r in rows if r.get("delta") is not None]
+            if not rows2:
+                return None
+            rows2.sort(key=lambda r: (abs(abs(r.get("delta") or 0) - 0.50), (r.get("spread") or 9e9)))
+            return rows2[0]
+
+        # Swing/Leap: pick DTE window preference, then best strike near +/-2% OTM, with spread/OI tiebreakers.
+        if tt == "swing":
+            primary = (13, 25)
+            secondary = (6, 15)
+            outer = (6, 45)
+        else:  # leap
+            primary = (60, 90)
+            secondary = (60, 90)
+            outer = (55, 100)
+
+        def in_window(r, lo, hi):
+            dte = r.get("dte")
+            return dte is not None and lo <= dte <= hi
+
+        window_rows = [r for r in rows if in_window(r, primary[0], primary[1])]
+        if not window_rows:
+            window_rows = [r for r in rows if in_window(r, secondary[0], secondary[1])]
+        if not window_rows:
+            window_rows = [r for r in rows if in_window(r, outer[0], outer[1])]
+        if not window_rows:
+            window_rows = rows
+
+        window_rows.sort(
+            key=lambda r: (
+                moneyness_score(r["strike"], is_call=prefer_call),
+                (r.get("spread") or 9e9),
+                -(r.get("open_interest") or 0),
+            )
+        )
+        return window_rows[0]
