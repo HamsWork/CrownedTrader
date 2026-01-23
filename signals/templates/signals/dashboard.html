@@ -3593,7 +3593,42 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // Handle form submission
-        form.addEventListener('submit', function(e) {
+        form.addEventListener('submit', async function(e) {
+            // If we already ran the auto-fill flow, proceed with normal submit.
+            if (form.dataset.skipAutoFillOnce === '1') {
+                delete form.dataset.skipAutoFillOnce;
+            } else {
+                // Safety: if option_price is still default (0.000) in options mode, wait for best-option autofill.
+                const isSharesCheckbox0 = document.getElementById('id_is_shares');
+                const isShares0 = isSharesCheckbox0 && isSharesCheckbox0.checked;
+                if (!isShares0) {
+                    const sym0 = getCurrentTickerSymbol();
+                    const optPriceEl0 = findFieldByName('option_price');
+                    const optPrice0 = optPriceEl0 ? String(optPriceEl0.value || '').trim() : '';
+                    const needsOptionPrice =
+                        !!sym0 &&
+                        (!optPrice0 || optPrice0 === '0' || optPrice0 === '0.0' || optPrice0 === '0.00' || optPrice0 === '0.000');
+
+                    if (needsOptionPrice) {
+                        e.preventDefault();
+                        try {
+                            await maybeAutoPickBestOption();
+                            updateTpSlPrices();
+                        } catch (_) {
+                            // fall through: submit with whatever we have
+                        }
+                        form.dataset.skipAutoFillOnce = '1';
+                        // Trigger submit again with updated values
+                        if (typeof form.requestSubmit === 'function') {
+                            form.requestSubmit();
+                        } else {
+                            form.submit();
+                        }
+                        return false;
+                    }
+                }
+            }
+
             // Get current signal type and its variables
             const currentSignalTypeId = signalTypeSelect.value;
             const currentSignalType = signalTypesData[currentSignalTypeId];

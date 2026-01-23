@@ -772,6 +772,102 @@ def dashboard(request):
             trade_type = (request.POST.get('trade_type') or '').strip()
             if trade_type and 'trade_type' not in signal_data:
                 signal_data['trade_type'] = trade_type
+
+            # Backend safety net: if option_price wasn't computed client-side, compute it here (best-effort)
+            def _truthy(v) -> bool:
+                if isinstance(v, bool):
+                    return v
+                s = str(v or '').strip().lower()
+                return s in ('1', 'true', 'yes', 'y', 'on')
+
+            def _is_zero_price(v) -> bool:
+                try:
+                    if v is None:
+                        return True
+                    s = str(v).strip()
+                    if not s:
+                        return True
+                    return float(s) == 0.0
+                except Exception:
+                    return True
+
+            try:
+                is_shares = _truthy(signal_data.get('is_shares', False))
+                if not is_shares:
+                    sym = _normalize_symbol(signal_data.get('ticker') or signal_data.get('symbol') or '')
+                    if sym and _is_zero_price(signal_data.get('option_price')):
+                        polygon_key = getattr(settings, "POLYGON_API_KEY", "") or ""
+                        if polygon_key:
+                            side_raw = str(signal_data.get('option_type') or 'CALL').strip().lower()
+                            side = 'put' if 'put' in side_raw else 'call'
+                            tt = str(signal_data.get('trade_type') or 'swing').strip().lower() or 'swing'
+
+                            client = PolygonClient(polygon_key)
+                            underlying_price = client.get_share_current_price(sym)
+                            if underlying_price is not None:
+                                # DTE windows per trade type (same as /api/best-option/)
+                                import datetime as dt
+                                today = dt.date.today()
+                                if tt == "scalp":
+                                    lo, hi = 1, 30
+                                elif tt == "leap":
+                                    lo, hi = 60, 90
+                                else:
+                                    lo, hi = 6, 45
+                                exp_gte = (today + dt.timedelta(days=lo)).isoformat()
+                                exp_lte = (today + dt.timedelta(days=hi)).isoformat()
+
+                                snaps = client.get_option_chain_snapshots(
+                                    underlying=sym,
+                                    side=side,
+                                    expiration_gte=exp_gte,
+                                    expiration_lte=exp_lte,
+                                    limit=250,
+                                    max_pages=4,
+                                    timeout=12,
+                                ) or []
+
+                                best = client.pick_best_option_from_snapshots(
+                                    snapshots=snaps,
+                                    underlying_price=float(underlying_price),
+                                    trade_type=tt,
+                                    side=side,
+                                )
+                                if best and best.get("option_price") is not None:
+                                    # Fill key option fields used by templates
+                                    signal_data["strike"] = best.get("strike") or signal_data.get("strike") or ""
+                                    signal_data["expiration"] = best.get("expiration") or signal_data.get("expiration") or ""
+                                    signal_data["option_contract"] = best.get("contract") or signal_data.get("option_contract") or ""
+                                    opt_price = best.get("option_price")
+                                    try:
+                                        opt_price_f = float(opt_price)
+                                    except Exception:
+                                        opt_price_f = 0.0
+                                    signal_data["option_price"] = f"{opt_price_f:.3f}"
+                                    # Also populate common price fields for legacy templates
+                                    if _is_zero_price(signal_data.get("price")):
+                                        signal_data["price"] = f"{opt_price_f:.3f}"
+                                    if _is_zero_price(signal_data.get("entry_price")):
+                                        signal_data["entry_price"] = f"{opt_price_f:.3f}"
+
+                                    # Compute TP/SL prices if missing (best-effort)
+                                    def _get_per(key: str) -> float:
+                                        try:
+                                            v = str(signal_data.get(key) or '').strip().replace('%', '')
+                                            return float(v) if v else 0.0
+                                        except Exception:
+                                            return 0.0
+
+                                    for i in range(1, 7):
+                                        per = _get_per(f"tp{i}_per")
+                                        if per > 0:
+                                            signal_data[f"tp{i}_price"] = f"{(opt_price_f * (1.0 + per / 100.0)):.3f}"
+                                    sl_per = _get_per("sl_per")
+                                    if sl_per > 0:
+                                        signal_data["sl_price"] = f"{(opt_price_f * (1.0 - sl_per / 100.0)):.3f}"
+            except Exception:
+                # Never block submission due to option quote issues; dashboard preview may still show best-effort.
+                pass
             
             # Get selected Discord channel if provided
             discord_channel_id = request.POST.get('discord_channel')
