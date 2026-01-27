@@ -1838,13 +1838,13 @@ function generateSampleData() {
         sampleData['expiration'] = `${y}-${m}-${day}`;
     }
     if (sampleData['strike'] === undefined) {
-        sampleData['strike'] = '0.000';
+        sampleData['strike'] = '0.00';
     }
     if (sampleData['option_type'] === undefined) {
         sampleData['option_type'] = 'CALL';
     }
     if (sampleData['option_price'] === undefined) {
-        sampleData['option_price'] = '0.000';
+        sampleData['option_price'] = '0.00';
     }
     if (sampleData['tp1_per'] === undefined) sampleData['tp1_per'] = '10';
     if (sampleData['tp2_per'] === undefined) sampleData['tp2_per'] = '20';
@@ -1853,10 +1853,10 @@ function generateSampleData() {
     if (sampleData['tp1_takeoff_per'] === undefined) sampleData['tp1_takeoff_per'] = '50';
     if (sampleData['tp2_takeoff_per'] === undefined) sampleData['tp2_takeoff_per'] = '25';
     if (sampleData['tp3_takeoff_per'] === undefined) sampleData['tp3_takeoff_per'] = '25';
-    if (sampleData['tp1_price'] === undefined) sampleData['tp1_price'] = '0.000';
-    if (sampleData['tp2_price'] === undefined) sampleData['tp2_price'] = '0.000';
-    if (sampleData['tp3_price'] === undefined) sampleData['tp3_price'] = '0.000';
-    if (sampleData['sl_price'] === undefined) sampleData['sl_price'] = '0.000';
+    if (sampleData['tp1_price'] === undefined) sampleData['tp1_price'] = '0.00';
+    if (sampleData['tp2_price'] === undefined) sampleData['tp2_price'] = '0.00';
+    if (sampleData['tp3_price'] === undefined) sampleData['tp3_price'] = '0.00';
+    if (sampleData['sl_price'] === undefined) sampleData['sl_price'] = '0.00';
 
     return sampleData;
 }
@@ -1868,7 +1868,7 @@ function renderTemplate(template, data) {
     return template.replace(/\{\{(\w+)(?:::(\w+))?\}\}/g, (match, varName, modifier) => {
         if (modifier === 'stock_price') {
             // Template-builder preview doesn't fetch live quotes; default to 0.0
-            return '0.000';
+            return '0.00';
         }
         if (modifier === 'company_name') {
             // Template-builder preview doesn't fetch company details; show placeholder.
@@ -1876,16 +1876,16 @@ function renderTemplate(template, data) {
         }
         // Defaults for namespaced option helpers
         if (modifier === 'expiration') return data.expiration ?? (new Date().toISOString().slice(0, 10));
-        if (modifier === 'strike') return data.strike ?? '0.000';
+        if (modifier === 'strike') return data.strike ?? '0.00';
         if (modifier === 'option_type') return data.option_type ?? 'CALL';
-        if (modifier === 'option_price') return data.option_price ?? '0.000';
+        if (modifier === 'option_price') return data.option_price ?? '0.00';
         if (modifier && ['tp1_per','tp2_per','tp3_per','sl_per'].includes(modifier)) {
             const v = data[modifier];
             if (v === undefined || v === null || String(v).trim() === '') return '0%';
             const s = String(v).trim();
             return s.endsWith('%') ? s : `${s}%`;
         }
-        if (modifier && ['tp1_price','tp2_price','tp3_price','sl_price'].includes(modifier)) return data[modifier] ?? '0.000';
+        if (modifier && ['tp1_price','tp2_price','tp3_price','sl_price'].includes(modifier)) return data[modifier] ?? '0.00';
         if (modifier && (modifier in data)) {
             // Allow {% templatetag openvariable %}ticker::strike{% templatetag closevariable %} style access (treat modifier as the real variable name).
             return data[modifier];

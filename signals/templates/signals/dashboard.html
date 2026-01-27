@@ -1799,7 +1799,7 @@ function formatFloat3(value) {
     if (value === null || value === undefined) return '';
     const n = Number(value);
     if (!Number.isFinite(n)) return String(value);
-    return n.toFixed(3);
+    return n.toFixed(2);
 }
 
 function parsePercent(value) {
@@ -2141,7 +2141,7 @@ function renderTemplate(template, data) {
             if (p !== undefined && p !== null && String(p).trim() !== '') return formatFloat3(p);
             const sym = (data && data[varName]) ? String(data[varName]).trim().toUpperCase() : '';
             const cached = sym ? tickerMetaCache[sym] : null;
-            return (cached && cached.price != null) ? formatFloat3(cached.price) : '0.000';
+            return (cached && cached.price != null) ? formatFloat3(cached.price) : '0.00';
         }
         if (modifier === 'company_name') {
             // Preview: use a provided company_name if present, else use cached metadata.
@@ -2159,7 +2159,7 @@ function renderTemplate(template, data) {
 
             // Prefer explicit fields if present; default to 0.0
             const v = data.option_price ?? data.entry_price ?? data.price;
-            return (v !== undefined && v !== null && String(v).trim() !== '') ? formatFloat3(v) : '0.000';
+            return (v !== undefined && v !== null && String(v).trim() !== '') ? formatFloat3(v) : '0.00';
         }
         if (modifier && ['tp1_per','tp2_per','tp3_per','tp4_per','tp5_per','tp6_per','sl_per','tp1_takeoff_per','tp2_takeoff_per','tp3_takeoff_per','tp4_takeoff_per','tp5_takeoff_per','tp6_takeoff_per'].includes(modifier)) {
             const v = data[modifier];
@@ -2169,7 +2169,7 @@ function renderTemplate(template, data) {
         }
         if (modifier && ['tp1_price','tp2_price','tp3_price','tp4_price','tp5_price','tp6_price','sl_price'].includes(modifier)) {
             const v = data[modifier];
-            return (v !== undefined && v !== null && String(v).trim() !== '') ? formatFloat3(v) : '0.000';
+            return (v !== undefined && v !== null && String(v).trim() !== '') ? formatFloat3(v) : '0.00';
         }
         if (modifier && ['tp1_stock_price','tp2_stock_price','tp3_stock_price','tp4_stock_price','tp5_stock_price','tp6_stock_price'].includes(modifier)) {
             const v = data[modifier];
@@ -2531,7 +2531,7 @@ function updatePreview() {
 
                 const per = String(formData[`tp${i}_per`] ?? '').trim();
                 if (!per) continue;
-                const price = String(formData[`tp${i}_price`] ?? '0.000').trim() || '0.000';
+                const price = String(formData[`tp${i}_price`] ?? '0.00').trim() || '0.00';
                 const perNum = parsePercent(per);
                 const perFmt = Number.isFinite(perNum) ? `${perNum >= 0 ? '+' : ''}${perNum.toFixed(1)}%` : (per.endsWith('%') ? per : `${per}%`);
                 const priceNum = Number(String(price).trim());
@@ -2592,10 +2592,10 @@ function updatePreview() {
                 tps.push(line);
             });
             const slPerRaw = String(formData['sl_per'] ?? '').trim();
-            const slPriceRaw = String(formData['sl_price'] ?? '0.000').trim() || '0.000';
+            const slPriceRaw = String(formData['sl_price'] ?? '0.00').trim() || '0.00';
             const slPerStr = slPerRaw ? (slPerRaw.endsWith('%') ? slPerRaw : `${slPerRaw}%`) : '';
 
-            // Show Trade Plan even before option price is computed (defaults: 0.000)
+            // Show Trade Plan even before option price is computed (defaults: 0.00)
             if (targets.length || tps.length || slPerRaw || slPriceRaw) {
                 // Find insertion index: after last option-related field (Expiration/Strike/Option/Price)
                 let insertAt = -1;
@@ -3095,7 +3095,7 @@ function createDynamicFields(signalTypeId) {
         priceLabel.textContent = 'Price';
         const priceDisplayInput = document.createElement('input');
         priceDisplayInput.type = 'number';
-        priceDisplayInput.step = '0.001';
+        priceDisplayInput.step = '0.01';
         priceDisplayInput.min = '0';
         priceDisplayInput.className = 'form-input';
         priceDisplayInput.dataset.tpPriceDisplay = '1';
@@ -3252,10 +3252,10 @@ function createDynamicFields(signalTypeId) {
             // Update visible option price + hidden tp{level}_price
             const hiddenPriceEl = findFieldByName(`tp${level}_price`);
             isSyncing = true;
-            optPriceInput.value = price.toFixed(3);
+            optPriceInput.value = price.toFixed(2);
             optPriceInput.dataset.autoFilled = '1';
             if (hiddenPriceEl) {
-                hiddenPriceEl.value = price.toFixed(3);
+                hiddenPriceEl.value = price.toFixed(2);
                 hiddenPriceEl.dataset.autoFilled = '1';
             }
             isSyncing = false;
@@ -3275,7 +3275,7 @@ function createDynamicFields(signalTypeId) {
             tpPerInput.dataset.autoFilled = '1';
             const hiddenPriceEl = findFieldByName(`tp${level}_price`);
             if (hiddenPriceEl) {
-                hiddenPriceEl.value = price.toFixed(3);
+                hiddenPriceEl.value = price.toFixed(2);
                 hiddenPriceEl.dataset.autoFilled = '1';
             }
             isSyncing = false;
@@ -3569,7 +3569,7 @@ function createDynamicFields(signalTypeId) {
             const ensureTpPriceHidden = (lvl) => {
                 const existing = findFieldByName(`tp${lvl}_price`);
                 if (existing) return;
-                const hiddenGroup = createSyntheticHiddenField(`tp${lvl}_price`, '0.000');
+                const hiddenGroup = createSyntheticHiddenField(`tp${lvl}_price`, '0.00');
                 tpHiddenHolder.appendChild(hiddenGroup);
             };
 
@@ -4132,11 +4132,11 @@ function createDynamicFields(signalTypeId) {
                 tpContainer,
                 slGroup,
                 presetActionsBar,
-                createSyntheticHiddenField('sl_price', '0.000'),
+                createSyntheticHiddenField('sl_price', '0.00'),
             ];
             formGroup._afterSyntheticGroups.push(createSyntheticTradePlanGroup(tradePlanChildren));
             // Ensure option_price is present in submitted JSON even if not defined in variables.
-            if (!hasOptionPriceVariable) formGroup._afterSyntheticGroups.push(createSyntheticHiddenField('option_price', '0.000'));
+            if (!hasOptionPriceVariable) formGroup._afterSyntheticGroups.push(createSyntheticHiddenField('option_price', '0.00'));
             if (!hasOptionContractVariable) formGroup._afterSyntheticGroups.push(createSyntheticHiddenField('option_contract', ''));
 
         } else {
@@ -4398,12 +4398,12 @@ function createDynamicFields(signalTypeId) {
                 forceSet(findFieldByName('tp3_per'), '30');
                 // Default takeoff amounts (percent of capital removed at each TP)
                 forceSet(findFieldByName('tp1_takeoff_per'), '50');
-                forceSet(findFieldByName('tp2_takeoff_per'), '25');
-                forceSet(findFieldByName('tp3_takeoff_per'), '25');
+                forceSet(findFieldByName('tp2_takeoff_per'), '50');
+                forceSet(findFieldByName('tp3_takeoff_per'), '100');
                 forceSet(findFieldByName('sl_per'), '10');
 
-                // Default option_price to 0.000; it will be overwritten by /api/best-option/ once inputs are valid.
-                forceSet(optionPriceEl, '0.000');
+                // Default option_price to 0.00; it will be overwritten by /api/best-option/ once inputs are valid.
+                forceSet(optionPriceEl, '0.00');
             }
             updatePreview();
             if (!this.checked) {
@@ -4791,7 +4791,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (form.dataset.skipAutoFillOnce === '1') {
                 delete form.dataset.skipAutoFillOnce;
             } else {
-                // Safety: if option_price is still default (0.000) in options mode, wait for best-option autofill.
+                // Safety: if option_price is still default (0.00) in options mode, wait for best-option autofill.
                 const isSharesCheckbox0 = document.getElementById('id_is_shares');
                 const isShares0 = isSharesCheckbox0 && isSharesCheckbox0.checked;
                 if (!isShares0) {
@@ -4800,7 +4800,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const optPrice0 = optPriceEl0 ? String(optPriceEl0.value || '').trim() : '';
                     const needsOptionPrice =
                         !!sym0 &&
-                        (!optPrice0 || optPrice0 === '0' || optPrice0 === '0.0' || optPrice0 === '0.00' || optPrice0 === '0.000');
+                        (!optPrice0 || optPrice0 === '0' || optPrice0 === '0.0' || optPrice0 === '0.00');
 
                     if (needsOptionPrice) {
                         e.preventDefault();

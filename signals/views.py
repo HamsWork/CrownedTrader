@@ -395,8 +395,8 @@ def render_template(template_string, variables, quote_cache=None):
             # Convention: ticker variable holds a symbol string.
             symbol = variables.get(var_name, "") if isinstance(variables, dict) else ""
             price = _get_stock_price(str(symbol or ""), quote_cache=quote_cache)
-            # Default when unavailable: 0.000
-            return f"{price:.3f}" if isinstance(price, (int, float)) else "0.000"
+            # Default when unavailable: 0.00
+            return f"{price:.2f}" if isinstance(price, (int, float)) else "0.00"
 
         if modifier == "company_name":
             symbol = variables.get(var_name, "") if isinstance(variables, dict) else ""
@@ -446,9 +446,9 @@ def render_template(template_string, variables, quote_cache=None):
             val = variables.get(modifier, "") if isinstance(variables, dict) else ""
             if modifier in ("option_price", "tp1_price", "tp2_price", "tp3_price", "tp4_price", "tp5_price", "tp6_price", "sl_price"):
                 try:
-                    return f"{float(val):.3f}"
+                    return f"{float(val):.2f}"
                 except Exception:
-                    return "0.000"
+                    return "0.00"
             if modifier in ("tp1_stock_price", "tp2_stock_price", "tp3_stock_price", "tp4_stock_price", "tp5_stock_price", "tp6_stock_price"):
                 try:
                     s = str(val).strip()
@@ -719,11 +719,11 @@ def get_signal_template(signal):
             sl_per_str = sl_per if (sl_per and sl_per.endswith("%")) else (f"{sl_per}%" if sl_per else "")
             sl_price_raw = data_copy.get("sl_price")
             try:
-                sl_price_str = f"{float(sl_price_raw):.3f}" if sl_price_raw is not None and str(sl_price_raw).strip() != "" else "0.000"
+                sl_price_str = f"{float(sl_price_raw):.2f}" if sl_price_raw is not None and str(sl_price_raw).strip() != "" else "0.00"
             except Exception:
-                sl_price_str = "0.000"
+                sl_price_str = "0.00"
 
-            # Show Trade Plan even if option price isn't computed yet (defaults to 0.000)
+            # Show Trade Plan even if option price isn't computed yet (defaults to 0.00)
             if targets or tps or sl_per_str or sl_price_str:
                 # Insert after last option-related field if possible, else append.
                 insert_at = len(fields)
@@ -963,12 +963,12 @@ def dashboard(request):
                                         opt_price_f = float(opt_price)
                                     except Exception:
                                         opt_price_f = 0.0
-                                    signal_data["option_price"] = f"{opt_price_f:.3f}"
+                                    signal_data["option_price"] = f"{opt_price_f:.2f}"
                                     # Also populate common price fields for legacy templates
                                     if _is_zero_price(signal_data.get("price")):
-                                        signal_data["price"] = f"{opt_price_f:.3f}"
+                                        signal_data["price"] = f"{opt_price_f:.2f}"
                                     if _is_zero_price(signal_data.get("entry_price")):
-                                        signal_data["entry_price"] = f"{opt_price_f:.3f}"
+                                        signal_data["entry_price"] = f"{opt_price_f:.2f}"
 
                                     # Compute TP/SL prices if missing (best-effort)
                                     def _get_per(key: str) -> float:
@@ -984,10 +984,10 @@ def dashboard(request):
                                             continue
                                         per = _get_per(f"tp{i}_per")
                                         if per > 0:
-                                            signal_data[f"tp{i}_price"] = f"{(opt_price_f * (1.0 + per / 100.0)):.3f}"
+                                            signal_data[f"tp{i}_price"] = f"{(opt_price_f * (1.0 + per / 100.0)):.2f}"
                                     sl_per = _get_per("sl_per")
                                     if sl_per > 0:
-                                        signal_data["sl_price"] = f"{(opt_price_f * (1.0 - sl_per / 100.0)):.3f}"
+                                        signal_data["sl_price"] = f"{(opt_price_f * (1.0 - sl_per / 100.0)):.2f}"
             except Exception:
                 # Never block submission due to option quote issues; dashboard preview may still show best-effort.
                 pass
