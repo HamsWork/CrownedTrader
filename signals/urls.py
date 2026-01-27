@@ -5,6 +5,7 @@ urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('history/', views.signals_history, name='signals_history'),
     path('api/signal-type-variables/', views.get_signal_type_variables, name='get_signal_type_variables'),
+    path('api/trade-plan/', views.trade_plan_api, name='trade_plan_api'),
     path('api/us-tickers/', views.us_tickers, name='us_tickers'),
     path('api/quote/', views.quote, name='quote'),
     path('api/option-suggest/', views.option_suggest, name='option_suggest'),

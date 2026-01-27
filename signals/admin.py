@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Signal, SignalType, UserProfile, DiscordChannel
+from .models import Signal, SignalType, UserProfile, DiscordChannel, UserTradePlan, UserTradePlanPreset
 
 @admin.register(Signal)
 class SignalAdmin(admin.ModelAdmin):
@@ -27,4 +27,18 @@ class DiscordChannelAdmin(admin.ModelAdmin):
     list_filter = ['is_default', 'is_active', 'created_at']
     search_fields = ['user__username', 'channel_name', 'webhook_url']
     list_editable = ['is_default', 'is_active']
+
+
+@admin.register(UserTradePlan)
+class UserTradePlanAdmin(admin.ModelAdmin):
+    list_display = ['user', 'updated_at']
+    search_fields = ['user__username', 'user__email']
+
+
+@admin.register(UserTradePlanPreset)
+class UserTradePlanPresetAdmin(admin.ModelAdmin):
+    list_display = ['user', 'name', 'is_default', 'updated_at']
+    list_filter = ['is_default', 'updated_at']
+    search_fields = ['user__username', 'user__email', 'name']
+    list_editable = ['is_default']
 

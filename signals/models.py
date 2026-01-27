@@ -95,3 +95,43 @@ class DiscordChannel(models.Model):
             DiscordChannel.objects.filter(user=self.user, is_default=True).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
 
+
+class UserTradePlan(models.Model):
+    """
+    Per-user saved Trade Plan defaults used on the Dashboard "Trade Plan" builder.
+
+    Stored as JSON so the frontend can evolve without migrations for every minor tweak.
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="trade_plan")
+    plan = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} - Trade Plan"
+
+
+class UserTradePlanPreset(models.Model):
+    """
+    Named Trade Plan presets per user (selectable via dropdown on the Dashboard).
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="trade_plan_presets")
+    name = models.CharField(max_length=80)
+    plan = models.JSONField(default=dict, blank=True)
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [["user", "name"]]
+        ordering = ["-is_default", "-updated_at", "name"]
+
+    def save(self, *args, **kwargs):
+        # Ensure only one default preset per user.
+        if self.is_default and self.user_id:
+            UserTradePlanPreset.objects.filter(user_id=self.user_id, is_default=True).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.name}"
+

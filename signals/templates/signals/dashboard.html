@@ -56,6 +56,38 @@
         border-color: #555;
     }
 
+    /* Disabled button state (make it obvious) */
+    .btn-cancel:disabled,
+    .btn-submit:disabled,
+    .btn-publish:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        box-shadow: none !important;
+        transform: none !important;
+        filter: grayscale(0.35) saturate(0.65);
+    }
+
+    .btn-cancel:disabled {
+        background: rgba(45, 45, 45, 0.65);
+        color: rgba(224, 224, 224, 0.55);
+        border-color: rgba(68, 68, 68, 0.55);
+    }
+
+    .btn-submit:disabled,
+    .btn-publish:disabled {
+        background: rgba(var(--accent-rgb), 0.25);
+        color: rgba(26, 26, 26, 0.75);
+    }
+
+    .btn-cancel:disabled:hover,
+    .btn-submit:disabled:hover,
+    .btn-publish:disabled:hover {
+        background: inherit;
+        border-color: inherit;
+        transform: none;
+        box-shadow: none;
+    }
+
     .btn-publish {
         background: var(--accent);
         color: #1a1a1a;
@@ -924,6 +956,76 @@
             justify-content: flex-end;
         }
     }
+
+    /* Trade Plan: centered modal (theme-matched) */
+    .ctp-modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        padding: 24px;
+    }
+
+    .ctp-modal-overlay.open {
+        display: flex;
+    }
+
+    .ctp-modal {
+        width: min(520px, 100%);
+        background: rgba(15, 23, 42, 0.92);
+        border: 1px solid rgba(42, 55, 95, 0.7);
+        border-radius: 14px;
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+        padding: 18px;
+        color: #e5e7eb;
+    }
+
+    .ctp-modal-title {
+        font-size: 1.35em;
+        font-weight: 700;
+        margin-bottom: 6px;
+        color: #e0e0e0;
+    }
+
+    .ctp-modal-subtitle {
+        font-size: 0.9em;
+        color: #9ca3af;
+        margin-bottom: 14px;
+        line-height: 1.4;
+    }
+
+    .ctp-modal-actions {
+        margin-top: 14px;
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+
+    /* Modal button sizing (smaller height than page CTAs) */
+    .ctp-modal-actions .btn-cancel,
+    .ctp-modal-actions .btn-submit {
+        padding: 10px 16px;
+        font-size: 0.95em;
+        line-height: 1;
+        border-radius: 10px;
+        box-shadow: none;
+    }
+
+    .ctp-modal-error {
+        margin-top: 8px;
+        color: #f87171;
+        font-size: 0.9em;
+        display: none;
+    }
+
+    .ctp-modal-error.show {
+        display: block;
+    }
 </style>
 {% endblock %}
 
@@ -1128,6 +1230,7 @@
 
 {% block extra_js %}
 {{ signal_types_data|json_script:"signal-types-data" }}
+{{ trade_plan_presets|json_script:"trade-plan-presets-data" }}
 <script>
 // Store signal types data with full template information (Django json_script)
 const signalTypesDataList = JSON.parse(document.getElementById('signal-types-data').textContent || '[]');
@@ -1136,9 +1239,75 @@ signalTypesDataList.forEach((st) => {
     signalTypesData[String(st.id)] = st;
 });
 
+// Per-user saved Trade Plan presets (dropdown)
+let tradePlanPresets = JSON.parse(document.getElementById('trade-plan-presets-data')?.textContent || '[]');
+if (!Array.isArray(tradePlanPresets)) tradePlanPresets = [];
+
+// If we just created a preset (Save As), we persist the id through reload
+// so the dropdown can auto-select it after the page rerenders.
+let pendingTradePlanPresetId = '';
+try {
+    pendingTradePlanPresetId = String(sessionStorage.getItem('ctp_selected_preset_id') || '');
+} catch (_) {
+    pendingTradePlanPresetId = '';
+}
+
+function consumePendingTradePlanPresetId() {
+    const v = String(pendingTradePlanPresetId || '');
+    pendingTradePlanPresetId = '';
+    try { sessionStorage.removeItem('ctp_selected_preset_id'); } catch (_) {}
+    return v;
+}
+
 // Debug: Log signalTypesData to console
 console.log('signalTypesData loaded:', signalTypesData);
 console.log('Number of signal types:', Object.keys(signalTypesData).length);
+
+// --- CSRF helper for same-origin POSTs (Django) ---
+function getCookie(name) {
+    const cookies = document.cookie ? document.cookie.split(';') : [];
+    for (let i = 0; i < cookies.length; i++) {
+        const c = cookies[i].trim();
+        if (c.startsWith(name + '=')) return decodeURIComponent(c.substring(name.length + 1));
+    }
+    return '';
+}
+
+function getCsrfToken() {
+    return getCookie('csrftoken');
+}
+
+async function tradePlanApi(reqPayload) {
+    const res = await fetch('/api/trade-plan/', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken(),
+        },
+        body: JSON.stringify(reqPayload || {}),
+    });
+    const respPayload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        const msg = respPayload?.error || 'Failed to save Trade Plan';
+        throw new Error(msg);
+    }
+    return respPayload;
+}
+
+function getDefaultTradePlanPreset() {
+    const d = tradePlanPresets.find(p => p && p.is_default);
+    return d || tradePlanPresets[0] || null;
+}
+
+function getInitialTradePlanPreset() {
+    const pendingId = consumePendingTradePlanPresetId();
+    if (pendingId) {
+        const p = tradePlanPresets.find(x => x && String(x.id) === String(pendingId));
+        if (p) return p;
+    }
+    return getDefaultTradePlanPreset();
+}
 
 // Track visibility of optional fields (default: hidden)
 const optionalFieldsVisibility = {};
@@ -1644,6 +1813,12 @@ function updateTpSlPrices() {
     const slPriceEl = findFieldByName('sl_price');
 
     for (let i = 1; i <= MAX_TP_LEVELS; i++) {
+        const modeEl = findFieldByName(`tp${i}_mode`);
+        const mode = String(modeEl ? modeEl.value : '').trim().toLowerCase();
+        // If TP is defined as an underlying stock price target, don't compute option tp_price.
+        if (mode === 'stock' || mode === 'stock_price' || mode === 'underlying' || mode === 'share_price') {
+            continue;
+        }
         const perEl = findFieldByName(`tp${i}_per`);
         const priceElN = findFieldByName(`tp${i}_price`);
         if (!perEl || !priceElN) continue;
@@ -1653,6 +1828,37 @@ function updateTpSlPrices() {
         }
     }
     if (Number.isFinite(slPer)) setValueIfAllowed(slPriceEl, formatFloat3(base * (1 - slPer / 100)));
+}
+
+// When Target Type = Stock price ($), default TP stock targets to +10%/+20%/+30%
+// of the current underlying stock price (without overwriting user edits).
+function updateDefaultTpStockTargets() {
+    const modeEl = findFieldByName('tp1_mode');
+    const mode = String(modeEl ? modeEl.value : '').trim().toLowerCase();
+    const isStock = mode === 'stock' || mode === 'stock_price' || mode === 'underlying' || mode === 'share_price';
+    if (!isStock) return;
+
+    const sym = getCurrentTickerSymbol();
+    const cached = sym ? tickerMetaCache[sym] : null;
+    const currentPriceEl = findFieldByName('current_price');
+    const baseRaw = (currentPriceEl && currentPriceEl.value) || (cached && cached.price != null ? cached.price : '');
+    const base = Number(String(baseRaw).trim());
+    // Allow base=0 so defaults still show as $0.00 when price isn't available yet.
+    if (!Number.isFinite(base) || base < 0) return;
+
+    // If option type is PUT, defaults should be -10%/-20%/-30%
+    const optTypeEl = findFieldByName('option_type');
+    const optTypeRaw = String(optTypeEl ? optTypeEl.value : '').trim().toLowerCase();
+    const isPut = optTypeRaw.includes('put');
+
+    const defaults = [10, 20, 30];
+    for (let i = 1; i <= defaults.length; i++) {
+        const el = findFieldByName(`tp${i}_stock_price`);
+        if (!el) continue;
+        const dir = isPut ? -1 : 1;
+        const target = (base * (1 + dir * defaults[i - 1] / 100));
+        setValueIfAllowed(el, target.toFixed(2));
+    }
 }
 
 function findFieldByName(name) {
@@ -1942,6 +2148,12 @@ function renderTemplate(template, data) {
             const v = data[modifier];
             return (v !== undefined && v !== null && String(v).trim() !== '') ? formatFloat3(v) : '0.000';
         }
+        if (modifier && ['tp1_stock_price','tp2_stock_price','tp3_stock_price','tp4_stock_price','tp5_stock_price','tp6_stock_price'].includes(modifier)) {
+            const v = data[modifier];
+            if (v === undefined || v === null || String(v).trim() === '') return '';
+            const n = Number(String(v).trim());
+            return Number.isFinite(n) ? n.toFixed(2) : String(v);
+        }
         if (modifier && (modifier in data)) {
             // Allow {% templatetag openvariable %}ticker::strike{% templatetag closevariable %} style access (treat modifier as the real variable name).
             const v = data[modifier];
@@ -1967,6 +2179,8 @@ function extractVariablesFromTemplate(template) {
         // treat "strike" as a used variable so the strike input is shown.
         if (modifier && ['is_shares', 'strike', 'expiration', 'option_type',
             'tp1_per', 'tp2_per', 'tp3_per', 'tp4_per', 'tp5_per', 'tp6_per',
+            'tp1_mode', 'tp2_mode', 'tp3_mode', 'tp4_mode', 'tp5_mode', 'tp6_mode',
+            'tp1_stock_price', 'tp2_stock_price', 'tp3_stock_price', 'tp4_stock_price', 'tp5_stock_price', 'tp6_stock_price',
             'tp1_takeoff_per', 'tp2_takeoff_per', 'tp3_takeoff_per', 'tp4_takeoff_per', 'tp5_takeoff_per', 'tp6_takeoff_per',
             'sl_per',
             'tp1_price', 'tp2_price', 'tp3_price', 'tp4_price', 'tp5_price', 'tp6_price', 'sl_price'
@@ -2275,12 +2489,26 @@ function updatePreview() {
         if (!alreadyHasPlan) {
             const tps = [];
             for (let i = 1; i <= MAX_TP_LEVELS; i++) {
+                const modeRaw = String(formData[`tp${i}_mode`] ?? '').trim().toLowerCase();
+                const mode = (modeRaw === 'stock' || modeRaw === 'stock_price' || modeRaw === 'underlying' || modeRaw === 'share_price')
+                    ? 'stock'
+                    : 'percent';
+                const takeoff = String(formData[`tp${i}_takeoff_per`] ?? '').trim();
+                const takeoffStr = takeoff ? (takeoff.endsWith('%') ? takeoff : `${takeoff}%`) : '';
+
+                if (mode === 'stock') {
+                    const spRaw = String(formData[`tp${i}_stock_price`] ?? '').trim();
+                    if (!spRaw) continue;
+                    const n = Number(spRaw);
+                    const spStr = Number.isFinite(n) ? n.toFixed(2) : spRaw;
+                    tps.push(`$${spStr}${takeoffStr ? ` - ${takeoffStr}` : ''}`);
+                    continue;
+                }
+
                 const per = String(formData[`tp${i}_per`] ?? '').trim();
                 if (!per) continue;
                 const price = String(formData[`tp${i}_price`] ?? '0.000').trim() || '0.000';
                 const perStr = per.endsWith('%') ? per : `${per}%`;
-                const takeoff = String(formData[`tp${i}_takeoff_per`] ?? '').trim();
-                const takeoffStr = takeoff ? (takeoff.endsWith('%') ? takeoff : `${takeoff}%`) : '';
                 tps.push(`${price}(${perStr})${takeoffStr ? ` - ${takeoffStr}` : ''}`);
             }
             const slPerRaw = String(formData['sl_per'] ?? '').trim();
@@ -2634,7 +2862,52 @@ function createDynamicFields(signalTypeId) {
         return formGroup;
     }
 
-    function createTakeProfitRow(level, defaultPer, defaultTakeoffPer) {
+    function createSyntheticPriceField(name, defaultValue, labelText, { showDollarPrefix = true } = {}) {
+        const formGroup = document.createElement('div');
+        formGroup.className = 'form-group';
+        formGroup.setAttribute('data-variable-name', name);
+        formGroup.setAttribute('data-requires-options', 'true');
+
+        const label = document.createElement('label');
+        label.textContent = labelText || name;
+        label.setAttribute('for', `id_${name}`);
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.step = '0.01';
+        input.min = '0';
+        input.className = 'form-input';
+        input.id = `id_${name}`;
+        input.name = name;
+        input.value = String(defaultValue ?? '');
+
+        formGroup.appendChild(label);
+        if (showDollarPrefix) {
+            const wrap = document.createElement('div');
+            wrap.className = 'percent-input-wrap';
+            const prefix = document.createElement('span');
+            prefix.className = 'percent-suffix';
+            prefix.textContent = '$';
+            prefix.style.left = '10px';
+            prefix.style.right = 'auto';
+            prefix.style.padding = '0';
+            // Reuse the existing wrap/suffix styles; position prefix on the left
+            wrap.style.position = 'relative';
+            wrap.appendChild(input);
+            wrap.appendChild(prefix);
+            input.style.paddingLeft = '26px';
+            formGroup.appendChild(wrap);
+        } else {
+            formGroup.appendChild(input);
+        }
+
+        input.addEventListener('input', updatePreview);
+        input.addEventListener('change', updatePreview);
+        input.addEventListener('input', () => markUserTouched(input));
+        return formGroup;
+    }
+
+    function createTakeProfitRow(level, defaultPer, defaultTakeoffPer, { defaultMode = 'percent', defaultStockPrice = '' } = {}) {
         const rowWrap = document.createElement('div');
         rowWrap.className = 'tp-level-row';
         rowWrap.dataset.tpRow = '1';
@@ -2643,6 +2916,18 @@ function createDynamicFields(signalTypeId) {
         const header = document.createElement('div');
         header.className = 'tp-level-row-header';
         rowWrap.appendChild(header);
+
+        // Hidden per-row mode field (kept for form submission + preview/discord logic)
+        const modeHidden = document.createElement('input');
+        modeHidden.type = 'hidden';
+        modeHidden.id = `id_tp${level}_mode`;
+        modeHidden.name = `tp${level}_mode`;
+        modeHidden.value = String(defaultMode || 'percent');
+        // allow programmatic overwrite
+        modeHidden.dataset.autoFilled = '1';
+        modeHidden.addEventListener('input', updatePreview);
+        modeHidden.addEventListener('change', updatePreview);
+        rowWrap.appendChild(modeHidden);
 
         // Add a remove button (we'll only show it on the last row)
         const btn = document.createElement('button');
@@ -2661,9 +2946,15 @@ function createDynamicFields(signalTypeId) {
         btn.appendChild(icon);
         btn.appendChild(text);
 
-        // Body: two columns (TP % and Take Off %)
+        // Body: two columns (Target + Take Off %)
         const body = document.createElement('div');
         body.className = 'tp-level-row-body';
+
+        // Left column: target value (driven by global mode)
+        const targetCol = document.createElement('div');
+        targetCol.style.display = 'flex';
+        targetCol.style.flexDirection = 'column';
+        targetCol.style.gap = '10px';
 
         // TP % input (label goes in header)
         const tpGroup = createSyntheticPercentField(`tp${level}_per`, defaultPer, `TP %`, { showPercentSuffix: true });
@@ -2701,6 +2992,32 @@ function createDynamicFields(signalTypeId) {
             }
         }
 
+        // Stock price target input (underlying)
+        const stockGroup = createSyntheticPriceField(
+            `tp${level}_stock_price`,
+            defaultStockPrice,
+            'Stock Price Target',
+            { showDollarPrefix: true }
+        );
+
+        // Toggle which target input is visible
+        function syncTargetMode() {
+            const m = String(modeHidden.value || '').trim().toLowerCase();
+            const isStock = m === 'stock' || m === 'stock_price' || m === 'underlying' || m === 'share_price';
+            tpGroup.style.display = isStock ? 'none' : '';
+            stockGroup.style.display = isStock ? '' : 'none';
+            updateTpSlPrices();
+            updatePreview();
+        }
+        syncTargetMode();
+
+        // Expose helpers for the global Target Type selector
+        rowWrap._tpModeHidden = modeHidden;
+        rowWrap._tpSyncTargetMode = syncTargetMode;
+
+        targetCol.appendChild(tpGroup);
+        targetCol.appendChild(stockGroup);
+
         // Right column: takeoff % (capital removed when TP hits)
         const takeoffDefaults = { 1: 50, 2: 25, 3: 25 };
         const takeoffGroup = createSyntheticPercentField(
@@ -2711,7 +3028,7 @@ function createDynamicFields(signalTypeId) {
         );
         takeoffGroup.dataset.tpTakeoffGroup = '1';
 
-        body.appendChild(tpGroup);
+        body.appendChild(targetCol);
         body.appendChild(takeoffGroup);
         rowWrap.appendChild(body);
         return rowWrap;
@@ -2838,6 +3155,66 @@ function createDynamicFields(signalTypeId) {
             const tpContainer = document.createElement('div');
             tpContainer.dataset.requiresOptions = 'true';
 
+        // --- Preset selector row (dropdown) ---
+        const presetBar = document.createElement('div');
+        presetBar.style.display = 'flex';
+        presetBar.style.flexWrap = 'wrap';
+        presetBar.style.alignItems = 'center';
+        presetBar.style.gap = '10px';
+        presetBar.style.marginBottom = '14px';
+
+        const presetLabel = document.createElement('div');
+        presetLabel.style.color = '#9ca3af';
+        presetLabel.style.fontSize = '0.9em';
+        presetLabel.style.fontWeight = '600';
+        presetLabel.textContent = 'Saved Plans';
+
+        const presetSelect = document.createElement('select');
+        presetSelect.className = 'form-select';
+        presetSelect.style.width = 'auto';
+        presetSelect.style.minWidth = '220px';
+
+        const savePresetBtn = document.createElement('button');
+        savePresetBtn.type = 'button';
+        savePresetBtn.textContent = 'Save';
+        savePresetBtn.className = 'btn-cancel';
+        savePresetBtn.style.padding = '8px 10px';
+        savePresetBtn.style.fontSize = '0.85em';
+        savePresetBtn.style.width = 'auto';
+        savePresetBtn.style.borderRadius = '10px';
+
+        const saveAsPresetBtn = document.createElement('button');
+        saveAsPresetBtn.type = 'button';
+        saveAsPresetBtn.textContent = 'Save As';
+        saveAsPresetBtn.className = 'btn-submit';
+        saveAsPresetBtn.style.padding = '8px 10px';
+        saveAsPresetBtn.style.fontSize = '0.85em';
+        saveAsPresetBtn.style.width = 'auto';
+        saveAsPresetBtn.style.borderRadius = '10px';
+
+        const deletePresetBtn = document.createElement('button');
+        deletePresetBtn.type = 'button';
+        deletePresetBtn.textContent = 'Delete';
+        deletePresetBtn.className = 'btn-cancel';
+        deletePresetBtn.style.padding = '8px 10px';
+        deletePresetBtn.style.fontSize = '0.85em';
+        deletePresetBtn.style.width = 'auto';
+        deletePresetBtn.style.borderRadius = '10px';
+        deletePresetBtn.style.opacity = '0.85';
+
+        const defaultPresetBtn = document.createElement('button');
+        defaultPresetBtn.type = 'button';
+        defaultPresetBtn.textContent = 'Set as Default';
+        defaultPresetBtn.className = 'btn-cancel';
+        defaultPresetBtn.style.padding = '8px 10px';
+        defaultPresetBtn.style.fontSize = '0.85em';
+        defaultPresetBtn.style.width = 'auto';
+        defaultPresetBtn.style.borderRadius = '10px';
+        defaultPresetBtn.style.opacity = '0.85';
+
+        presetBar.appendChild(presetLabel);
+        presetBar.appendChild(presetSelect);
+
             const tpHeader = document.createElement('div');
             tpHeader.style.display = 'flex';
             tpHeader.style.alignItems = 'center';
@@ -2850,6 +3227,9 @@ function createDynamicFields(signalTypeId) {
             tpTitle.style.fontWeight = '600';
             tpTitle.textContent = 'Take Profit Levels';
 
+            // One Target Type selector for ALL TP levels
+            let globalTpMode = 'percent';
+
             const addBtn = document.createElement('button');
             addBtn.type = 'button';
             addBtn.textContent = 'Add Take Profit';
@@ -2860,8 +3240,45 @@ function createDynamicFields(signalTypeId) {
             addBtn.style.borderRadius = '10px';
 
             tpHeader.appendChild(tpTitle);
-            tpHeader.appendChild(addBtn);
-            tpContainer.appendChild(tpHeader);
+            const rightBtns = document.createElement('div');
+            rightBtns.style.display = 'flex';
+            rightBtns.style.gap = '8px';
+
+            const globalModeWrap = document.createElement('div');
+            globalModeWrap.style.display = 'flex';
+            globalModeWrap.style.alignItems = 'center';
+            globalModeWrap.style.gap = '8px';
+
+            const globalModeLabel = document.createElement('span');
+            globalModeLabel.textContent = 'Target Type';
+            globalModeLabel.style.color = '#9ca3af';
+            globalModeLabel.style.fontSize = '0.85em';
+            globalModeLabel.style.fontWeight = '600';
+            globalModeLabel.style.whiteSpace = 'nowrap';
+
+            const globalModeSelect = document.createElement('select');
+            globalModeSelect.className = 'form-select';
+            globalModeSelect.style.width = 'auto';
+            globalModeSelect.style.minWidth = '170px';
+            globalModeSelect.style.padding = '8px 10px';
+            globalModeSelect.style.fontSize = '0.9em';
+            [
+                { value: 'percent', text: '% based (Option)' },
+                { value: 'stock', text: 'Stock price ($)' },
+            ].forEach((opt) => {
+                const o = document.createElement('option');
+                o.value = opt.value;
+                o.textContent = opt.text;
+                globalModeSelect.appendChild(o);
+            });
+
+            globalModeWrap.appendChild(globalModeLabel);
+            globalModeWrap.appendChild(globalModeSelect);
+            rightBtns.appendChild(globalModeWrap);
+            rightBtns.appendChild(addBtn);
+            tpHeader.appendChild(rightBtns);
+        tpContainer.appendChild(presetBar);
+        tpContainer.appendChild(tpHeader);
 
             const tpRows = document.createElement('div');
             tpRows.style.display = 'flex';
@@ -2892,9 +3309,11 @@ function createDynamicFields(signalTypeId) {
                 const rows = Array.from(tpRows.querySelectorAll('[data-tp-row="1"]'));
                 return rows.map((r) => {
                     const lvl = Number(r.dataset.tpLevel || '');
+                    const mode = findFieldByName(`tp${lvl}_mode`)?.value ?? 'percent';
                     const per = findFieldByName(`tp${lvl}_per`)?.value ?? '';
+                    const stockPrice = findFieldByName(`tp${lvl}_stock_price`)?.value ?? '';
                     const takeoff = findFieldByName(`tp${lvl}_takeoff_per`)?.value ?? '';
-                    return { per: String(per), takeoff: String(takeoff) };
+                    return { mode: String(mode), per: String(per), stock_price: String(stockPrice), takeoff: String(takeoff) };
                 });
             };
 
@@ -2908,7 +3327,8 @@ function createDynamicFields(signalTypeId) {
                     const takeoffNum = Number(String(it?.takeoff ?? '').trim());
                     const perVal = Number.isFinite(perNum) ? perNum : (lvl * 10);
                     const takeoffVal = Number.isFinite(takeoffNum) ? takeoffNum : (lvl === 1 ? 50 : (lvl === 2 ? 25 : (lvl === 3 ? 25 : 0)));
-                    const rowEl = createTakeProfitRow(lvl, perVal, takeoffVal);
+                    const stockPriceRaw = String(it?.stock_price ?? it?.stockPrice ?? '').trim();
+                    const rowEl = createTakeProfitRow(lvl, perVal, takeoffVal, { defaultMode: globalTpMode, defaultStockPrice: stockPriceRaw });
                     // Wire remove: allowed for TP2+; removing reindexes rows so tp1/tp2/... stay stable.
                     const btn = rowEl.querySelector('.tp-level-row-header .tp-remove-btn');
                     if (btn) {
@@ -2928,6 +3348,16 @@ function createDynamicFields(signalTypeId) {
                 updatePreview();
             };
 
+            function applyGlobalTpModeToRows() {
+                const rows = Array.from(tpRows.querySelectorAll('[data-tp-row="1"]'));
+                rows.forEach((r) => {
+                    const input = r._tpModeHidden;
+                    if (!input) return;
+                    input.value = globalTpMode;
+                    if (typeof r._tpSyncTargetMode === 'function') r._tpSyncTargetMode();
+                });
+            }
+
             const refreshTpRemoveButtons = () => {
                 const rows = Array.from(tpRows.querySelectorAll('[data-tp-row="1"]'));
                 rows.forEach((r) => {
@@ -2941,21 +3371,450 @@ function createDynamicFields(signalTypeId) {
                 addBtn.style.opacity = addBtn.disabled ? '0.6' : '1';
             };
 
-            // Initial TP defaults: 10%, 20%, 30%
-            renderTpRows([{ per: '10', takeoff: '50' }, { per: '20', takeoff: '25' }, { per: '30', takeoff: '25' }]);
-
             addBtn.addEventListener('click', () => {
                 const state = readTpState();
                 const next = state.length + 1;
                 if (next > MAX_TP_LEVELS) return;
                 state.push({ per: String(next * 10), takeoff: '0' });
                 renderTpRows(state);
+                applyGlobalTpModeToRows();
+                updateDefaultTpStockTargets();
             });
 
-            const slGroup = createSyntheticPercentField('sl_per', 10, 'Stop Loss', { showPercentSuffix: true });
+            // Prefill from selected preset if present; otherwise defaults.
+            const defaultTp = [{ per: '10', takeoff: '50' }, { per: '20', takeoff: '25' }, { per: '30', takeoff: '25' }];
+            const defaultSl = 10;
+            const initialPreset = getInitialTradePlanPreset();
+            const initialPlan = (initialPreset && typeof initialPreset === 'object') ? (initialPreset.plan || {}) : {};
+            const initialTp = Array.isArray(initialPlan?.tp_levels) && initialPlan.tp_levels.length ? initialPlan.tp_levels : defaultTp;
+            const initialSlNum = Number(String(initialPlan?.sl_per ?? '').trim());
+            const initialSl = Number.isFinite(initialSlNum) && initialSlNum > 0 ? initialSlNum : defaultSl;
+
+            // Initial global mode: if any saved level uses stock mode, default to stock
+            try {
+                const hasStock = Array.isArray(initialTp) && initialTp.some((it) => {
+                    const m = String(it?.mode ?? '').trim().toLowerCase();
+                    return m === 'stock' || m === 'stock_price' || m === 'underlying' || m === 'share_price';
+                });
+                globalTpMode = hasStock ? 'stock' : 'percent';
+            } catch (_) {
+                globalTpMode = 'percent';
+            }
+            globalModeSelect.value = globalTpMode;
+
+            // Initial TP rows (from saved plan or defaults)
+            renderTpRows(initialTp);
+            applyGlobalTpModeToRows();
+            updateDefaultTpStockTargets();
+
+            const slGroup = createSyntheticPercentField('sl_per', initialSl, 'Stop Loss', { showPercentSuffix: true });
+
+            globalModeSelect.addEventListener('change', () => {
+                const v = String(globalModeSelect.value || '').trim().toLowerCase();
+                globalTpMode = (v === 'stock') ? 'stock' : 'percent';
+                applyGlobalTpModeToRows();
+                updateTpSlPrices();
+                updateDefaultTpStockTargets();
+                updatePreview();
+            });
+
+            // Action buttons row (goes at the end of the Trade Plan panel)
+            const presetActionsBar = document.createElement('div');
+            presetActionsBar.style.display = 'flex';
+            presetActionsBar.style.justifyContent = 'flex-end';
+            presetActionsBar.style.gap = '10px';
+            presetActionsBar.style.marginTop = '6px';
+            presetActionsBar.appendChild(savePresetBtn);
+            presetActionsBar.appendChild(saveAsPresetBtn);
+            presetActionsBar.appendChild(defaultPresetBtn);
+            presetActionsBar.appendChild(deletePresetBtn);
+
+            const LIVE_CUSTOM_VALUE = '__live_custom__';
+            let selectedPresetId = initialPreset ? String(initialPreset.id) : ''; // DB id (only when a saved plan is selected)
+            let selectedPresetName = initialPreset ? String(initialPreset.name || 'Default') : '';
+            // What the dropdown currently shows as selected
+            let selectedPresetValue = selectedPresetId || (tradePlanPresets.length ? '' : LIVE_CUSTOM_VALUE);
+
+            function setLiveCustomMode({ reset = true } = {}) {
+                selectedPresetId = '';
+                selectedPresetName = '';
+                selectedPresetValue = LIVE_CUSTOM_VALUE;
+                // In Live Custom there is no saved preset selected, so disable actions that require an id.
+                // (Save As remains available.)
+                savePresetBtn.disabled = true;
+                deletePresetBtn.disabled = true;
+                defaultPresetBtn.disabled = true;
+
+                if (reset) {
+                    renderTpRows(defaultTp);
+                    const slEl = findFieldByName('sl_per');
+                    if (slEl) {
+                        slEl.value = String(defaultSl);
+                        slEl.dataset.autoFilled = '1';
+                        delete slEl.dataset.userTouched;
+                        slEl.dispatchEvent(new Event('input', { bubbles: true }));
+                        slEl.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    updateTpSlPrices();
+                    updatePreview();
+                }
+            }
+
+            function rebuildPresetSelect() {
+                presetSelect.innerHTML = '';
+                const none = document.createElement('option');
+                none.value = '';
+                none.textContent = '— Select a saved plan —';
+                presetSelect.appendChild(none);
+
+                tradePlanPresets.forEach((p) => {
+                    if (!p || p.id == null) return;
+                    const opt = document.createElement('option');
+                    opt.value = String(p.id);
+                    opt.textContent = `${p.is_default ? '★ ' : ''}${String(p.name || 'Untitled')}`;
+                    presetSelect.appendChild(opt);
+                });
+
+                // Put Live Custom at the end of the list
+                const live = document.createElement('option');
+                live.value = LIVE_CUSTOM_VALUE;
+                live.textContent = 'Live Custom';
+                presetSelect.appendChild(live);
+                presetSelect.value = selectedPresetValue || '';
+                deletePresetBtn.disabled = !selectedPresetId;
+                defaultPresetBtn.disabled = !selectedPresetId;
+            }
+
+            function applyPresetById(id) {
+                const pid = String(id || '');
+                selectedPresetId = pid;
+                selectedPresetValue = pid;
+                const p = tradePlanPresets.find(x => x && String(x.id) === pid) || null;
+                deletePresetBtn.disabled = !p;
+                defaultPresetBtn.disabled = !p;
+                if (!p) return;
+                selectedPresetName = String(p.name || '');
+                const plan = (p.plan && typeof p.plan === 'object') ? p.plan : {};
+                const tp = Array.isArray(plan.tp_levels) && plan.tp_levels.length ? plan.tp_levels : defaultTp;
+                const slNum = Number(String(plan.sl_per ?? '').trim());
+                const slVal = Number.isFinite(slNum) && slNum > 0 ? slNum : defaultSl;
+                renderTpRows(tp);
+                const slEl = findFieldByName('sl_per');
+                if (slEl) {
+                    slEl.value = String(slVal);
+                    slEl.dataset.autoFilled = '1';
+                    delete slEl.dataset.userTouched;
+                    slEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    slEl.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                updateTpSlPrices();
+                updatePreview();
+            }
+
+            rebuildPresetSelect();
+            // If there are no saved presets, default to Live Custom.
+            if (!tradePlanPresets.length && !selectedPresetId) {
+                setLiveCustomMode({ reset: false });
+            }
+            presetSelect.value = selectedPresetValue || '';
+
+            presetSelect.addEventListener('change', () => {
+                const v = String(presetSelect.value || '');
+                if (!v) {
+                    selectedPresetId = '';
+                    selectedPresetName = '';
+                    selectedPresetValue = '';
+                    // No preset selected: allow Save (will create a new preset), disable id-only actions.
+                    savePresetBtn.disabled = false;
+                    deletePresetBtn.disabled = true;
+                    defaultPresetBtn.disabled = true;
+                    return;
+                }
+                if (v === LIVE_CUSTOM_VALUE) {
+                    setLiveCustomMode({ reset: true });
+                    return;
+                }
+                applyPresetById(v);
+                // Saved preset selected: enable Save.
+                savePresetBtn.disabled = false;
+            });
+
+            function currentPlanPayload() {
+                return {
+                    version: 1,
+                    tp_levels: readTpState(),
+                    sl_per: String(findFieldByName('sl_per')?.value ?? '').trim(),
+                };
+            }
+
+            async function refreshPresetsFromServer() {
+                // Avoid stale cached responses after create/delete/default changes
+                const url = `/api/trade-plan/?_ts=${Date.now()}`;
+                const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && Array.isArray(data?.plans)) {
+                    tradePlanPresets = data.plans;
+                }
+            }
+
+            async function refreshPresetsAndUpdateDropdown() {
+                await refreshPresetsFromServer();
+
+                // If the selected preset was deleted, clear selection.
+                if (selectedPresetValue === LIVE_CUSTOM_VALUE) {
+                    // Stay in Live Custom mode.
+                    selectedPresetId = '';
+                    selectedPresetName = '';
+                    savePresetBtn.disabled = true;
+                } else {
+                    const hasSelected = selectedPresetId && tradePlanPresets.some(p => p && String(p.id) === String(selectedPresetId));
+                    if (!hasSelected) {
+                        selectedPresetId = '';
+                        selectedPresetName = '';
+                        selectedPresetValue = tradePlanPresets.length ? '' : LIVE_CUSTOM_VALUE;
+                        savePresetBtn.disabled = (selectedPresetValue === LIVE_CUSTOM_VALUE);
+                    } else {
+                        const p = tradePlanPresets.find(x => x && String(x.id) === String(selectedPresetId));
+                        if (p) selectedPresetName = String(p.name || '');
+                        selectedPresetValue = String(selectedPresetId);
+                        savePresetBtn.disabled = false;
+                    }
+                }
+
+                rebuildPresetSelect();
+                presetSelect.value = selectedPresetValue || '';
+                deletePresetBtn.disabled = !selectedPresetId;
+                defaultPresetBtn.disabled = !selectedPresetId;
+            }
+
+            function ensureTradePlanNameModal() {
+                let overlay = document.getElementById('ctpNameModalOverlay');
+                if (overlay) return overlay;
+
+                overlay = document.createElement('div');
+                overlay.id = 'ctpNameModalOverlay';
+                overlay.className = 'ctp-modal-overlay';
+                overlay.innerHTML = `
+                    <div class="ctp-modal" role="dialog" aria-modal="true" aria-labelledby="ctpNameModalTitle">
+                        <div class="ctp-modal-title" id="ctpNameModalTitle">Name your Trade Plan</div>
+                        <div class="ctp-modal-subtitle" id="ctpNameModalSubtitle">Enter a name to save this plan.</div>
+                        <div class="form-group" style="margin: 0;">
+                            <label for="ctpNameModalInput" style="margin-bottom: 8px;">Plan name</label>
+                            <input id="ctpNameModalInput" class="form-input" type="text" placeholder="e.g., Swing Default" />
+                            <div class="ctp-modal-error" id="ctpNameModalError">Name is required.</div>
+                        </div>
+                        <div class="ctp-modal-actions">
+                            <button type="button" class="btn-cancel" id="ctpNameModalCancel">Cancel</button>
+                            <button type="button" class="btn-submit" id="ctpNameModalSave">Save</button>
+                        </div>
+                    </div>
+                `;
+
+                document.body.appendChild(overlay);
+                return overlay;
+            }
+
+            function showTradePlanNameModal({ title = 'Name your Trade Plan', subtitle = 'Enter a name to save this plan.', initialValue = '' } = {}) {
+                return new Promise((resolve) => {
+                    const overlay = ensureTradePlanNameModal();
+                    const titleEl = overlay.querySelector('#ctpNameModalTitle');
+                    const subEl = overlay.querySelector('#ctpNameModalSubtitle');
+                    const input = overlay.querySelector('#ctpNameModalInput');
+                    const err = overlay.querySelector('#ctpNameModalError');
+                    const btnCancel = overlay.querySelector('#ctpNameModalCancel');
+                    const btnSave = overlay.querySelector('#ctpNameModalSave');
+
+                    const close = (val) => {
+                        overlay.classList.remove('open');
+                        overlay.style.display = '';
+                        cleanup();
+                        resolve(val);
+                    };
+
+                    const showError = (msg) => {
+                        if (!err) return;
+                        err.textContent = msg || 'Name is required.';
+                        err.classList.add('show');
+                    };
+
+                    const clearError = () => {
+                        if (!err) return;
+                        err.classList.remove('show');
+                    };
+
+                    const onOverlayClick = (e) => {
+                        // click outside closes (cancel)
+                        if (e.target === overlay) close('');
+                    };
+
+                    const onCancel = () => close('');
+
+                    const onSave = () => {
+                        const name = String(input?.value ?? '').trim();
+                        if (!name) {
+                            showError('Please enter a plan name.');
+                            try { input?.focus(); } catch (_) {}
+                            return;
+                        }
+                        close(name);
+                    };
+
+                    const onKeyDown = (e) => {
+                        if (e.key === 'Escape') {
+                            e.preventDefault();
+                            close('');
+                        } else if (e.key === 'Enter') {
+                            // Enter submits when focus is in the input
+                            if (document.activeElement === input) {
+                                e.preventDefault();
+                                onSave();
+                            }
+                        }
+                    };
+
+                    const cleanup = () => {
+                        overlay.removeEventListener('click', onOverlayClick);
+                        btnCancel?.removeEventListener('click', onCancel);
+                        btnSave?.removeEventListener('click', onSave);
+                        document.removeEventListener('keydown', onKeyDown);
+                    };
+
+                    if (titleEl) titleEl.textContent = title;
+                    if (subEl) subEl.textContent = subtitle;
+                    if (input) input.value = String(initialValue ?? '');
+                    clearError();
+
+                    overlay.classList.add('open');
+                    overlay.addEventListener('click', onOverlayClick);
+                    btnCancel?.addEventListener('click', onCancel);
+                    btnSave?.addEventListener('click', onSave);
+                    document.addEventListener('keydown', onKeyDown);
+
+                    // Focus
+                    setTimeout(() => {
+                        try { input?.focus(); input?.select?.(); } catch (_) {}
+                    }, 0);
+                });
+            }
+
+            savePresetBtn.addEventListener('click', async () => {
+                try {
+                    savePresetBtn.disabled = true;
+                    const prev = savePresetBtn.textContent;
+                    savePresetBtn.textContent = 'Saving...';
+                    let name = String(selectedPresetName || '').trim();
+                    // If we're creating new (no selected preset), prompt user to set the plan name.
+                    if (!selectedPresetId) {
+                        const picked = await showTradePlanNameModal({
+                            title: 'Name your Trade Plan',
+                            subtitle: 'Enter a name to save this plan.',
+                            initialValue: name || 'Default',
+                        });
+                        if (!picked) {
+                            savePresetBtn.textContent = prev;
+                            return;
+                        }
+                        name = picked;
+                        selectedPresetName = name;
+                    }
+                    const plan = currentPlanPayload();
+                    let resp;
+                    if (selectedPresetId) {
+                        // Keep existing name when updating (no name input in UI).
+                        resp = await tradePlanApi({ action: 'update', id: selectedPresetId, name, plan });
+                    } else {
+                        resp = await tradePlanApi({ action: 'create', name, plan, set_default: false });
+                        selectedPresetId = String(resp?.preset?.id || '');
+                        selectedPresetName = String(resp?.preset?.name || name);
+                        selectedPresetValue = selectedPresetId || LIVE_CUSTOM_VALUE;
+                    }
+                    await refreshPresetsAndUpdateDropdown();
+                    savePresetBtn.textContent = 'Saved';
+                    setTimeout(() => { savePresetBtn.textContent = prev; }, 800);
+                } catch (e) {
+                    console.warn('Save preset failed:', e);
+                    savePresetBtn.textContent = 'Save failed';
+                    setTimeout(() => { savePresetBtn.textContent = 'Save'; }, 1200);
+                } finally {
+                    savePresetBtn.disabled = false;
+                }
+            });
+
+            saveAsPresetBtn.addEventListener('click', async () => {
+                try {
+                    saveAsPresetBtn.disabled = true;
+                    const prev = saveAsPresetBtn.textContent;
+                    saveAsPresetBtn.textContent = 'Saving...';
+                    // Save As always asks for a name (easy to create many presets quickly).
+                    const picked = await showTradePlanNameModal({
+                        title: 'Save Trade Plan As',
+                        subtitle: 'Choose a name for the new saved plan.',
+                        initialValue: '',
+                    });
+                    if (!picked) {
+                        saveAsPresetBtn.textContent = prev;
+                        return;
+                    }
+                    const name = picked;
+                    const plan = currentPlanPayload();
+                    const resp = await tradePlanApi({ action: 'create', name, plan, set_default: false });
+                    const newId = resp?.preset?.id;
+                    if (newId != null) {
+                        try { sessionStorage.setItem('ctp_selected_preset_id', String(newId)); } catch (_) {}
+                    }
+                    // Full rerender so Saved Plans list reflects new preset everywhere.
+                    window.location.reload();
+                    return;
+                } catch (e) {
+                    console.warn('Save As preset failed:', e);
+                    saveAsPresetBtn.textContent = 'Save failed';
+                    setTimeout(() => { saveAsPresetBtn.textContent = 'Save As'; }, 1200);
+                } finally {
+                    saveAsPresetBtn.disabled = false;
+                }
+            });
+
+            defaultPresetBtn.addEventListener('click', async () => {
+                if (!selectedPresetId) return;
+                try {
+                    defaultPresetBtn.disabled = true;
+                    const prev = defaultPresetBtn.textContent;
+                    defaultPresetBtn.textContent = 'Setting...';
+                    await tradePlanApi({ action: 'set_default', id: selectedPresetId });
+                    // Full rerender so ★ default marker updates everywhere.
+                    window.location.reload();
+                    return;
+                } catch (e) {
+                    console.warn('Set default preset failed:', e);
+                    defaultPresetBtn.textContent = 'Failed';
+                    setTimeout(() => { defaultPresetBtn.textContent = 'Set as Default'; }, 1200);
+                } finally {
+                    defaultPresetBtn.disabled = !selectedPresetId;
+                }
+            });
+
+            deletePresetBtn.addEventListener('click', async () => {
+                if (!selectedPresetId) return;
+                try {
+                    const idToDelete = String(selectedPresetId);
+                    deletePresetBtn.disabled = true;
+                    await tradePlanApi({ action: 'delete', id: selectedPresetId });
+                    // Full rerender to reflect the latest server state everywhere.
+                    // (Ensures Saved Plans dropdown + default markers stay consistent.)
+                    window.location.reload();
+                    return;
+                } catch (e) {
+                    console.warn('Delete preset failed:', e);
+                } finally {
+                    deletePresetBtn.disabled = !selectedPresetId;
+                    defaultPresetBtn.disabled = !selectedPresetId;
+                }
+            });
+
             const tradePlanChildren = [
                 tpContainer,
                 slGroup,
+                presetActionsBar,
                 createSyntheticHiddenField('sl_price', '0.000'),
             ];
             formGroup._afterSyntheticGroups.push(createSyntheticTradePlanGroup(tradePlanChildren));
@@ -3157,6 +4016,7 @@ function createDynamicFields(signalTypeId) {
 
                 // Even if there is no explicit price/company_name input in the template,
                 // we still want the live preview to re-render using tickerMetaCache.
+                updateDefaultTpStockTargets();
                 updatePreview();
 
                 // If option side/trade type are selected, auto-pick the best option now.
@@ -3169,6 +4029,7 @@ function createDynamicFields(signalTypeId) {
         // Auto-select best option when user selects PUT/CALL (option_type)
         if (variable.name === 'option_type') {
             input.addEventListener('change', async () => {
+                updateDefaultTpStockTargets();
                 await maybeAutoPickBestOption();
             });
         }

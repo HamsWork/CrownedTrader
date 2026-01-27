@@ -7,6 +7,7 @@ from django.contrib.auth.forms import PasswordChangeForm
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_http_methods
 from django.db.models import Q
 from django.core.paginator import Paginator
 from django.core.exceptions import ValidationError
@@ -17,7 +18,7 @@ import re
 import json
 import html
 from .forms import SignalForm, SignalTypeForm
-from .models import Signal, SignalType, UserProfile, DiscordChannel
+from .models import Signal, SignalType, UserProfile, DiscordChannel, UserTradePlan, UserTradePlanPreset
 from .tickers import get_us_tickers
 from .polygon_client import PolygonClient
 
@@ -409,12 +410,24 @@ def render_template(template_string, variables, quote_cache=None):
             "expiration",
             "option_type",
             "option_price",
+            "tp1_mode",
+            "tp2_mode",
+            "tp3_mode",
+            "tp4_mode",
+            "tp5_mode",
+            "tp6_mode",
             "tp1_per",
             "tp2_per",
             "tp3_per",
             "tp4_per",
             "tp5_per",
             "tp6_per",
+            "tp1_stock_price",
+            "tp2_stock_price",
+            "tp3_stock_price",
+            "tp4_stock_price",
+            "tp5_stock_price",
+            "tp6_stock_price",
             "tp1_takeoff_per",
             "tp2_takeoff_per",
             "tp3_takeoff_per",
@@ -436,6 +449,14 @@ def render_template(template_string, variables, quote_cache=None):
                     return f"{float(val):.3f}"
                 except Exception:
                     return "0.000"
+            if modifier in ("tp1_stock_price", "tp2_stock_price", "tp3_stock_price", "tp4_stock_price", "tp5_stock_price", "tp6_stock_price"):
+                try:
+                    s = str(val).strip()
+                    if not s:
+                        return ""
+                    return f"{float(s):.2f}"
+                except Exception:
+                    return str(val) if val is not None else ""
             if modifier in (
                 "tp1_per",
                 "tp2_per",
@@ -586,6 +607,27 @@ def get_signal_template(signal):
             max_tp = 6
             tps = []
             for i in range(1, max_tp + 1):
+                mode = str(data_copy.get(f"tp{i}_mode") or "").strip().lower()
+                stock_raw = data_copy.get(f"tp{i}_stock_price")
+
+                is_stock = mode in ("stock", "stock_price", "underlying", "share_price") or (
+                    stock_raw is not None and str(stock_raw).strip() != "" and not str(data_copy.get(f"tp{i}_per") or "").strip()
+                )
+
+                takeoff = str(data_copy.get(f"tp{i}_takeoff_per") or "").strip()
+                takeoff_str = takeoff if (takeoff and takeoff.endswith("%")) else (f"{takeoff}%" if takeoff else "")
+                if is_stock:
+                    try:
+                        sp = str(stock_raw or "").strip()
+                        if not sp:
+                            continue
+                        sp_num = float(sp)
+                        sp_str = f"{sp_num:.2f}"
+                    except Exception:
+                        sp_str = str(stock_raw).strip()
+                    tps.append(f"${sp_str}{f' - {takeoff_str}' if takeoff_str else ''}")
+                    continue
+
                 per = str(data_copy.get(f"tp{i}_per") or "").strip()
                 if not per:
                     continue
@@ -595,8 +637,6 @@ def get_signal_template(signal):
                     price_str = f"{float(price_raw):.3f}" if price_raw is not None and str(price_raw).strip() != "" else "0.000"
                 except Exception:
                     price_str = "0.000"
-                takeoff = str(data_copy.get(f"tp{i}_takeoff_per") or "").strip()
-                takeoff_str = takeoff if (takeoff and takeoff.endswith("%")) else (f"{takeoff}%" if takeoff else "")
                 tps.append(f"{price_str}({per_str}){f' - {takeoff_str}' if takeoff_str else ''}")
 
             sl_per = str(data_copy.get("sl_per") or "").strip()
@@ -859,6 +899,9 @@ def dashboard(request):
                                             return 0.0
 
                                     for i in range(1, 7):
+                                        mode = str(signal_data.get(f"tp{i}_mode") or "").strip().lower()
+                                        if mode in ("stock", "stock_price", "underlying", "share_price"):
+                                            continue
                                         per = _get_per(f"tp{i}_per")
                                         if per > 0:
                                             signal_data[f"tp{i}_price"] = f"{(opt_price_f * (1.0 + per / 100.0)):.3f}"
@@ -940,12 +983,181 @@ def dashboard(request):
     # Get user's Discord channels
     discord_channels = DiscordChannel.objects.filter(user=request.user, is_active=True).order_by('-is_default', 'channel_name')
     
+    # Saved per-user Trade Plan presets (for dropdown)
+    presets = []
+    try:
+        qs = UserTradePlanPreset.objects.filter(user=request.user).order_by("-is_default", "-updated_at", "name")
+        for p in qs:
+            presets.append(
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "plan": p.plan if isinstance(p.plan, dict) else {},
+                    "is_default": bool(p.is_default),
+                }
+            )
+    except Exception:
+        presets = []
+
     return render(request, 'signals/dashboard.html', {
         'form': form,
         'recent_signals': recent_signals,
         'signal_types_data': signal_types_data,
-        'discord_channels': discord_channels
+        'discord_channels': discord_channels,
+        'trade_plan_presets': presets,
     })
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def trade_plan_api(request):
+    """
+    Persist per-user Trade Plan presets.
+
+    GET  -> { plans: [{id,name,plan,is_default}, ...] }
+    POST -> accepts JSON with an action:
+            - {action:"create", name, plan, set_default?}
+            - {action:"update", id, name?, plan}
+            - {action:"delete", id}
+            - {action:"set_default", id}
+
+    Back-compat: POST without action updates/creates the user's default preset named "Default".
+    """
+    if request.method == "GET":
+        plans = []
+        for p in UserTradePlanPreset.objects.filter(user=request.user).order_by("-is_default", "-updated_at", "name"):
+            plans.append(
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "plan": p.plan if isinstance(p.plan, dict) else {},
+                    "is_default": bool(p.is_default),
+                }
+            )
+        return JsonResponse({"plans": plans})
+
+    # POST
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    action = str(payload.get("action") or "").strip().lower()
+    preset_id = payload.get("id")
+    name = str(payload.get("name") or "").strip()
+    plan = payload.get("plan")
+    set_default = payload.get("set_default") is True
+
+    def _clean_plan(plan_obj):
+        plan_obj = plan_obj if isinstance(plan_obj, dict) else {}
+        tp_levels = plan_obj.get("tp_levels")
+        sl_per = plan_obj.get("sl_per")
+
+        if tp_levels is None:
+            tp_levels = []
+        if not isinstance(tp_levels, list):
+            raise ValueError("tp_levels must be a list")
+
+        if len(tp_levels) > 6:
+            tp_levels = tp_levels[:6]
+
+        cleaned_levels = []
+        for item in tp_levels:
+            if not isinstance(item, dict):
+                continue
+            mode = str(item.get("mode") or "").strip().lower()
+            if mode not in ("percent", "stock", "stock_price", "underlying", "share_price", ""):
+                mode = ""
+            per = str(item.get("per") or "").strip()
+            stock_price = str(item.get("stock_price") or item.get("stockPrice") or "").strip()
+            takeoff = str(item.get("takeoff") or "").strip()
+            cleaned_levels.append({"mode": mode or "percent", "per": per, "stock_price": stock_price, "takeoff": takeoff})
+
+        sl_per_str = str(sl_per or "").strip()
+        return {"version": 1, "tp_levels": cleaned_levels, "sl_per": sl_per_str}
+
+    # Back-compat path: previous frontend posted tp_levels/sl_per directly.
+    if not action:
+        plan = _clean_plan({"tp_levels": payload.get("tp_levels"), "sl_per": payload.get("sl_per")})
+        obj = UserTradePlanPreset.objects.filter(user=request.user, name="Default").first()
+        if not obj:
+            obj = UserTradePlanPreset.objects.create(user=request.user, name="Default", plan=plan, is_default=True)
+        else:
+            obj.plan = plan
+            obj.is_default = True
+            obj.save(update_fields=["plan", "is_default", "updated_at"])
+        return JsonResponse(
+            {
+                "ok": True,
+                "preset": {"id": obj.id, "name": obj.name, "plan": obj.plan, "is_default": bool(obj.is_default)},
+            }
+        )
+
+    if action == "create":
+        if not name:
+            return JsonResponse({"error": "name is required"}, status=400)
+        try:
+            cleaned = _clean_plan(plan)
+        except ValueError as e:
+            return JsonResponse({"error": str(e)}, status=400)
+        try:
+            obj = UserTradePlanPreset.objects.create(user=request.user, name=name, plan=cleaned, is_default=set_default)
+        except Exception:
+            return JsonResponse({"error": "Could not create preset (name may already exist)"}, status=400)
+        return JsonResponse(
+            {"ok": True, "preset": {"id": obj.id, "name": obj.name, "plan": obj.plan, "is_default": bool(obj.is_default)}}
+        )
+
+    if action == "update":
+        if not preset_id:
+            return JsonResponse({"error": "id is required"}, status=400)
+        obj = UserTradePlanPreset.objects.filter(user=request.user, id=preset_id).first()
+        if not obj:
+            return JsonResponse({"error": "Preset not found"}, status=404)
+        try:
+            cleaned = _clean_plan(plan)
+        except ValueError as e:
+            return JsonResponse({"error": str(e)}, status=400)
+        if name and name != obj.name:
+            # Best-effort rename (unique per user)
+            if UserTradePlanPreset.objects.filter(user=request.user, name=name).exclude(id=obj.id).exists():
+                return JsonResponse({"error": "A preset with this name already exists"}, status=400)
+            obj.name = name
+        obj.plan = cleaned
+        if set_default:
+            obj.is_default = True
+        obj.save()
+        return JsonResponse(
+            {"ok": True, "preset": {"id": obj.id, "name": obj.name, "plan": obj.plan, "is_default": bool(obj.is_default)}}
+        )
+
+    if action == "set_default":
+        if not preset_id:
+            return JsonResponse({"error": "id is required"}, status=400)
+        obj = UserTradePlanPreset.objects.filter(user=request.user, id=preset_id).first()
+        if not obj:
+            return JsonResponse({"error": "Preset not found"}, status=404)
+        obj.is_default = True
+        obj.save(update_fields=["is_default", "updated_at"])
+        return JsonResponse({"ok": True})
+
+    if action == "delete":
+        if not preset_id:
+            return JsonResponse({"error": "id is required"}, status=400)
+        obj = UserTradePlanPreset.objects.filter(user=request.user, id=preset_id).first()
+        if not obj:
+            return JsonResponse({"error": "Preset not found"}, status=404)
+        was_default = bool(obj.is_default)
+        obj.delete()
+        if was_default:
+            # Promote newest preset to default (if any remain)
+            nxt = UserTradePlanPreset.objects.filter(user=request.user).order_by("-updated_at").first()
+            if nxt:
+                nxt.is_default = True
+                nxt.save(update_fields=["is_default", "updated_at"])
+        return JsonResponse({"ok": True})
+
+    return JsonResponse({"error": "Invalid action"}, status=400)
 
 @login_required
 def signals_history(request):
