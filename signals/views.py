@@ -1050,6 +1050,8 @@ def trade_plan_api(request):
 
     def _clean_plan(plan_obj):
         plan_obj = plan_obj if isinstance(plan_obj, dict) else {}
+        tp_mode_raw = str(plan_obj.get("tp_mode") or "").strip().lower()
+        tp_mode = "stock" if tp_mode_raw in ("stock", "stock_price", "underlying", "share_price") else ("percent" if tp_mode_raw in ("percent", "pct", "%") else "")
         tp_levels = plan_obj.get("tp_levels")
         sl_per = plan_obj.get("sl_per")
 
@@ -1074,7 +1076,15 @@ def trade_plan_api(request):
             cleaned_levels.append({"mode": mode or "percent", "per": per, "stock_price": stock_price, "takeoff": takeoff})
 
         sl_per_str = str(sl_per or "").strip()
-        return {"version": 1, "tp_levels": cleaned_levels, "sl_per": sl_per_str}
+        # If tp_mode wasn't provided, infer it from levels (stock wins).
+        if not tp_mode:
+            tp_mode = "stock" if any(
+                str(l.get("mode") or "").startswith("stock")
+                or str(l.get("mode") or "") == "underlying"
+                or bool(str(l.get("stock_price") or "").strip())
+                for l in cleaned_levels
+            ) else "percent"
+        return {"version": 1, "tp_mode": tp_mode, "tp_levels": cleaned_levels, "sl_per": sl_per_str}
 
     # Back-compat path: previous frontend posted tp_levels/sl_per directly.
     if not action:

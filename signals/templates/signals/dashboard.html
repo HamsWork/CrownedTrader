@@ -3390,13 +3390,24 @@ function createDynamicFields(signalTypeId) {
             const initialSlNum = Number(String(initialPlan?.sl_per ?? '').trim());
             const initialSl = Number.isFinite(initialSlNum) && initialSlNum > 0 ? initialSlNum : defaultSl;
 
-            // Initial global mode: if any saved level uses stock mode, default to stock
+            // Initial global mode: prefer saved tp_mode; fallback to infer from levels
             try {
-                const hasStock = Array.isArray(initialTp) && initialTp.some((it) => {
-                    const m = String(it?.mode ?? '').trim().toLowerCase();
-                    return m === 'stock' || m === 'stock_price' || m === 'underlying' || m === 'share_price';
-                });
-                globalTpMode = hasStock ? 'stock' : 'percent';
+                const raw = String(initialPlan?.tp_mode ?? '').trim().toLowerCase();
+                if (raw === 'stock') {
+                    globalTpMode = 'stock';
+                } else if (raw === 'percent') {
+                    globalTpMode = 'percent';
+                } else {
+                    const hasStock = Array.isArray(initialTp) && initialTp.some((it) => {
+                        const m = String(it?.mode ?? '').trim().toLowerCase();
+                        const sp = String(it?.stock_price ?? it?.stockPrice ?? '').trim();
+                        return (
+                            m === 'stock' || m === 'stock_price' || m === 'underlying' || m === 'share_price' ||
+                            !!sp
+                        );
+                    });
+                    globalTpMode = hasStock ? 'stock' : 'percent';
+                }
             } catch (_) {
                 globalTpMode = 'percent';
             }
@@ -3447,6 +3458,8 @@ function createDynamicFields(signalTypeId) {
 
                 if (reset) {
                     renderTpRows(defaultTp);
+                    applyGlobalTpModeToRows();
+                    updateDefaultTpStockTargets(); // show default stock targets in Stock price mode (even if price is 0)
                     const slEl = findFieldByName('sl_per');
                     if (slEl) {
                         slEl.value = String(defaultSl);
@@ -3495,10 +3508,35 @@ function createDynamicFields(signalTypeId) {
                 if (!p) return;
                 selectedPresetName = String(p.name || '');
                 const plan = (p.plan && typeof p.plan === 'object') ? p.plan : {};
+                // Restore global target type from saved plan (fallback to infer from levels)
+                try {
+                    const raw = String(plan.tp_mode ?? '').trim().toLowerCase();
+                    if (raw === 'stock') {
+                        globalTpMode = 'stock';
+                    } else if (raw === 'percent') {
+                        globalTpMode = 'percent';
+                    } else {
+                        const levels = Array.isArray(plan.tp_levels) ? plan.tp_levels : [];
+                        const hasStock = levels.some((it) => {
+                            const m = String(it?.mode ?? '').trim().toLowerCase();
+                            const sp = String(it?.stock_price ?? it?.stockPrice ?? '').trim();
+                            return (
+                                m === 'stock' || m === 'stock_price' || m === 'underlying' || m === 'share_price' ||
+                                !!sp
+                            );
+                        });
+                        globalTpMode = hasStock ? 'stock' : 'percent';
+                    }
+                    globalModeSelect.value = globalTpMode;
+                    // Ensure any listeners run and UI updates consistently
+                    globalModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                } catch (_) {}
                 const tp = Array.isArray(plan.tp_levels) && plan.tp_levels.length ? plan.tp_levels : defaultTp;
                 const slNum = Number(String(plan.sl_per ?? '').trim());
                 const slVal = Number.isFinite(slNum) && slNum > 0 ? slNum : defaultSl;
                 renderTpRows(tp);
+                applyGlobalTpModeToRows();
+                updateDefaultTpStockTargets();
                 const slEl = findFieldByName('sl_per');
                 if (slEl) {
                     slEl.value = String(slVal);
@@ -3542,6 +3580,7 @@ function createDynamicFields(signalTypeId) {
             function currentPlanPayload() {
                 return {
                     version: 1,
+                    tp_mode: globalTpMode,
                     tp_levels: readTpState(),
                     sl_per: String(findFieldByName('sl_per')?.value ?? '').trim(),
                 };
