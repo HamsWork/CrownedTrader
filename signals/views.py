@@ -604,9 +604,21 @@ def get_signal_template(signal):
             return False
 
         if not _has_plan(fields):
+            # Keep Targets summary plus the detailed Take Profit Plan.
             max_tp = 6
-            tps = []
+            def _row_exists(i: int) -> bool:
+                for k in (f"tp{i}_mode", f"tp{i}_per", f"tp{i}_stock_price", f"tp{i}_takeoff_per"):
+                    if str(data_copy.get(k) or "").strip() != "":
+                        return True
+                return False
+
+            last_tp = 0
             for i in range(1, max_tp + 1):
+                if _row_exists(i):
+                    last_tp = i
+
+            targets = []
+            for i in range(1, (last_tp or 0) + 1):
                 mode = str(data_copy.get(f"tp{i}_mode") or "").strip().lower()
                 stock_raw = data_copy.get(f"tp{i}_stock_price")
 
@@ -616,28 +628,92 @@ def get_signal_template(signal):
 
                 takeoff = str(data_copy.get(f"tp{i}_takeoff_per") or "").strip()
                 takeoff_str = takeoff if (takeoff and takeoff.endswith("%")) else (f"{takeoff}%" if takeoff else "")
+
                 if is_stock:
                     try:
                         sp = str(stock_raw or "").strip()
-                        if not sp:
-                            continue
-                        sp_num = float(sp)
+                        sp_num = float(sp) if sp else 0.0
                         sp_str = f"{sp_num:.2f}"
                     except Exception:
-                        sp_str = str(stock_raw).strip()
-                    tps.append(f"${sp_str}{f' - {takeoff_str}' if takeoff_str else ''}")
+                        sp_str = str(stock_raw).strip() or "0.00"
+                    # Stock price based targets: show as "TP1. $285.62"
+                    targets.append(f"TP{i}.${sp_str}")
                     continue
 
                 per = str(data_copy.get(f"tp{i}_per") or "").strip()
                 if not per:
                     continue
-                per_str = per if per.endswith("%") else f"{per}%"
+                try:
+                    per_num = float(per.replace("%", "").strip())
+                    per_fmt = f"{per_num:+.1f}%"
+                except Exception:
+                    per_fmt = per if per.endswith("%") else f"{per}%"
+
                 price_raw = data_copy.get(f"tp{i}_price")
                 try:
-                    price_str = f"{float(price_raw):.3f}" if price_raw is not None and str(price_raw).strip() != "" else "0.000"
+                    price_num = float(price_raw) if price_raw is not None and str(price_raw).strip() != "" else 0.0
+                    price_fmt = f"{price_num:.2f}"
                 except Exception:
-                    price_str = "0.000"
-                tps.append(f"{price_str}({per_str}){f' - {takeoff_str}' if takeoff_str else ''}")
+                    price_fmt = "0.00"
+
+                # % based targets: show as "$6.24 (+20.0%)" (no takeoff in summary)
+                targets.append(f"${price_fmt} ({per_fmt})")
+
+            tps = []
+            def _pct1(v) -> str:
+                try:
+                    s = str(v or "").strip().replace("%", "")
+                    if not s:
+                        return ""
+                    return f"{float(s):.1f}%"
+                except Exception:
+                    return ""
+
+            trailing = _pct1(data_copy.get("sl_per")) or "15.0%"
+            tp_steps: list[dict] = []
+            for i in range(1, (last_tp or 0) + 1):
+                mode = str(data_copy.get(f"tp{i}_mode") or "").strip().lower()
+                take_pct = _pct1(data_copy.get(f"tp{i}_takeoff_per"))
+
+                if mode in ("stock", "stock_price", "underlying", "share_price"):
+                    stock_raw = data_copy.get(f"tp{i}_stock_price")
+                    try:
+                        sp = str(stock_raw or "").strip()
+                        sp_num = float(sp) if sp else 0.0
+                        # Stock price TP plan: include level label (e.g. "TP1.$0.00")
+                        at_str = f"TP{i}.${sp_num:.2f}"
+                    except Exception:
+                        at_str = f"TP{i}.${str(stock_raw or '').strip() or '0.00'}"
+                    tp_steps.append({"level": i, "at_str": at_str, "take_pct": take_pct})
+                    continue
+
+                per = _pct1(data_copy.get(f"tp{i}_per"))
+                per = per or f"{float(i * 10):.1f}%"
+                tp_steps.append({"level": i, "at_str": per, "take_pct": take_pct})
+
+            def _ensure_period(s: str) -> str:
+                s2 = str(s or "").strip()
+                return s2 if s2.endswith(".") else f"{s2}."
+
+            last_idx = len(tp_steps) - 1
+            for idx, step in enumerate(tp_steps):
+                at_str = str(step.get("at_str") or "").strip()
+                level = int(step.get("level") or (idx + 1))
+                take_pct = str(step.get("take_pct") or "").strip()
+                if take_pct:
+                    take_str = f" take off {take_pct} of position" if idx == 0 else f" take off {take_pct} of remaining position"
+                else:
+                    take_str = ""
+
+                suffix = ""
+                if len(tp_steps) == 1:
+                    suffix = " and tighten up stop loss to slightly above break even"
+                elif idx == 0:
+                    suffix = " and tighten up stop loss to slightly above break even"
+                elif idx == last_idx:
+                    suffix = ""
+
+                tps.append(_ensure_period(f"Take Profit ({level}): At {at_str}{take_str}{suffix}"))
 
             sl_per = str(data_copy.get("sl_per") or "").strip()
             sl_per_str = sl_per if (sl_per and sl_per.endswith("%")) else (f"{sl_per}%" if sl_per else "")
@@ -648,7 +724,7 @@ def get_signal_template(signal):
                 sl_price_str = "0.000"
 
             # Show Trade Plan even if option price isn't computed yet (defaults to 0.000)
-            if tps or sl_per_str or sl_price_str:
+            if targets or tps or sl_per_str or sl_price_str:
                 # Insert after last option-related field if possible, else append.
                 insert_at = len(fields)
                 for idx, f in enumerate(fields):
@@ -660,8 +736,9 @@ def get_signal_template(signal):
                 injected = []
                 injected.append({"name": "", "value": "\u200b", "inline": False})
                 injected.append({"name": "📝 **Trade Plan**", "value": "", "inline": False})
-                if tps:
-                    injected.append({"name": f"🎯 Targets: {', '.join(tps)}", "value": "", "inline": False})
+                if targets:
+                    joiner = ",  " if any(str(t or "").startswith("TP") for t in targets) else ", "
+                    injected.append({"name": f"🎯 Targets: {joiner.join(targets)}", "value": "", "inline": False})
                 injected.append(
                     {
                         "name": f"🛑 Stop Loss: {sl_price_str}{f'({sl_per_str})' if sl_per_str else ''}",
@@ -669,6 +746,9 @@ def get_signal_template(signal):
                         "inline": False,
                     }
                 )
+                if tps:
+                    injected.append({"name": "", "value": "\u200b", "inline": False})
+                    injected.append({"name": "💰 Take Profit Plan", "value": "\n".join(tps), "inline": False})
 
                 fields[insert_at:insert_at] = injected
     
@@ -1074,6 +1154,11 @@ def trade_plan_api(request):
             stock_price = str(item.get("stock_price") or item.get("stockPrice") or "").strip()
             takeoff = str(item.get("takeoff") or "").strip()
             cleaned_levels.append({"mode": mode or "percent", "per": per, "stock_price": stock_price, "takeoff": takeoff})
+        # Normalize takeoff: last TP = 100%, others = 50%.
+        if cleaned_levels:
+            for i in range(len(cleaned_levels) - 1):
+                cleaned_levels[i]["takeoff"] = "50"
+            cleaned_levels[-1]["takeoff"] = "100"
 
         sl_per_str = str(sl_per or "").strip()
         # If tp_mode wasn't provided, infer it from levels (stock wins).

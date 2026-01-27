@@ -1485,6 +1485,10 @@ function createTickerSearchControl(variable) {
             const selectItem = (e) => {
                 // Prevent blur-before-select on some browsers.
                 if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+                // Guard: some browsers fire multiple pointer/mouse/click events.
+                if (row.dataset.selected === '1') return;
+                row.dataset.selected = '1';
                 suppressSearch = true;
                 input.value = t.symbol;
                 closeDropdown();
@@ -1497,9 +1501,8 @@ function createTickerSearchControl(variable) {
                 setTimeout(() => { suppressSearch = false; }, 0);
             };
 
+            // Use pointerdown only (avoid duplicate selection events)
             row.addEventListener('pointerdown', selectItem);
-            row.addEventListener('mousedown', selectItem);
-            row.addEventListener('click', selectItem);
 
             dropdown.appendChild(row);
         });
@@ -1758,6 +1761,12 @@ function upgradeSelectToTickerDropdown(selectEl, { placeholder = '' } = {}) {
 // Auto-fill helpers (avoid overwriting user edits)
 function markUserTouched(el) {
     if (!el) return;
+    // Ignore programmatic updates (set by setValueIfAllowed/forceSet) so auto-fill can continue
+    // to adjust values when upstream inputs (e.g., current_price) change.
+    if (el.dataset && el.dataset.suppressUserTouched === '1') {
+        delete el.dataset.suppressUserTouched;
+        return;
+    }
     el.dataset.userTouched = '1';
     if (el.dataset.autoFilled === '1') el.dataset.autoFilled = '0';
 }
@@ -1777,8 +1786,12 @@ function setValueIfAllowed(el, value) {
 
     el.value = v;
     el.dataset.autoFilled = '1';
+    // Prevent the generic "input => markUserTouched" listeners from marking this as user-edited.
+    el.dataset.suppressUserTouched = '1';
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
+    // If a listener didn't clear it, clear it now.
+    if (el.dataset.suppressUserTouched === '1') delete el.dataset.suppressUserTouched;
     return true;
 }
 
@@ -1824,13 +1837,23 @@ function updateTpSlPrices() {
         if (!perEl || !priceElN) continue;
         const tpPer = parsePercent(perEl.value);
         if (Number.isFinite(tpPer)) {
-            setValueIfAllowed(priceElN, formatFloat3(base * (1 + tpPer / 100)));
+            const computed = formatFloat3(base * (1 + tpPer / 100));
+            setValueIfAllowed(priceElN, computed);
+            const priceDisplayEl = document.querySelector(`input[data-tp-price-display][data-tp-level="${i}"]`);
+            if (priceDisplayEl) {
+                // Avoid infinite loops: do not dispatch input/change when we are programmatically
+                // updating the display-only field (it has listeners that back-compute %).
+                if (canAutoFill(priceDisplayEl)) {
+                    priceDisplayEl.value = String(computed);
+                    priceDisplayEl.dataset.autoFilled = '1';
+                }
+            }
         }
     }
     if (Number.isFinite(slPer)) setValueIfAllowed(slPriceEl, formatFloat3(base * (1 - slPer / 100)));
 }
 
-// When Target Type = Stock price ($), default TP stock targets to +10%/+20%/+30%
+// When Target Type = Stock price ($), default TP stock targets to +10/20/30/40/50/60%
 // of the current underlying stock price (without overwriting user edits).
 function updateDefaultTpStockTargets() {
     const modeEl = findFieldByName('tp1_mode');
@@ -1851,7 +1874,7 @@ function updateDefaultTpStockTargets() {
     const optTypeRaw = String(optTypeEl ? optTypeEl.value : '').trim().toLowerCase();
     const isPut = optTypeRaw.includes('put');
 
-    const defaults = [10, 20, 30];
+    const defaults = [10, 20, 30, 40, 50, 60];
     for (let i = 1; i <= defaults.length; i++) {
         const el = findFieldByName(`tp${i}_stock_price`);
         if (!el) continue;
@@ -2487,7 +2510,8 @@ function updatePreview() {
         });
 
         if (!alreadyHasPlan) {
-            const tps = [];
+            // Keep the original Targets summary line
+            const targets = [];
             for (let i = 1; i <= MAX_TP_LEVELS; i++) {
                 const modeRaw = String(formData[`tp${i}_mode`] ?? '').trim().toLowerCase();
                 const mode = (modeRaw === 'stock' || modeRaw === 'stock_price' || modeRaw === 'underlying' || modeRaw === 'share_price')
@@ -2498,25 +2522,81 @@ function updatePreview() {
 
                 if (mode === 'stock') {
                     const spRaw = String(formData[`tp${i}_stock_price`] ?? '').trim();
-                    if (!spRaw) continue;
-                    const n = Number(spRaw);
-                    const spStr = Number.isFinite(n) ? n.toFixed(2) : spRaw;
-                    tps.push(`$${spStr}${takeoffStr ? ` - ${takeoffStr}` : ''}`);
+                    const n = spRaw ? Number(spRaw) : 0;
+                    const spStr = Number.isFinite(n) ? n.toFixed(2) : (spRaw || '0.00');
+                    // Stock price based targets: show as "TP1. $285.62"
+                    targets.push(`TP${i}.$${spStr}`);
                     continue;
                 }
 
                 const per = String(formData[`tp${i}_per`] ?? '').trim();
                 if (!per) continue;
                 const price = String(formData[`tp${i}_price`] ?? '0.000').trim() || '0.000';
-                const perStr = per.endsWith('%') ? per : `${per}%`;
-                tps.push(`${price}(${perStr})${takeoffStr ? ` - ${takeoffStr}` : ''}`);
+                const perNum = parsePercent(per);
+                const perFmt = Number.isFinite(perNum) ? `${perNum >= 0 ? '+' : ''}${perNum.toFixed(1)}%` : (per.endsWith('%') ? per : `${per}%`);
+                const priceNum = Number(String(price).trim());
+                const priceFmt = Number.isFinite(priceNum) ? priceNum.toFixed(2) : String(price);
+                // % based targets: show as "$6.24 (+20.0%)" (no takeoff in the summary line)
+                targets.push(`$${priceFmt} (${perFmt})`);
             }
+
+            const tps = [];
+            const formatPct1 = (raw) => {
+                const n = Number(String(raw ?? '').replace('%', '').trim());
+                return Number.isFinite(n) ? `${n.toFixed(1)}%` : '';
+            };
+            const trailingRaw = formatPct1(formData['sl_per']) || '15.0%';
+            const tpSteps = [];
+            for (let i = 1; i <= MAX_TP_LEVELS; i++) {
+                // Ensure Take Profit Plan count matches current TP rows count
+                const rowEl = document.querySelector(`.tp-level-row[data-tp-row="1"][data-tp-level="${i}"]`);
+                if (!rowEl) break;
+
+                const modeRaw = String(formData[`tp${i}_mode`] ?? '').trim().toLowerCase();
+                const mode = (modeRaw === 'stock' || modeRaw === 'stock_price' || modeRaw === 'underlying' || modeRaw === 'share_price')
+                    ? 'stock'
+                    : 'percent';
+
+                const takePct = formatPct1(formData[`tp${i}_takeoff_per`]);
+                const atStr = (() => {
+                    if (mode === 'stock') {
+                        const spRaw = String(formData[`tp${i}_stock_price`] ?? '').trim();
+                        const n = spRaw ? Number(spRaw) : 0;
+                        const spStr = Number.isFinite(n) ? n.toFixed(2) : (spRaw || '0.00');
+                        // Stock price TP plan: include level label (e.g. "TP1.$0.00")
+                        return `TP${i}.$${spStr}`;
+                    }
+                    const per = formatPct1(formData[`tp${i}_per`]);
+                    return per || `${(i * 10).toFixed(1)}%`;
+                })();
+                tpSteps.push({ level: i, atStr, takePct });
+            }
+
+            const ensurePeriod = (s) => (String(s || '').trim().endsWith('.') ? String(s || '').trim() : `${String(s || '').trim()}.`);
+            const lastIdx = tpSteps.length - 1;
+            tpSteps.forEach((step, idx) => {
+                const takeStr = step.takePct
+                    ? (idx === 0 ? ` take off ${step.takePct} of position` : ` take off ${step.takePct} of remaining position`)
+                    : '';
+
+                let suffix = '';
+                if (tpSteps.length === 1) {
+                    suffix = ' and tighten up stop loss to slightly above break even';
+                } else if (idx === 0) {
+                    suffix = ' and tighten up stop loss to slightly above break even';
+                } else if (idx === lastIdx) {
+                    suffix = '';
+                }
+
+                const line = ensurePeriod(`Take Profit (${step.level}): At ${step.atStr}${takeStr}${suffix}`);
+                tps.push(line);
+            });
             const slPerRaw = String(formData['sl_per'] ?? '').trim();
             const slPriceRaw = String(formData['sl_price'] ?? '0.000').trim() || '0.000';
             const slPerStr = slPerRaw ? (slPerRaw.endsWith('%') ? slPerRaw : `${slPerRaw}%`) : '';
 
             // Show Trade Plan even before option price is computed (defaults: 0.000)
-            if (tps.length || slPerRaw || slPriceRaw) {
+            if (targets.length || tps.length || slPerRaw || slPriceRaw) {
                 // Find insertion index: after last option-related field (Expiration/Strike/Option/Price)
                 let insertAt = -1;
                 fieldsToRenderFinal.forEach((it, idx) => {
@@ -2535,11 +2615,12 @@ function updatePreview() {
                 // blank spacer between option data and Trade Plan
                 injected.push({ field: { inline: false }, index: -1000, fieldName: '', fieldValue: '\u200b' });
                 injected.push({ field: { inline: false }, index: -1001, fieldName: '📝 **Trade Plan**', fieldValue: '' });
-                if (tps.length) {
+                if (targets.length) {
+                    const joiner = targets.some(t => String(t || '').startsWith('TP')) ? ',  ' : ', ';
                     injected.push({
                         field: { inline: false },
                         index: -1002,
-                        fieldName: `🎯 Targets: ${tps.join(', ')}`,
+                        fieldName: `🎯 Targets: ${targets.join(joiner)}`,
                         fieldValue: '',
                     });
                 }
@@ -2549,6 +2630,17 @@ function updatePreview() {
                         index: -1003,
                         fieldName: `🛑 Stop Loss: ${slPriceRaw}${slPerStr ? `(${slPerStr})` : ''}`,
                         fieldValue: '',
+                    });
+                }
+                // Move Take Profit Plan AFTER Stop Loss
+                if (tps.length) {
+                    // Spacer before Take Profit Plan
+                    injected.push({ field: { inline: false }, index: -1003.5, fieldName: '', fieldValue: '\u200b' });
+                    injected.push({
+                        field: { inline: false },
+                        index: -1004,
+                        fieldName: '💰 Take Profit Plan',
+                        fieldValue: tps.join('\n'),
                     });
                 }
 
@@ -2949,6 +3041,7 @@ function createDynamicFields(signalTypeId) {
         // Body: two columns (Target + Take Off %)
         const body = document.createElement('div');
         body.className = 'tp-level-row-body';
+        body.style.gridTemplateColumns = '2.2fr 0.8fr';
 
         // Left column: target value (driven by global mode)
         const targetCol = document.createElement('div');
@@ -2992,6 +3085,94 @@ function createDynamicFields(signalTypeId) {
             }
         }
 
+        // Price display (left of Level %) when Target type is % based: show computed price, edit to drive %
+        const priceRow = document.createElement('div');
+        priceRow.style.display = 'flex';
+        priceRow.style.gap = '10px';
+        priceRow.style.alignItems = 'flex-end';
+        priceRow.style.flexWrap = 'wrap';
+        const priceLabel = document.createElement('label');
+        priceLabel.textContent = 'Price';
+        const priceDisplayInput = document.createElement('input');
+        priceDisplayInput.type = 'number';
+        priceDisplayInput.step = '0.001';
+        priceDisplayInput.min = '0';
+        priceDisplayInput.className = 'form-input';
+        priceDisplayInput.dataset.tpPriceDisplay = '1';
+        priceDisplayInput.dataset.tpLevel = String(level);
+        priceDisplayInput.placeholder = '0.00';
+        priceDisplayInput.dataset.ignoreDynamic = '1';
+
+        const levelWrap = document.createElement('div');
+        levelWrap.style.flex = '1';
+        levelWrap.style.minWidth = '80px';
+        levelWrap.appendChild(levelLabel);
+        levelWrap.appendChild(tpWrapEl || tpGroup.querySelector('input'));
+
+        const priceWrap = document.createElement('div');
+        priceWrap.style.flex = '1';
+        priceWrap.style.minWidth = '120px';
+        priceWrap.appendChild(priceLabel);
+        priceWrap.appendChild(priceDisplayInput);
+
+        // Place Level % first, Price second
+        priceRow.appendChild(levelWrap);
+        priceRow.appendChild(priceWrap);
+        tpGroup.innerHTML = '';
+        tpGroup.appendChild(priceRow);
+
+        const perInput = tpGroup.querySelector(`input[name="tp${level}_per"]`);
+        const setPriceDisplaySilent = (val) => {
+            priceDisplayInput.value = String(val ?? '');
+            priceDisplayInput.dataset.autoFilled = '1';
+        };
+        function applyPriceFromPercent() {
+            if (priceDisplayInput.dataset.skipNextInput === '1') {
+                delete priceDisplayInput.dataset.skipNextInput;
+                return;
+            }
+            const baseRaw = (findFieldByName('option_price')?.value) || (findFieldByName('entry_price')?.value) || (findFieldByName('price')?.value) || '';
+            const base = Number(String(baseRaw).trim());
+            if (!Number.isFinite(base) || base <= 0) return;
+            const per = parsePercent(perInput?.value);
+            if (Number.isFinite(per)) {
+                const p = base * (1 + per / 100);
+                setPriceDisplaySilent(formatFloat3(p));
+            }
+        }
+        function applyPercentFromPrice() {
+            if (priceDisplayInput.dataset.skipNextInput === '1') {
+                delete priceDisplayInput.dataset.skipNextInput;
+                return;
+            }
+            const baseRaw = (findFieldByName('option_price')?.value) || (findFieldByName('entry_price')?.value) || (findFieldByName('price')?.value) || '';
+            const base = Number(String(baseRaw).trim());
+            if (!Number.isFinite(base) || base <= 0) return;
+            const price = Number(String(priceDisplayInput.value || '').trim());
+            if (!Number.isFinite(price) || price <= 0) return;
+            const per = (price / base - 1) * 100;
+            if (perInput) {
+                // Prevent percent->price sync from immediately overwriting the user-edited price.
+                priceDisplayInput.dataset.skipNextInput = '1';
+                perInput.value = String(Number(per.toFixed(1)));
+                perInput.dataset.autoFilled = '1';
+                // Allow future auto-fill updates, but treat this as a programmatic sync.
+                delete perInput.dataset.userTouched;
+                updateTpSlPrices();
+                updatePreview();
+            }
+        }
+        // Listen to input only (change duplicates on some browsers)
+        priceDisplayInput.addEventListener('input', () => markUserTouched(priceDisplayInput));
+        priceDisplayInput.addEventListener('input', applyPercentFromPrice);
+        priceDisplayInput.addEventListener('focus', () => { priceDisplayInput.select?.(); });
+        if (perInput) {
+            perInput.addEventListener('input', applyPriceFromPercent);
+            // change duplicates on some browsers
+        }
+        rowWrap._tpPriceDisplayEl = priceDisplayInput;
+        rowWrap._tpApplyPriceFromPercent = applyPriceFromPercent;
+
         // Stock price target input (underlying)
         const stockGroup = createSyntheticPriceField(
             `tp${level}_stock_price`,
@@ -3019,18 +3200,112 @@ function createDynamicFields(signalTypeId) {
         targetCol.appendChild(stockGroup);
 
         // Right column: takeoff % (capital removed when TP hits)
-        const takeoffDefaults = { 1: 50, 2: 25, 3: 25 };
+        const takeoffDefaults = { 1: 50, 2: 50, 3: 100 };
         const takeoffGroup = createSyntheticPercentField(
             `tp${level}_takeoff_per`,
             (defaultTakeoffPer ?? takeoffDefaults[level] ?? 0),
             'Take Off',
             { showPercentSuffix: true }
         );
+        // Treat defaults as auto-filled so we can safely re-default when adding/removing TP rows.
+        try {
+            const takeoffInput = takeoffGroup.querySelector('input');
+            if (takeoffInput) takeoffInput.dataset.autoFilled = '1';
+        } catch (_) {}
         takeoffGroup.dataset.tpTakeoffGroup = '1';
 
         body.appendChild(targetCol);
         body.appendChild(takeoffGroup);
         rowWrap.appendChild(body);
+
+        // --- Percent <-> Price sync (Option price targets) ---
+        const tpPerInput = tpGroup.querySelector('input');
+        const optPriceInput = priceDisplayInput;
+        let isSyncing = false;
+
+        function getOptionBasePrice() {
+            const optionPriceEl = findFieldByName('option_price');
+            const entryPriceEl = findFieldByName('entry_price');
+            const priceEl = findFieldByName('price');
+            const baseRaw = (optionPriceEl && optionPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '';
+            const base = Number(String(baseRaw).trim());
+            return Number.isFinite(base) ? base : NaN;
+        }
+
+        function setInputValue(el, value) {
+            if (!el) return;
+            el.value = String(value ?? '');
+            el.dataset.autoFilled = '1';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function syncPriceFromPercent() {
+            if (!tpPerInput || !optPriceInput) return;
+            const m = String(modeHidden.value || '').trim().toLowerCase();
+            if (m !== 'percent') return;
+            const base = getOptionBasePrice();
+            if (!Number.isFinite(base) || base <= 0) return;
+            const per = parsePercent(tpPerInput.value);
+            if (!Number.isFinite(per)) return;
+            const price = base * (1 + per / 100);
+            // Update visible option price + hidden tp{level}_price
+            const hiddenPriceEl = findFieldByName(`tp${level}_price`);
+            isSyncing = true;
+            optPriceInput.value = price.toFixed(3);
+            optPriceInput.dataset.autoFilled = '1';
+            if (hiddenPriceEl) {
+                hiddenPriceEl.value = price.toFixed(3);
+                hiddenPriceEl.dataset.autoFilled = '1';
+            }
+            isSyncing = false;
+        }
+
+        function syncPercentFromPrice() {
+            if (!tpPerInput || !optPriceInput) return;
+            const m = String(modeHidden.value || '').trim().toLowerCase();
+            if (m !== 'percent') return;
+            const base = getOptionBasePrice();
+            if (!Number.isFinite(base) || base <= 0) return;
+            const price = Number(String(optPriceInput.value || '').trim());
+            if (!Number.isFinite(price)) return;
+            const per = ((price / base) - 1) * 100;
+            isSyncing = true;
+            tpPerInput.value = per.toFixed(1);
+            tpPerInput.dataset.autoFilled = '1';
+            const hiddenPriceEl = findFieldByName(`tp${level}_price`);
+            if (hiddenPriceEl) {
+                hiddenPriceEl.value = price.toFixed(3);
+                hiddenPriceEl.dataset.autoFilled = '1';
+            }
+            isSyncing = false;
+            updateTpSlPrices();
+            updatePreview();
+        }
+
+        if (tpPerInput) {
+            tpPerInput.addEventListener('input', () => {
+                if (isSyncing) return;
+                syncPriceFromPercent();
+            });
+            tpPerInput.addEventListener('change', () => {
+                if (isSyncing) return;
+                syncPriceFromPercent();
+            });
+        }
+        if (optPriceInput) {
+            optPriceInput.addEventListener('input', () => {
+                if (isSyncing) return;
+                syncPercentFromPrice();
+            });
+            optPriceInput.addEventListener('change', () => {
+                if (isSyncing) return;
+                syncPercentFromPrice();
+            });
+        }
+
+        // Initialize option price from default percent
+        syncPriceFromPercent();
         return rowWrap;
     }
 
@@ -3278,7 +3553,7 @@ function createDynamicFields(signalTypeId) {
             rightBtns.appendChild(addBtn);
             tpHeader.appendChild(rightBtns);
         tpContainer.appendChild(presetBar);
-        tpContainer.appendChild(tpHeader);
+            tpContainer.appendChild(tpHeader);
 
             const tpRows = document.createElement('div');
             tpRows.style.display = 'flex';
@@ -3320,13 +3595,15 @@ function createDynamicFields(signalTypeId) {
             const renderTpRows = (state) => {
                 tpRows.innerHTML = '';
                 const s = Array.isArray(state) ? state : [];
+                // On add/remove, normalize: last TP takes 100%, all others 50%.
+                const normalizedTakeoffFor = (lvl, total) => (lvl === total ? 100 : 50);
                 s.forEach((it, idx) => {
                     const lvl = idx + 1;
                     ensureTpPriceHidden(lvl);
-                    const perNum = Number(String(it?.per ?? '').trim());
-                    const takeoffNum = Number(String(it?.takeoff ?? '').trim());
+                    const perRaw = String(it?.per ?? '').trim();
+                    const perNum = Number(perRaw);
                     const perVal = Number.isFinite(perNum) ? perNum : (lvl * 10);
-                    const takeoffVal = Number.isFinite(takeoffNum) ? takeoffNum : (lvl === 1 ? 50 : (lvl === 2 ? 25 : (lvl === 3 ? 25 : 0)));
+                    const takeoffVal = normalizedTakeoffFor(lvl, s.length);
                     const stockPriceRaw = String(it?.stock_price ?? it?.stockPrice ?? '').trim();
                     const rowEl = createTakeProfitRow(lvl, perVal, takeoffVal, { defaultMode: globalTpMode, defaultStockPrice: stockPriceRaw });
                     // Wire remove: allowed for TP2+; removing reindexes rows so tp1/tp2/... stay stable.
@@ -3375,14 +3652,15 @@ function createDynamicFields(signalTypeId) {
                 const state = readTpState();
                 const next = state.length + 1;
                 if (next > MAX_TP_LEVELS) return;
-                state.push({ per: String(next * 10), takeoff: '0' });
+                // Leave takeoff empty so defaults apply; last TP will be 100%.
+                state.push({ per: String(next * 10), takeoff: '' });
                 renderTpRows(state);
                 applyGlobalTpModeToRows();
                 updateDefaultTpStockTargets();
             });
 
             // Prefill from selected preset if present; otherwise defaults.
-            const defaultTp = [{ per: '10', takeoff: '50' }, { per: '20', takeoff: '25' }, { per: '30', takeoff: '25' }];
+            const defaultTp = [{ per: '10', takeoff: '50' }, { per: '20', takeoff: '50' }, { per: '30', takeoff: '100' }];
             const defaultSl = 10;
             const initialPreset = getInitialTradePlanPreset();
             const initialPlan = (initialPreset && typeof initialPreset === 'object') ? (initialPreset.plan || {}) : {};
@@ -4026,6 +4304,19 @@ function createDynamicFields(signalTypeId) {
         // Track manual edits to avoid overwriting auto-filled values.
         input.addEventListener('input', () => markUserTouched(input));
 
+        // When the underlying stock price changes, refresh stock-price TP targets (10/20/30% defaults)
+        // without overwriting user-edited TP targets.
+        if (variable.name === 'current_price') {
+            input.addEventListener('input', () => {
+                updateDefaultTpStockTargets();
+                updatePreview();
+            });
+            input.addEventListener('change', () => {
+                updateDefaultTpStockTargets();
+                updatePreview();
+            });
+        }
+
         // Auto-fetch current price when selecting a ticker_type field.
         if (variable.type === 'ticker_type') {
             input.addEventListener('change', async () => {
@@ -4091,9 +4382,11 @@ function createDynamicFields(signalTypeId) {
                     if (!el) return;
                     el.value = String(value ?? '');
                     el.dataset.autoFilled = '1';
+                    el.dataset.suppressUserTouched = '1';
                     // Fire events so preview + option quote logic update.
                     el.dispatchEvent(new Event('input', { bubbles: true }));
                     el.dispatchEvent(new Event('change', { bubbles: true }));
+                    if (el.dataset.suppressUserTouched === '1') delete el.dataset.suppressUserTouched;
                 };
 
                 // Default option_type=CALL (user can change to PUT which will recompute best-option)
