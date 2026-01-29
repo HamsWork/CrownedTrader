@@ -13,6 +13,7 @@ from django.db.models import Q
 from django.core.paginator import Paginator
 from django.core.exceptions import ValidationError
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 import logging
 import requests
 import re
@@ -1270,6 +1271,41 @@ def dashboard(request):
             else:
                 # Save signal and send to Discord
                 signal_instance.save()
+                # Open a position for this trade so it appears in Position Management
+                try:
+                    is_shares = _truthy(signal_data.get('is_shares', False))
+                    symbol = (str(signal_data.get('ticker') or signal_data.get('symbol') or '').strip().upper() or '')[:20]
+                    instrument = Position.INSTRUMENT_SHARES if is_shares else Position.INSTRUMENT_OPTIONS
+                    entry_raw = signal_data.get('option_price') or signal_data.get('entry_price') or signal_data.get('price') or ''
+                    try:
+                        entry_price = Decimal(str(entry_raw).strip()) if entry_raw else None
+                    except (InvalidOperation, TypeError):
+                        entry_price = None
+                    quantity = 1
+                    try:
+                        q = signal_data.get('quantity')
+                        if q is not None and str(q).strip() != '':
+                            quantity = int(Decimal(str(q)))
+                    except (ValueError, InvalidOperation, TypeError):
+                        quantity = 1
+                    multiplier = 1 if is_shares else 100
+                    Position.objects.create(
+                        user=request.user,
+                        signal=signal_instance,
+                        status=Position.STATUS_OPEN,
+                        mode=Position.MODE_MANUAL,
+                        symbol=symbol,
+                        instrument=instrument,
+                        option_contract=str(signal_data.get('option_contract') or '')[:64],
+                        option_type=str(signal_data.get('option_type') or '').strip().upper()[:10],
+                        strike=str(signal_data.get('strike') or '')[:32],
+                        expiration=str(signal_data.get('expiration') or '')[:32],
+                        quantity=max(1, quantity),
+                        multiplier=multiplier,
+                        entry_price=entry_price,
+                    )
+                except Exception as e:
+                    logger.warning('Could not create position for signal %s: %s', signal_instance.id, e)
                 success = send_to_discord(signal_instance)
                 
                 if success:

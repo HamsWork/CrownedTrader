@@ -3243,6 +3243,8 @@ function createDynamicFields(signalTypeId) {
                 const p = base * (1 + per / 100);
                 setPriceDisplaySilent(formatFloat3(p));
             }
+            updateTpSlPrices();
+            updatePreview();
         }
         function applyPercentFromPrice() {
             if (priceDisplayInput.dataset.skipNextInput === '1') {
@@ -4417,6 +4419,18 @@ function createDynamicFields(signalTypeId) {
             });
             input.addEventListener('change', () => {
                 updateDefaultTpStockTargets();
+                updatePreview();
+            });
+        }
+
+        // When option/entry price changes, recalculate all TP level Price values from Level %
+        if (variable.name === 'option_price' || variable.name === 'entry_price' || variable.name === 'price') {
+            input.addEventListener('input', () => {
+                updateTpSlPrices();
+                updatePreview();
+            });
+            input.addEventListener('change', () => {
+                updateTpSlPrices();
                 updatePreview();
             });
         }
