@@ -1716,7 +1716,7 @@ def position_management(request):
             "entry_str": f"{entry:.2f}" if entry else "-",
             "mark_str": f"{mark_val:.2f}" if mark_val is not None else "-",
             "status_kind": "good" if (pnl_pct or 0) >= 0 else "bad",
-            "status_label": f"TP{(p.tp_hit_level or 0)}" if not p.sl_hit else "SL",
+            "status_label": "Opened" if not p.sl_hit and (p.tp_hit_level or 0) == 0 else (f"TP{p.tp_hit_level} Hit" if not p.sl_hit else "SL"),
             "pnl_pct": pnl_pct,
             "pnl_pct_str": f"{pnl_pct:+.1f}%" if pnl_pct is not None else "-",
             "realized_pnl_pct": realized_pct,
@@ -1943,14 +1943,56 @@ def post_position_update(request, position_id):
     if url and not _send_discord_embed(url, embed):
         return JsonResponse({"error": "Failed to send to Discord"}, status=500)
     from django.utils import timezone
+    now = timezone.now()
     if kind == "tp":
         pos.tp_hit_level = next_tp
-        pos.save(update_fields=["tp_hit_level", "updated_at"])
+        # Update closed_units from takeoff % for this TP level; close position when 100% exited
+        data = (pos.signal.data if pos.signal and isinstance(getattr(pos.signal, "data", None), dict) else {}) or {}
+        takeoff_pct = 50.0
+        try:
+            t = data.get(f"tp{next_tp}_takeoff_per")
+            if t is not None:
+                takeoff_pct = float(str(t).strip().replace("%", "")) if str(t).strip() else 50.0
+        except (TypeError, ValueError):
+            pass
+        total_units = (pos.quantity or 1) * (pos.multiplier or 100)
+        closed_u = pos.closed_units or 0
+        remaining = max(0, total_units - closed_u)
+        add_units = int(round(remaining * takeoff_pct / 100.0))
+        pos.closed_units = closed_u + add_units
+        # Realized P/L from this TP hit: (tp_price - entry_price) * add_units
+        tp_price = None
+        try:
+            tp_price_val = data.get(f"tp{next_tp}_price")
+            if tp_price_val is not None:
+                tp_price = float(str(tp_price_val).strip())
+        except (TypeError, ValueError):
+            pass
+        entry = float(pos.entry_price) if pos.entry_price is not None else 0
+        update_fields = ["tp_hit_level", "closed_units", "updated_at"]
+        if tp_price is not None and entry and add_units > 0:
+            realized_this_tp = (tp_price - entry) * add_units
+            current_realized = float(pos.realized_pnl) if pos.realized_pnl is not None else 0
+            pos.realized_pnl = Decimal(str(round(current_realized + realized_this_tp, 2)))
+            update_fields.append("realized_pnl")
+        if pos.closed_units >= total_units:
+            pos.status = Position.STATUS_CLOSED
+            pos.closed_at = now
+            try:
+                tp_price_val = data.get(f"tp{next_tp}_price")
+                if tp_price_val is not None:
+                    pos.exit_price = float(str(tp_price_val).strip())
+                else:
+                    pos.exit_price = pos.entry_price
+            except (TypeError, ValueError):
+                pos.exit_price = pos.entry_price
+            update_fields.extend(["status", "exit_price", "closed_at"])
+        pos.save(update_fields=update_fields)
     else:
         pos.sl_hit = True
         pos.status = Position.STATUS_CLOSED
         pos.exit_price = pos.entry_price
-        pos.closed_at = timezone.now()
+        pos.closed_at = now
         pos.save(update_fields=["sl_hit", "status", "exit_price", "closed_at", "updated_at"])
     return JsonResponse({"ok": True})
 
