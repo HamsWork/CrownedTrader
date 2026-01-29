@@ -1,0 +1,144 @@
+{% extends 'signals/base.html' %}
+{% load static %}
+
+{% block title %}Agreement - Crowned Trader{% endblock %}
+
+{% block extra_css %}
+<style>
+  .ag-page {
+    width: 100%;
+    max-width: 980px;
+    margin: 0 auto;
+  }
+
+  .ag-card {
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(42, 55, 95, 0.55);
+    border-radius: 18px;
+    overflow: hidden;
+  }
+
+  .ag-head {
+    padding: 18px 18px;
+    border-bottom: 1px solid rgba(42, 55, 95, 0.55);
+    background: rgba(10, 16, 35, 0.55);
+  }
+
+  .ag-title {
+    color: #e8ecff;
+    font-weight: 1000;
+    font-size: 20px;
+    letter-spacing: 0.02em;
+  }
+
+  .ag-sub {
+    margin-top: 6px;
+    color: rgba(232, 236, 255, 0.62);
+    font-weight: 800;
+    font-size: 12px;
+  }
+
+  .ag-body {
+    padding: 18px;
+  }
+
+  .ag-scroll {
+    max-height: 52vh;
+    overflow: auto;
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(42, 55, 95, 0.55);
+    background: rgba(10, 16, 35, 0.55);
+    color: rgba(232, 236, 255, 0.9);
+    white-space: pre-wrap;
+    line-height: 1.45;
+  }
+
+  .ag-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+
+  .ag-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: rgba(232, 236, 255, 0.9);
+    font-weight: 900;
+  }
+
+  .ag-check input {
+    accent-color: rgba(var(--accent-rgb), 0.92);
+    width: 18px;
+    height: 18px;
+  }
+
+  .ag-btn {
+    height: 42px;
+    padding: 0 18px;
+    border-radius: 14px;
+    border: 1px solid rgba(var(--accent-rgb), 0.85);
+    background: rgba(var(--accent-rgb), 0.92);
+    color: #0b1020;
+    font-weight: 1000;
+    cursor: pointer;
+  }
+
+  .ag-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<span>Agreement</span>
+{% endblock %}
+
+{% block content %}
+<div class="ag-page">
+  <div class="ag-card">
+    <div class="ag-head">
+      <div class="ag-title">{{ agreement.title }}</div>
+      <div class="ag-sub">Version {{ agreement.version }} · Published {{ agreement.published_at|date:"M d, Y" }}</div>
+    </div>
+    <div class="ag-body">
+      <div class="ag-scroll" id="agreementBody">{{ agreement.body }}</div>
+
+      <form method="post" style="margin-top: 16px;">
+        {% csrf_token %}
+        {% if next %}
+          <input type="hidden" name="next" value="{{ next }}" />
+        {% endif %}
+        <div class="ag-actions">
+          <label class="ag-check">
+            <input type="checkbox" id="agreeBox" name="agree" value="1" />
+            <span>I have read and agree to this agreement.</span>
+          </label>
+          <button class="ag-btn" type="submit" id="agreeBtn" disabled>Agree & Continue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const cb = document.getElementById('agreeBox');
+  const btn = document.getElementById('agreeBtn');
+  function sync() {
+    if (!cb || !btn) return;
+    btn.disabled = !cb.checked;
+  }
+  if (cb) cb.addEventListener('change', sync);
+  sync();
+})();
+</script>
+{% endblock %}
+

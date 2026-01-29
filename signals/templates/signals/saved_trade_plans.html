@@ -1,0 +1,668 @@
+{% extends 'signals/base.html' %}
+
+{% block title %}Saved Trade Plans - Crowned Trader{% endblock %}
+
+{% block extra_css %}
+<style>
+    .st-page {
+        width: 100%;
+        max-width: 1840px;
+        margin: 0 auto;
+    }
+
+    .st-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 20px;
+        margin-bottom: 28px;
+    }
+
+    .st-title h1 {
+        color: #e8ecff;
+        font-size: 2.2em;
+        font-weight: 800;
+        margin: 0 0 10px 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .st-title-icon {
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--accent);
+        filter: drop-shadow(0 10px 22px rgba(var(--accent-rgb), 0.18));
+        flex: 0 0 auto;
+    }
+
+    .st-title-icon svg {
+        width: 22px;
+        height: 22px;
+        display: block;
+    }
+
+    .st-title p {
+        margin: 0;
+        color: rgba(232, 236, 255, 0.65);
+        font-size: 1.05em;
+        max-width: 860px;
+    }
+
+    .st-create-btn {
+        background: var(--accent);
+        color: #0b1020;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 18px;
+        font-weight: 700;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 10px 26px rgba(var(--accent-rgb), 0.18);
+        transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+        white-space: nowrap;
+        height: 44px;
+    }
+
+    .st-create-btn:hover {
+        transform: translateY(-1px);
+        background: color-mix(in srgb, var(--accent) 85%, #ffffff 15%);
+        box-shadow: 0 14px 30px rgba(var(--accent-rgb), 0.22);
+    }
+
+    .st-section {
+        margin-top: 12px;
+    }
+
+    .st-section-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+
+    .st-section-header h2 {
+        margin: 0;
+        color: #e8ecff;
+        font-size: 1.25em;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .st-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 12px;
+        height: 22px;
+        border-radius: 999px;
+        border: 1px solid rgba(var(--accent-rgb), 0.55);
+        background: rgba(0, 0, 0, 0.35);
+        color: rgba(232, 236, 255, 0.82);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            0 10px 18px rgba(0, 0, 0, 0.25);
+    }
+
+    .st-pill strong {
+        color: var(--accent);
+        font-weight: 800;
+    }
+
+    .st-divider {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 10px 0 16px 0;
+    }
+
+    .st-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(340px, 1fr));
+        gap: 22px;
+    }
+
+    .st-card {
+        position: relative;
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        border-radius: 16px;
+        padding: 22px;
+        padding-bottom: 78px;
+        overflow: hidden;
+        transition: transform 160ms ease, border-color 160ms ease;
+        min-height: 260px;
+    }
+
+    /* Removed right-top glow */
+    .st-card::after { content: none; }
+
+    .st-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(42, 55, 95, 0.85);
+    }
+
+    .st-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+
+    .st-card-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .st-remove-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 34px;
+        padding: 0 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(248, 113, 113, 0.28);
+        background: rgba(248, 113, 113, 0.08);
+        color: rgba(248, 113, 113, 0.95);
+        cursor: pointer;
+        font-weight: 900;
+        font-size: 14px;
+        transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, opacity 160ms ease;
+        flex: 0 0 auto;
+    }
+
+    .st-remove-btn svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+    }
+
+    .st-remove-btn:hover {
+        transform: translateY(-1px);
+        background: rgba(248, 113, 113, 0.12);
+        border-color: rgba(248, 113, 113, 0.45);
+    }
+
+    .st-remove-btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        transform: none !important;
+    }
+
+    .st-card-title {
+        margin: 0;
+        color: #e8ecff;
+        font-weight: 800;
+        font-size: 1.1em;
+    }
+
+    .st-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: rgba(232, 236, 255, 0.35);
+        flex: 0 0 auto;
+        box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.03);
+        margin-top: 4px;
+    }
+
+    .st-badges {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+    }
+
+    .st-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(10, 16, 35, 0.55);
+        color: rgba(232, 236, 255, 0.78);
+        font-size: 0.82em;
+        font-weight: 700;
+    }
+
+    .st-badge.default {
+        border-color: rgba(var(--accent-rgb), 0.45);
+        color: var(--accent);
+    }
+
+    .st-badge.custom {
+        border-color: rgba(96, 165, 250, 0.35);
+        color: rgba(147, 197, 253, 0.95);
+    }
+
+    .st-metrics {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        row-gap: 12px;
+        column-gap: 14px;
+        color: rgba(232, 236, 255, 0.65);
+        font-size: 0.95em;
+    }
+
+    .st-metrics .val {
+        color: rgba(232, 236, 255, 0.92);
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+    }
+
+    .st-actions {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 16px 18px;
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        background: linear-gradient(180deg, rgba(10, 16, 35, 0) 0%, rgba(10, 16, 35, 0.78) 35%, rgba(10, 16, 35, 0.92) 100%);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .st-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 40px;
+        padding: 0 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(42, 55, 95, 0.75);
+        background: rgba(255, 255, 255, 0.04);
+        color: rgba(232, 236, 255, 0.9);
+        text-decoration: none;
+        font-weight: 800;
+        transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+        white-space: nowrap;
+    }
+
+    .st-btn:hover {
+        transform: translateY(-1px);
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(42, 55, 95, 0.95);
+    }
+
+    .st-btn.primary {
+        background: rgba(var(--accent-rgb), 0.92);
+        border-color: rgba(var(--accent-rgb), 0.92);
+        color: #0b1020;
+        box-shadow: 0 10px 18px rgba(var(--accent-rgb), 0.18);
+    }
+
+    .st-btn.primary:hover {
+        background: color-mix(in srgb, var(--accent) 85%, #ffffff 15%);
+        border-color: color-mix(in srgb, var(--accent) 85%, #ffffff 15%);
+    }
+
+    .st-btn[disabled] {
+        opacity: 0.55;
+        cursor: not-allowed;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+
+    .st-preview {
+        margin-top: 14px;
+        padding: 12px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        background: rgba(10, 16, 35, 0.45);
+        color: rgba(232, 236, 255, 0.80);
+        font-size: 0.92em;
+        line-height: 1.35;
+        white-space: pre-wrap;
+    }
+
+    .st-preview-title {
+        color: rgba(232, 236, 255, 0.92);
+        font-weight: 900;
+        margin-bottom: 8px;
+    }
+
+    .st-create-card {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        border-style: dashed;
+        border-color: rgba(42, 55, 95, 0.75);
+        background: rgba(255, 255, 255, 0.03);
+        padding: 22px;
+        min-height: 260px;
+    }
+
+    .st-create-card > div {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+    }
+
+    .st-create-card:hover {
+        border-color: rgba(var(--accent-rgb), 0.65);
+    }
+
+    .st-create-card .plus {
+        width: 46px;
+        height: 46px;
+        border-radius: 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(var(--accent-rgb), 0.14);
+        border: 1px solid rgba(var(--accent-rgb), 0.35);
+        color: var(--accent);
+        font-size: 26px;
+        font-weight: 900;
+        margin: 0 auto 12px auto;
+    }
+
+    .st-create-card h3 {
+        margin: 0 0 8px 0;
+        color: #e8ecff;
+        font-size: 1.05em;
+        font-weight: 900;
+        text-align: center;
+    }
+
+    .st-create-card p {
+        margin: 0;
+        color: rgba(232, 236, 255, 0.65);
+        font-size: 0.95em;
+        text-align: center;
+        max-width: 260px;
+    }
+
+    /* Discord embed preview in card (same as New Trade Plan Live Preview) */
+    .st-discord-wrap {
+        margin-top: 14px;
+    }
+    .st-discord-embed {
+        display: flex;
+        background: #2f3136;
+        border-radius: 4px;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .st-discord-embed .discord-embed-color-bar {
+        width: 4px;
+        flex-shrink: 0;
+    }
+    .st-discord-embed .discord-embed-content {
+        flex: 1;
+        padding: 12px 16px 12px 12px;
+        color: #dcddde;
+        font-size: 14px;
+        line-height: 1.375;
+    }
+    .st-discord-embed .discord-embed-title {
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 16px;
+        margin-bottom: 8px;
+        min-height: 20px;
+    }
+    .st-discord-embed .discord-embed-title:empty {
+        display: none;
+    }
+    .st-discord-embed .discord-embed-description {
+        color: #dcddde;
+        margin-bottom: 8px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    .st-discord-embed .discord-embed-description:empty {
+        display: none;
+    }
+    .st-discord-embed .discord-embed-fields {
+        margin-top: 8px;
+    }
+    .st-discord-embed .discord-embed-field {
+        margin-bottom: 8px;
+    }
+    .st-discord-embed .discord-embed-field-name {
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 14px;
+        margin-bottom: 2px;
+        min-height: 16px;
+        word-wrap: break-word;
+    }
+    .st-discord-embed .discord-embed-field-name:empty {
+        display: none;
+    }
+    .st-discord-embed .discord-embed-field-value {
+        color: #dcddde;
+        font-size: 14px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        min-height: 16px;
+    }
+    .st-discord-embed .discord-embed-field-value:empty {
+        display: none;
+    }
+    .st-discord-embed .discord-embed-title strong,
+    .st-discord-embed .discord-embed-field-name strong,
+    .st-discord-embed .discord-embed-field-value strong {
+        font-weight: 600;
+    }
+
+    @media (max-width: 1200px) {
+        .st-grid { grid-template-columns: repeat(2, minmax(300px, 1fr)); }
+    }
+    @media (max-width: 860px) {
+        .st-header { flex-direction: column; }
+        .st-grid { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<span>Saved Trade plans</span>
+{% endblock %}
+
+{% block content %}
+<div class="st-page">
+    <div class="st-header">
+        <div class="st-title">
+            <h1>
+                <span class="st-title-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <path fill="currentColor" d="M4 6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2V6zm4 1h8v2H8V7zm0 4h8v2H8v-2z"/>
+                    </svg>
+                </span>
+                <span>Saved Trade plans</span>
+            </h1>
+            <p>Manage your default plan and your custom trade plan presets.</p>
+        </div>
+
+        <a class="st-create-btn" href="{% url 'new_trade_plan' %}">
+            <span aria-hidden="true">＋</span>
+            <span>New Trade Plan</span>
+        </a>
+    </div>
+
+    <div class="st-section">
+        <div class="st-section-header">
+            <h2>Your trade plans <span class="st-pill"><strong>{{ plan_cards|length }}</strong> Total</span></h2>
+        </div>
+        <div class="st-divider"></div>
+
+        <div class="st-grid">
+            {% for p in plan_cards %}
+            <div class="st-card" style="--glow-color: {% if p.is_default %}var(--accent){% else %}#60a5fa{% endif %};">
+                <div class="st-card-header">
+                    <div>
+                        <div class="st-card-title">{{ p.name }}</div>
+                    </div>
+                    <div class="st-card-controls">
+                        {% if p.is_default %}
+                        <span class="st-badge default">Default</span>
+                        {% endif %}
+                        <button class="st-remove-btn" type="button" title="Remove" aria-label="Remove" data-delete-plan="{{ p.id }}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                                <path fill="currentColor" d="M9 3h6l1 2h5v2H3V5h5l1-2zm1 7h2v9h-2v-9zm4 0h2v9h-2v-9zM7 10h2v9H7v-9z"/>
+                            </svg>
+                            <span>Remove</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="st-metrics">
+                    <div>Target Type</div><div class="val">{{ p.tp_mode }}</div>
+                </div>
+
+                <div class="st-discord-wrap">
+                    <div class="st-discord-embed discord-embed">
+                        <div class="discord-embed-color-bar" style="background: {{ p.discord_embed.color_hex }};"></div>
+                        <div class="discord-embed-content">
+                            <div class="discord-embed-title">{{ p.discord_embed.title }}</div>
+                            {% if p.discord_embed.description %}
+                            <div class="discord-embed-description">{{ p.discord_embed.description }}</div>
+                            {% endif %}
+                            <div class="discord-embed-fields">
+                                {% for field in p.discord_embed.fields %}
+                                <div class="discord-embed-field">
+                                    <div class="discord-embed-field-name">{{ field.name }}</div>
+                                    <div class="discord-embed-field-value">{{ field.value }}</div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="st-actions">
+                    {% if not p.is_default %}
+                    <button class="st-btn" type="button" data-set-default="{{ p.id }}">Set as default</button>
+                    {% else %}
+                    <button class="st-btn" type="button" disabled>Default</button>
+                    {% endif %}
+                    <a class="st-btn" href="{% url 'dashboard' %}?preset_id={{ p.id }}">Use to post a trade</a>
+                    <a class="st-btn primary" href="{% url 'new_trade_plan' %}?preset_id={{ p.id }}">Edit</a>
+                </div>
+            </div>
+            {% empty %}
+            <a class="st-card st-create-card" href="{% url 'new_trade_plan' %}">
+                <div>
+                    <div class="plus">＋</div>
+                    <h3>Create your first Trade Plan</h3>
+                    <p>Set targets, stop loss, and take profit levels once — reuse it every time you post.</p>
+                </div>
+            </a>
+            {% endfor %}
+
+            {% if plan_cards %}
+            <a class="st-card st-create-card" href="{% url 'new_trade_plan' %}">
+                <div>
+                    <div class="plus">＋</div>
+                    <h3>Create New Trade Plan</h3>
+                    <p>Build another preset for a different strategy or trade type.</p>
+                </div>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  function getCookie(name) {
+    const cookies = document.cookie ? document.cookie.split(';') : [];
+    for (let i = 0; i < cookies.length; i++) {
+      const c = cookies[i].trim();
+      if (c.startsWith(name + '=')) return decodeURIComponent(c.substring(name.length + 1));
+    }
+    return '';
+  }
+
+  async function setDefaultPlan(id) {
+    const res = await fetch('/api/trade-plan/', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken'),
+      },
+      body: JSON.stringify({ action: 'set_default', id: id }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(payload && payload.error ? payload.error : 'Failed to set default');
+    }
+    window.location.reload();
+  }
+
+  document.querySelectorAll('[data-set-default]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-set-default');
+      if (!id) return;
+      const prev = btn.textContent;
+      try {
+        btn.disabled = true;
+        btn.textContent = 'Setting...';
+        await setDefaultPlan(id);
+      } catch (e) {
+        console.warn('Set default failed:', e);
+        btn.textContent = 'Failed';
+        setTimeout(() => { btn.textContent = prev; btn.disabled = false; }, 1200);
+      }
+    });
+  });
+
+  async function deletePlan(id) {
+    const res = await fetch('/api/trade-plan/', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken'),
+      },
+      body: JSON.stringify({ action: 'delete', id: id }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(payload && payload.error ? payload.error : 'Failed to delete');
+    }
+    window.location.reload();
+  }
+
+  document.querySelectorAll('[data-delete-plan]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-delete-plan');
+      if (!id) return;
+      if (!confirm('Delete this Trade Plan?')) return;
+      try {
+        btn.disabled = true;
+        await deletePlan(id);
+      } catch (e) {
+        console.warn('Delete failed:', e);
+        btn.disabled = false;
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}
+

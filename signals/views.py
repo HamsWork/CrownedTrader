@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -18,7 +19,7 @@ import re
 import json
 import html
 from .forms import SignalForm, SignalTypeForm
-from .models import Signal, SignalType, UserProfile, DiscordChannel, UserTradePlan, UserTradePlanPreset
+from .models import Signal, SignalType, UserProfile, DiscordChannel, UserTradePlan, UserTradePlanPreset, Agreement, AgreementAcceptance, Position
 from .tickers import get_us_tickers
 from .polygon_client import PolygonClient
 
@@ -304,6 +305,21 @@ def send_to_discord(signal):
     except requests.RequestException as e:
         print(f"Failed to send to Discord: {e}")
         return False
+
+
+def _send_discord_embed(url, embed):
+    """POST a single embed to a Discord webhook URL. Returns True on success."""
+    url = str(url or "").strip()
+    if not url:
+        return False
+    try:
+        payload = {"embeds": [embed or {}]}
+        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=30)
+        resp.raise_for_status()
+        return True
+    except Exception:
+        return False
+
 
 def hex_to_int(color_hex):
     """Convert hex color string to integer"""
@@ -872,6 +888,241 @@ def change_password(request):
     # Password change is now handled inline on the Profile page.
     return redirect('profile')
 
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def agreement(request):
+    """Show current agreement and record acceptance on POST."""
+    current = Agreement.objects.filter(is_active=True).order_by("-published_at", "-id").first()
+    if not current:
+        return redirect("dashboard")
+
+    next_url = (request.GET.get("next") or request.POST.get("next") or "").strip() or reverse("dashboard")
+
+    if request.method == "POST":
+        if request.POST.get("agree"):
+            AgreementAcceptance.objects.get_or_create(agreement=current, user=request.user)
+            return redirect(next_url)
+        # No agree: fall through to re-show the page
+
+    return render(
+        request,
+        "signals/agreement.html",
+        {"agreement": current, "next": next_url if next_url != reverse("dashboard") else None},
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def post_ta(request):
+    """Post TA: upload image/video and commentary to a Discord channel via webhook."""
+    discord_channels = DiscordChannel.objects.filter(
+        user=request.user, is_active=True
+    ).order_by("-is_default", "channel_name")
+
+    if request.method == "GET":
+        return render(
+            request,
+            "signals/post_ta.html",
+            {"discord_channels": discord_channels},
+        )
+
+    # POST
+    channel_id_raw = (request.POST.get("discord_channel") or "").strip()
+    commentary = (request.POST.get("commentary") or "").strip()
+    ta_file = request.FILES.get("ta_media")
+
+    if not channel_id_raw:
+        messages.error(request, "Please select a Discord channel.")
+        return render(request, "signals/post_ta.html", {"discord_channels": discord_channels})
+
+    try:
+        channel_id = int(channel_id_raw)
+    except (ValueError, TypeError):
+        messages.error(request, "Invalid channel.")
+        return render(request, "signals/post_ta.html", {"discord_channels": discord_channels})
+
+    try:
+        channel = DiscordChannel.objects.get(id=channel_id, user=request.user, is_active=True)
+    except DiscordChannel.DoesNotExist:
+        messages.error(request, "Channel not found.")
+        return render(request, "signals/post_ta.html", {"discord_channels": discord_channels})
+
+    if not ta_file:
+        messages.error(request, "Please select an image or video file.")
+        return render(request, "signals/post_ta.html", {"discord_channels": discord_channels})
+
+    # Discord webhook file size limit is 25MB; keep a safe limit (e.g. 8MB)
+    max_bytes = 8 * 1024 * 1024
+    if ta_file.size > max_bytes:
+        messages.error(request, "File is too large. Keep under 8 MB.")
+        return render(request, "signals/post_ta.html", {"discord_channels": discord_channels})
+
+    content_type = getattr(ta_file, "content_type", "") or ""
+    if not content_type.startswith("image/") and not content_type.startswith("video/"):
+        messages.error(request, "Only image or video files are allowed.")
+        return render(request, "signals/post_ta.html", {"discord_channels": discord_channels})
+
+    payload_json = json.dumps({"content": commentary}) if commentary else "{}"
+    try:
+        ta_file.seek(0)
+        resp = requests.post(
+            channel.webhook_url,
+            data={"payload_json": payload_json},
+            files={"file": (ta_file.name, ta_file.read(), content_type)},
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        logger.exception("Post TA webhook failed: %s", e)
+        messages.error(request, "Failed to send to Discord. Check your webhook and try again.")
+        return render(request, "signals/post_ta.html", {"discord_channels": discord_channels})
+
+    messages.success(request, "TA posted to Discord.")
+    return redirect("post_ta")
+
+
+@login_required
+@require_GET
+def saved_trade_plans(request):
+    """List the user's saved trade plan presets as cards."""
+    qs = UserTradePlanPreset.objects.filter(user=request.user).order_by(
+        "-is_default", "-updated_at", "name"
+    )
+    plan_cards = []
+    for p in qs:
+        plan = p.plan if isinstance(p.plan, dict) else {}
+        tp_mode_raw = str(plan.get("tp_mode") or "").strip().lower()
+        if tp_mode_raw in ("stock", "stock_price", "underlying", "share_price"):
+            tp_mode_display = "Stock price"
+        elif tp_mode_raw in ("percent", "pct", "%"):
+            tp_mode_display = "Percentage"
+        else:
+            tp_mode_display = "Percentage"
+        tp_levels = plan.get("tp_levels") or []
+        sl_per = str(plan.get("sl_per") or "").strip()
+        parts = []
+        for i, lev in enumerate(tp_levels[:3]):
+            if isinstance(lev, dict):
+                per = str(lev.get("per") or "").strip()
+                sp = str(lev.get("stock_price") or "").strip()
+                if sp:
+                    parts.append(f"TP{i + 1}: ${sp}")
+                elif per:
+                    parts.append(f"TP{i + 1}: {per}%")
+        if len(tp_levels) > 3:
+            parts.append("…")
+        if sl_per:
+            parts.append(f"SL: {sl_per}%")
+        preview_text = " · ".join(parts) if parts else "No targets set"
+        # Discord embed matching New Trade Plan Live Preview (stacked fields, same labels)
+        embed_color = 0x5865F2
+        embed_title = "📝 Trade Plan"
+        targets_parts = []
+        tp_plan_lines = []
+        for i, lev in enumerate(tp_levels or []):
+            if not isinstance(lev, dict):
+                continue
+            per = str(lev.get("per") or "").strip()
+            sp = str(lev.get("stock_price") or "").strip()
+            takeoff = str(lev.get("takeoff") or "").strip()
+            takeoff_fmt = f"{takeoff}%" if takeoff and not takeoff.endswith("%") else (takeoff or "")
+            if sp:
+                targets_parts.append(f"TP{i + 1}: ${sp}")
+                at_str = f"TP{i + 1}.${sp}"
+            elif per:
+                per_clean = per.replace("%", "").strip()
+                targets_parts.append(f"TP{i + 1}: {per_clean}%")
+                at_str = f"{per_clean}%" if per_clean else f"{(i + 1) * 10}%"
+            else:
+                continue
+            take_str = f" take off {takeoff_fmt} of position" if takeoff_fmt else ""
+            if i > 0 and take_str:
+                take_str = take_str.replace(" of position", " of remaining position")
+            tp_plan_lines.append(f"Take Profit ({i + 1}): At {at_str}{take_str}.")
+        sl_display = f"{sl_per}%" if sl_per and not str(sl_per).endswith("%") else (sl_per or "")
+        embed_fields = []
+        if targets_parts:
+            joiner = ",  " if any("TP" in t for t in targets_parts) else ",  "
+            embed_fields.append({"name": f"🎯 Targets: {joiner.join(targets_parts)}", "value": "", "inline": False})
+        if sl_display:
+            embed_fields.append({"name": f"🛑 Stop Loss: {sl_display}", "value": "", "inline": False})
+        if tp_plan_lines:
+            embed_fields.append({"name": "", "value": "\u200b", "inline": False})
+            embed_fields.append({"name": "💰 Take Profit Plan", "value": "\n".join(tp_plan_lines), "inline": False})
+        if not embed_fields:
+            embed_fields.append({"name": "—", "value": "No targets set", "inline": False})
+        discord_embed = {
+            "title": embed_title,
+            "description": "",
+            "fields": embed_fields,
+            "color_hex": f"#{embed_color:06x}",
+        }
+        plan_cards.append({
+            "id": p.id,
+            "name": p.name,
+            "is_default": bool(p.is_default),
+            "tp_mode": tp_mode_display,
+            "preview_text": preview_text,
+            "discord_embed": discord_embed,
+        })
+    return render(
+        request,
+        "signals/saved_trade_plans.html",
+        {"plan_cards": plan_cards},
+    )
+
+
+@login_required
+@require_GET
+def new_trade_plan(request):
+    """New Trade Plan page: dashboard template with only Trade Plan panel and preview (trade_plan_only=True)."""
+    form = SignalForm(user=request.user)
+    recent_signals = []
+    signal_types = SignalType.objects.filter(
+        Q(user__isnull=True) | Q(user=request.user)
+    )
+    signal_types_data = []
+    for st in signal_types:
+        signal_types_data.append({
+            "id": st.id,
+            "variables": st.variables or [],
+            "title_template": st.title_template or "",
+            "description_template": st.description_template or "",
+            "footer_template": st.footer_template or "",
+            "color": st.color or "#000000",
+            "fields_template": st.fileds_template or [],
+            "show_title_default": getattr(st, "show_title_default", True),
+            "show_description_default": getattr(st, "show_description_default", True),
+        })
+    discord_channels = DiscordChannel.objects.filter(
+        user=request.user, is_active=True
+    ).order_by("-is_default", "channel_name")
+    presets = []
+    try:
+        qs = UserTradePlanPreset.objects.filter(user=request.user).order_by(
+            "-is_default", "-updated_at", "name"
+        )
+        for p in qs:
+            presets.append({
+                "id": p.id,
+                "name": p.name,
+                "plan": p.plan if isinstance(p.plan, dict) else {},
+                "is_default": bool(p.is_default),
+            })
+    except Exception:
+        presets = []
+
+    return render(request, "signals/dashboard.html", {
+        "form": form,
+        "recent_signals": recent_signals,
+        "signal_types_data": signal_types_data,
+        "discord_channels": discord_channels,
+        "trade_plan_presets": presets,
+        "trade_plan_only": True,
+    })
+
+
 @login_required
 def dashboard(request):
     if request.method == 'POST':
@@ -1274,6 +1525,399 @@ def signals_history(request):
         'filter_type': signal_type,
         'page_obj': page_obj
     })
+
+
+def _exp_display(expiration_str):
+    """Format expiration string to MM/DD for display (e.g. 2025-10-31 -> 10/31)."""
+    s = str(expiration_str or "").strip()
+    if not s:
+        return "-"
+    from datetime import datetime
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%Y/%m/%d"):
+        try:
+            dt = datetime.strptime(s[:10], fmt)
+            return dt.strftime("%m/%d")
+        except Exception:
+            continue
+    if len(s) >= 5 and s[2] == "/":
+        return s[:5]
+    return s[:10] if len(s) >= 10 else s
+
+
+def _build_position_update_embed(pos, *, kind, tp_level=None):
+    """Build Discord embed for Post Exit (TP or SL) matching Take Profit preview image."""
+    from django.utils import timezone
+    symbol = (pos.symbol or "").strip().upper() or "TRADE"
+    data = pos.signal.data if (pos.signal and isinstance(getattr(pos.signal, "data", None), dict)) else {}
+    data = data if isinstance(data, dict) else {}
+
+    def _to_float(v):
+        try:
+            s = str(v or "").strip().replace("%", "")
+            return float(s) if s else 0.0
+        except Exception:
+            return 0.0
+
+    def _fmt_money(v):
+        try:
+            return f"{float(v):.2f}"
+        except Exception:
+            return "0.00"
+
+    def _fmt_pct1(v):
+        try:
+            return f"{float(v):.1f}%"
+        except Exception:
+            return "0.0%"
+
+    company = ""
+    try:
+        company = _get_company_name(symbol) or ""
+    except Exception:
+        company = ""
+    company_part = f" ({company})" if company else ""
+    expiration = str(data.get("expiration") or pos.expiration or "").strip()
+    strike = str(data.get("strike") or pos.strike or "").strip()
+    opt_type = str(data.get("option_type") or pos.option_type or "").strip().upper()
+    strike_line = " ".join([p for p in [strike, opt_type] if p]).strip()
+    entry_raw = data.get("entry_price") or data.get("option_price") or ""
+    entry = _to_float(entry_raw if entry_raw != "" else pos.entry_price)
+    now = timezone.localtime(timezone.now())
+    date_str = now.strftime("%a %b %d")
+    color = 0x10B981 if kind == "tp" else 0xEF4444
+    embed = {"color": color}
+    exp_str = _exp_display(expiration) if expiration else "-"
+    strike_str = strike_line or "-"
+    price_str = _fmt_money(entry) if entry > 0 else "-"
+    embed["fields"] = [
+        {"name": "❌ Expiration", "value": exp_str, "inline": True},
+        {"name": "✍️ Strike", "value": strike_str, "inline": True},
+        {"name": "💵 Price", "value": price_str, "inline": True},
+    ]
+    if kind == "tp" and tp_level and tp_level > 0:
+        tp_price = _to_float(data.get(f"tp{tp_level}_price"))
+        tp_per = _to_float(data.get(f"tp{tp_level}_per"))
+        takeoff = _to_float(data.get(f"tp{tp_level}_takeoff_per")) or 50.0
+        next_price = _to_float(data.get(f"tp{tp_level + 1}_price"))
+        next_line = f"Let remaining {int(round(100 - takeoff))}% ride to TP{tp_level + 1} (${_fmt_money(next_price)})" if next_price > 0 else ""
+        entry_str = f"${_fmt_money(entry)}" if entry > 0 else "-"
+        tp_hit_str = f"${_fmt_money(tp_price)}" if tp_price > 0 else "-"
+        profit_str = _fmt_pct1(tp_per)
+        embed["title"] = f"🎯 {symbol} Take Profit {tp_level} HIT — {date_str}"
+        embed["fields"].extend([
+            {"name": "✅ Entry", "value": entry_str, "inline": True},
+            {"name": f"🎯 TP{tp_level} Hit", "value": tp_hit_str, "inline": True},
+            {"name": "💸 Profit", "value": profit_str, "inline": True},
+        ])
+        embed["description"] = f"🟢 Trade Performance:\nTicker: {symbol}{company_part}"
+        status_line = f"🚨 Status: TP{tp_level} Zone Reached 🚨"
+        mgmt_lines = ["🔍 Position Management:", f"✅ Reduce position by {int(round(takeoff))}% (lock in +{_fmt_pct1(tp_per)} on half)"]
+        if next_line:
+            mgmt_lines.append(f"🎯 {next_line}")
+        embed["description_after"] = status_line + "\n\n" + "\n".join(mgmt_lines)
+    else:
+        sl_price = _to_float(data.get("sl_price"))
+        sl_per = _to_float(data.get("sl_per"))
+        entry_str = f"${_fmt_money(entry)}" if entry > 0 else "-"
+        sl_hit_str = f"${_fmt_money(sl_price)}" if sl_price > 0 else "-"
+        profit_str = _fmt_pct1(-abs(sl_per)) if sl_per > 0 else "-"
+        embed["title"] = f"🎯 {symbol} Stop Loss HIT — {date_str}"
+        embed["fields"].extend([
+            {"name": "✅ Entry", "value": entry_str, "inline": True},
+            {"name": "🎯 Stop Loss Hit", "value": sl_hit_str, "inline": True},
+            {"name": "💸 Profit", "value": profit_str, "inline": True},
+        ])
+        embed["description"] = f"🟢 Trade Performance:\nTicker: {symbol}{company_part}"
+        embed["description_after"] = "🚨 Status: Stop Loss Triggered 🚨"
+    return embed
+
+
+@login_required
+@require_GET
+def position_management(request):
+    """List open and closed positions for the current user."""
+    from django.utils import timezone
+    open_qs = Position.objects.filter(user=request.user, status=Position.STATUS_OPEN).select_related("signal").order_by("-opened_at")
+    closed_qs = Position.objects.filter(user=request.user, status=Position.STATUS_CLOSED).select_related("signal").order_by("-closed_at", "-opened_at")
+    open_positions = []
+    for p in open_qs:
+        entry = float(p.entry_price) if p.entry_price is not None else 0
+        qty = p.quantity * p.multiplier
+        closed_u = p.closed_units or 0
+        closed_pct = (100 * closed_u / qty) if qty else 0
+        mark = None
+        try:
+            if getattr(settings, "POLYGON_API_KEY", None) and p.symbol:
+                client = PolygonClient(getattr(settings, "POLYGON_API_KEY", ""))
+                if p.instrument == Position.INSTRUMENT_SHARES:
+                    mark = client.get_share_current_price(p.symbol)
+                elif p.option_contract:
+                    q = client.get_option_quote(p.option_contract)
+                    mark = float(q["price"]) if q and q.get("price") is not None else None
+        except Exception:
+            mark = None
+        mark_val = float(mark) if mark is not None else None
+        pnl_pct = (100 * (mark_val - entry) / entry) if entry and mark_val is not None else None
+        realized = float(p.realized_pnl) if p.realized_pnl is not None else 0
+        realized_pct = (100 * realized / (entry * qty)) if entry and qty else None
+        next_tp = (p.tp_hit_level or 0) + 1
+        _tp_embed = _build_position_update_embed(p, kind="tp", tp_level=next_tp) if (not p.sl_hit and next_tp) else {}
+        _sl_embed = _build_position_update_embed(p, kind="sl", tp_level=None) if not p.sl_hit else {}
+        import json as _json
+        # Keep description_after in preview JSON for modal; do not mutate originals
+        preview_tp = dict(_tp_embed) if _tp_embed else {}
+        preview_sl = dict(_sl_embed) if _sl_embed else {}
+        open_positions.append({
+            "id": p.id,
+            "symbol": p.symbol,
+            "instrument": p.instrument,
+            "option_type": p.option_type,
+            "strike": p.strike,
+            "expiration": p.expiration,
+            "display_qty": qty,
+            "closed_units": closed_u,
+            "closed_pct": closed_pct,
+            "entry_str": f"{entry:.2f}" if entry else "-",
+            "mark_str": f"{mark_val:.2f}" if mark_val is not None else "-",
+            "status_kind": "good" if (pnl_pct or 0) >= 0 else "bad",
+            "status_label": f"TP{(p.tp_hit_level or 0)}" if not p.sl_hit else "SL",
+            "pnl_pct": pnl_pct,
+            "pnl_pct_str": f"{pnl_pct:+.1f}%" if pnl_pct is not None else "-",
+            "realized_pnl_pct": realized_pct,
+            "realized_pnl_pct_str": f"{realized_pct:+.1f}%" if realized_pct is not None else "-",
+            "opened_at": p.opened_at,
+            "mode": p.mode,
+            "mode_label": "Automatic" if p.mode == Position.MODE_AUTO else "Manual",
+            "preview_tp_embed": _json.dumps(preview_tp, ensure_ascii=False) if preview_tp else "",
+            "preview_sl_embed": _json.dumps(preview_sl, ensure_ascii=False) if preview_sl else "",
+        })
+    closed_positions = []
+    for p in closed_qs:
+        entry = float(p.entry_price) if p.entry_price is not None else 0
+        exit_p = float(p.exit_price) if p.exit_price is not None else 0
+        qty = p.quantity * p.multiplier
+        pnl_pct = (100 * (exit_p - entry) / entry) if entry and exit_p else None
+        closed_positions.append({
+            "id": p.id,
+            "symbol": p.symbol,
+            "instrument": p.instrument,
+            "option_type": p.option_type,
+            "strike": p.strike,
+            "expiration": p.expiration,
+            "display_qty": qty,
+            "entry_str": f"{entry:.2f}" if entry else "-",
+            "exit_str": f"{exit_p:.2f}" if exit_p else "-",
+            "pnl_pct": pnl_pct,
+            "pnl_pct_str": f"{pnl_pct:+.1f}%" if pnl_pct is not None else "-",
+            "closed_at": p.closed_at,
+        })
+    return render(request, "signals/positions.html", {"open_positions": open_positions, "closed_positions": closed_positions})
+
+
+@login_required
+@require_GET
+def leaderboard(request):
+    """Leaderboard: wins/losses by user from closed positions."""
+    from django.utils import timezone
+    from datetime import timedelta
+    from django.db.models import Count, Q, F, Avg, Case, When, Value, FloatField
+
+    range_param = (request.GET.get("range") or "week").strip().lower()
+    which = (request.GET.get("which") or "this").strip().lower()
+    if which not in ("this", "last"):
+        which = "this"
+    period = "week" if range_param == "week" else "month"
+
+    tz = timezone.get_current_timezone()
+    now = timezone.now()
+    if period == "week":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        while start.weekday() != 0:
+            start = start - timedelta(days=1)
+        if which == "last":
+            start = start - timedelta(days=7)
+        end = start + timedelta(days=7)
+    else:
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if which == "last":
+            start = start - timedelta(days=32)
+            start = start.replace(day=1)
+        end = start + timedelta(days=32)
+        end = end.replace(day=1)
+
+    closed = Position.objects.filter(
+        status=Position.STATUS_CLOSED,
+        closed_at__gte=start,
+        closed_at__lt=end,
+        entry_price__isnull=False,
+        exit_price__isnull=False,
+    ).exclude(entry_price=0)
+
+    # Per-user stats with avg P/L %
+    user_stats = closed.values("user_id", "user__username").annotate(
+        trades=Count("id"),
+        wins=Count("id", filter=Q(exit_price__gt=F("entry_price"))),
+        losses=Count("id", filter=Q(exit_price__lt=F("entry_price"))),
+        avg_pnl_pct=Avg(
+            Case(
+                When(
+                    entry_price__gt=0,
+                    then=100 * (F("exit_price") - F("entry_price")) / F("entry_price"),
+                ),
+                default=Value(0.0),
+                output_field=FloatField(),
+            )
+        ),
+    )
+
+    rows = []
+    for s in user_stats:
+        u = s["user__username"] or "?"
+        w = s["wins"] or 0
+        l = s["losses"] or 0
+        t = s["trades"] or 0
+        avg_pnl = float(s["avg_pnl_pct"] or 0)
+        try:
+            user = User.objects.get(pk=s["user_id"])
+            name = user.get_full_name().strip() or user.username
+        except User.DoesNotExist:
+            name = u
+        rows.append({
+            "username": u,
+            "name": name,
+            "trades": t,
+            "wins": w,
+            "losses": l,
+            "win_rate": (100 * w / t) if t else 0,
+            "avg_pnl_pct": avg_pnl,
+        })
+    rows.sort(key=lambda x: (-x["wins"], -x["trades"]))
+
+    # Overall stats for the period
+    overall_trades = closed.count()
+    overall_wins = closed.filter(exit_price__gt=F("entry_price")).count()
+    overall_losses = closed.filter(exit_price__lt=F("entry_price")).count()
+    overall_avg_pnl = closed.aggregate(
+        avg=Avg(
+            Case(
+                When(
+                    entry_price__gt=0,
+                    then=100 * (F("exit_price") - F("entry_price")) / F("entry_price"),
+                ),
+                default=Value(0.0),
+                output_field=FloatField(),
+            )
+        )
+    )["avg"] or 0
+    overall = {
+        "trades": overall_trades,
+        "wins": overall_wins,
+        "losses": overall_losses,
+        "avg_pnl_pct": float(overall_avg_pnl),
+        "win_rate": (100 * overall_wins / overall_trades) if overall_trades else 0,
+    }
+
+    # Display labels
+    start_local = timezone.localtime(start, tz)
+    end_local = timezone.localtime(end - timedelta(seconds=1), tz)
+    period_title = f"This {period.capitalize()}" if which == "this" else f"Last {period.capitalize()}"
+    date_range = f"{start_local.strftime('%b %d')} – {end_local.strftime('%b %d, %Y')}"
+
+    return render(
+        request,
+        "signals/leaderboard.html",
+        {
+            "rows": rows,
+            "period": period,
+            "which": which,
+            "period_title": period_title,
+            "date_range": date_range,
+            "overall": overall,
+        },
+    )
+
+
+@login_required
+@require_http_methods(["POST"])
+def close_position(request, position_id):
+    pos = Position.objects.filter(user=request.user, id=position_id).first()
+    if not pos:
+        return JsonResponse({"error": "Position not found"}, status=404)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except Exception:
+        payload = {}
+    exit_price_raw = payload.get("exit_price")
+    try:
+        exit_price = float(str(exit_price_raw or "").strip()) if str(exit_price_raw or "").strip() else 0.0
+    except Exception:
+        exit_price = 0.0
+    if exit_price <= 0:
+        return JsonResponse({"error": "exit_price is required"}, status=400)
+    from django.utils import timezone
+    pos.status = Position.STATUS_CLOSED
+    pos.exit_price = exit_price
+    pos.closed_at = timezone.now()
+    pos.save(update_fields=["status", "exit_price", "closed_at", "updated_at"])
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_http_methods(["POST"])
+def set_position_mode(request, position_id):
+    pos = Position.objects.filter(user=request.user, id=position_id).first()
+    if not pos:
+        return JsonResponse({"error": "Position not found"}, status=404)
+    pos.mode = Position.MODE_MANUAL
+    pos.tp_hit_level = pos.tp_hit_level or 0
+    pos.sl_hit = bool(pos.sl_hit)
+    pos.save(update_fields=["mode", "tp_hit_level", "sl_hit", "updated_at"])
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_http_methods(["POST"])
+def post_position_update(request, position_id):
+    pos = Position.objects.filter(user=request.user, id=position_id).first()
+    if not pos:
+        return JsonResponse({"error": "Position not found"}, status=404)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except Exception:
+        payload = {}
+    kind = (payload.get("kind") or "tp").strip().lower()
+    if kind not in ("tp", "sl"):
+        return JsonResponse({"error": "kind must be tp or sl"}, status=400)
+    next_tp = (pos.tp_hit_level or 0) + 1
+    embed = _build_position_update_embed(pos, kind=kind, tp_level=next_tp if kind == "tp" else None)
+    # Discord API expects a single description: merge description_after for sending
+    desc_after = embed.pop("description_after", None)
+    if desc_after:
+        embed["description"] = (embed.get("description") or "") + "\n\n" + desc_after
+    url = None
+    if pos.signal and getattr(pos.signal, "discord_channel", None) and pos.signal.discord_channel.is_active:
+        url = pos.signal.discord_channel.webhook_url
+    if not url:
+        ch = DiscordChannel.objects.filter(user=request.user, is_default=True, is_active=True).first()
+        if ch:
+            url = ch.webhook_url
+        if not url:
+            ch = DiscordChannel.objects.filter(user=request.user, is_active=True).first()
+            url = ch.webhook_url if ch else None
+    if url and not _send_discord_embed(url, embed):
+        return JsonResponse({"error": "Failed to send to Discord"}, status=500)
+    from django.utils import timezone
+    if kind == "tp":
+        pos.tp_hit_level = next_tp
+        pos.save(update_fields=["tp_hit_level", "updated_at"])
+    else:
+        pos.sl_hit = True
+        pos.status = Position.STATUS_CLOSED
+        pos.exit_price = pos.entry_price
+        pos.closed_at = timezone.now()
+        pos.save(update_fields=["sl_hit", "status", "exit_price", "closed_at", "updated_at"])
+    return JsonResponse({"ok": True})
+
 
 @login_required
 def get_signal_type_variables(request):

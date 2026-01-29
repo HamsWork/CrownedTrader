@@ -71,6 +71,45 @@ class UserProfile(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.discord_channel_name}"
 
+
+class Agreement(models.Model):
+    """
+    Versioned agreement that users must accept.
+    Only one Agreement should be active at a time (is_active=True).
+    """
+    version = models.CharField(max_length=40, unique=True)
+    title = models.CharField(max_length=120, default="Crowned Trader Agreement")
+    body = models.TextField(default="")
+    is_active = models.BooleanField(default=True)
+    published_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-is_active", "-published_at", "-id"]
+
+    def save(self, *args, **kwargs):
+        if self.is_active:
+            Agreement.objects.filter(is_active=True).exclude(pk=self.pk).update(is_active=False)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.title} v{self.version}"
+
+
+class AgreementAcceptance(models.Model):
+    """
+    Stores who/when/version agreed.
+    """
+    agreement = models.ForeignKey(Agreement, on_delete=models.CASCADE, related_name="acceptances")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="agreement_acceptances")
+    accepted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [["agreement", "user"]]
+        ordering = ["-accepted_at", "-id"]
+
+    def __str__(self):
+        return f"{self.user.username} accepted {self.agreement.version}"
+
 class DiscordChannel(models.Model):
     """Model to store multiple Discord channels per user"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='discord_channels')
@@ -134,4 +173,73 @@ class UserTradePlanPreset(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.name}"
+
+
+class Position(models.Model):
+    """
+    A user's open/closed position created from posted trades.
+    Designed to support an exchange-style P/L view.
+    """
+
+    STATUS_OPEN = "open"
+    STATUS_CLOSED = "closed"
+    STATUS_CHOICES = [
+        (STATUS_OPEN, "Open"),
+        (STATUS_CLOSED, "Closed"),
+    ]
+
+    INSTRUMENT_OPTIONS = "options"
+    INSTRUMENT_SHARES = "shares"
+    INSTRUMENT_CHOICES = [
+        (INSTRUMENT_OPTIONS, "Options"),
+        (INSTRUMENT_SHARES, "Shares"),
+    ]
+
+    MODE_AUTO = "auto"
+    MODE_MANUAL = "manual"
+    MODE_CHOICES = [
+        (MODE_AUTO, "Automatic"),
+        (MODE_MANUAL, "Manual"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="positions")
+    signal = models.ForeignKey("Signal", on_delete=models.SET_NULL, null=True, blank=True, related_name="positions")
+
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default=MODE_MANUAL)
+
+    # Manual tracking state (used when mode == manual)
+    tp_hit_level = models.IntegerField(default=0)  # 0 == none, 1 == TP1 hit, etc.
+    sl_hit = models.BooleanField(default=False)
+    closed_units = models.IntegerField(default=0)  # shares or (contracts * 100)
+    realized_pnl = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
+    # Underlying symbol
+    symbol = models.CharField(max_length=20, blank=True, default="")
+    instrument = models.CharField(max_length=12, choices=INSTRUMENT_CHOICES, default=INSTRUMENT_OPTIONS)
+
+    # Options metadata (optional; used when instrument == options)
+    option_contract = models.CharField(max_length=64, blank=True, default="")
+    option_type = models.CharField(max_length=10, blank=True, default="")  # CALL/PUT
+    strike = models.CharField(max_length=32, blank=True, default="")
+    expiration = models.CharField(max_length=32, blank=True, default="")  # YYYY-MM-DD
+
+    quantity = models.IntegerField(default=1)
+    multiplier = models.IntegerField(default=100)  # options are typically *100, shares *1
+
+    entry_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    exit_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    opened_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-opened_at", "-created_at"]
+
+    def __str__(self):
+        base = self.symbol or "Unknown"
+        return f"{self.user.username} - {base} ({self.status})"
 

@@ -3,6 +3,15 @@ from . import views
 
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
+    path('agreement/', views.agreement, name='agreement'),
+    path('post-ta/', views.post_ta, name='post_ta'),
+    path('trade-plans/', views.saved_trade_plans, name='saved_trade_plans'),
+    path('trade-plans/new/', views.new_trade_plan, name='new_trade_plan'),
+    path('positions/', views.position_management, name='position_management'),
+    path('leaderboard/', views.leaderboard, name='leaderboard'),
+    path('positions/<int:position_id>/close/', views.close_position, name='close_position'),
+    path('positions/<int:position_id>/mode/', views.set_position_mode, name='set_position_mode'),
+    path('positions/<int:position_id>/update/', views.post_position_update, name='post_position_update'),
     path('history/', views.signals_history, name='signals_history'),
     path('api/signal-type-variables/', views.get_signal_type_variables, name='get_signal_type_variables'),
     path('api/trade-plan/', views.trade_plan_api, name='trade_plan_api'),

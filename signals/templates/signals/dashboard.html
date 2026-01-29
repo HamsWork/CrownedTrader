@@ -2,9 +2,15 @@
 {% load static %}
 
 {% block breadcrumbs %}
+{% if trade_plan_only %}
+<a href="{% url 'saved_trade_plans' %}">Saved Trade plans</a>
+<span>/</span>
+<span>New Trade Plan</span>
+{% else %}
 <a href="{% url 'dashboard' %}">Dashboard</a>
 <span>/</span>
 <span>Submit Signal</span>
+{% endif %}
 {% endblock %}
 
 {% block extra_css %}
@@ -113,6 +119,49 @@
         grid-template-columns: minmax(0, 1fr) clamp(420px, 34vw, 560px);
         gap: 30px;
         align-items: start;
+    }
+
+    /* "New Trade Plan" mode: show only Trade Plan + Live Preview */
+    .dashboard-page[data-mode="trade_plan_only"] .page-actions {
+        display: none;
+    }
+    .dashboard-page[data-mode="trade_plan_only"] .page-title-section h1 {
+        font-size: 2.1em;
+    }
+    .dashboard-page[data-mode="trade_plan_only"] .page-title-section p {
+        max-width: 720px;
+    }
+    .dashboard-page[data-mode="trade_plan_only"] .form-section#signalConfigSection {
+        display: none;
+    }
+    .dashboard-page[data-mode="trade_plan_only"] .sub-card:not(.trade-plan-group) {
+        display: none;
+    }
+    .dashboard-page[data-mode="trade_plan_only"] #tradeDetailsSection .section-header,
+    .dashboard-page[data-mode="trade_plan_only"] #tradeDetailsSection .section-divider {
+        display: none;
+    }
+    /* Remove the extra outer card around Trade Plan in New Trade Plan mode */
+    .dashboard-page[data-mode="trade_plan_only"] #tradeDetailsSection.form-section {
+        background: transparent;
+        border: none;
+        padding: 0;
+        margin-bottom: 0;
+        box-shadow: none;
+    }
+    /* Ensure New Trade Plan input panel only shows the Trade Plan card */
+    .dashboard-page[data-mode="trade_plan_only"] #dynamicFields > *:not(.trade-plan-group) {
+        display: none !important;
+    }
+    .dashboard-page[data-mode="trade_plan_only"] .ticker-type-row,
+    .dashboard-page[data-mode="trade_plan_only"] [data-variable-name="ticker"],
+    .dashboard-page[data-mode="trade_plan_only"] [data-variable-name="symbol"],
+    .dashboard-page[data-mode="trade_plan_only"] [data-variable-name="option_type"],
+    .dashboard-page[data-mode="trade_plan_only"] #optionalFieldsSection,
+    .dashboard-page[data-mode="trade_plan_only"] #optionalFieldsVariablesContainer,
+    .dashboard-page[data-mode="trade_plan_only"] #optionalFieldsCheckboxesContainer,
+    .dashboard-page[data-mode="trade_plan_only"] #optionalFieldsControls {
+        display: none !important;
     }
 
     .form-container {
@@ -1030,12 +1079,17 @@
 {% endblock %}
 
 {% block content %}
-<div class="dashboard-page">
+<div class="dashboard-page" data-mode="{% if trade_plan_only %}trade_plan_only{% else %}full{% endif %}">
     <!-- Page Header -->
     <div class="page-header">
         <div class="page-title-section">
+            {% if trade_plan_only %}
+            <h1>New Trade Plan</h1>
+            <p>Create or edit your Trade Plan presets and confirm how they will look in the Live Preview.</p>
+            {% else %}
             <h1>Submit New Signal</h1>
             <p>Create and broadcast a new trading signal to your Discord community.</p>
+            {% endif %}
         </div>
         <div class="page-actions">
             <a class="btn-cancel" href="{% url 'dashboard' %}">Cancel</a>
@@ -1052,7 +1106,7 @@
                 {% csrf_token %}
                 
                 <!-- Signal Configuration Section -->
-                <div class="form-section">
+                <div class="form-section" id="signalConfigSection">
                     <div class="section-header">
                         <div class="section-icon blue"><img src="{% static 'signals/icons/layers.svg' %}" alt="" /></div>
                         <div class="section-title">Signal Configuration</div>
@@ -1103,6 +1157,23 @@
                             <span class="input-icon">🎯</span>
                         </div>
                     </div>
+
+                    {% if not trade_plan_only %}
+                    <!-- Auto Tracking Mode -->
+                    <div class="form-group">
+                        <label for="position_mode">Trade Tracking</label>
+                        <div class="input-with-icon">
+                            <select name="position_mode" id="position_mode" class="form-input has-icon" required>
+                                <option value="manual" selected>Manual updates</option>
+                                <option value="auto">Automatic updates (system tracked)</option>
+                            </select>
+                            <span class="input-icon">🤖</span>
+                        </div>
+                        <small style="display:block; margin-top:8px; color:#9ca3af;">
+                            If you choose Automatic, you can switch to Manual any time in Position Management.
+                        </small>
+                    </div>
+                    {% endif %}
                 </div>
 
                 <!-- Trade Details Section -->
@@ -1251,6 +1322,12 @@ try {
 } catch (_) {
     pendingTradePlanPresetId = '';
 }
+
+// Allow deep-linking to a specific preset (e.g. Saved Trade plans -> Edit)
+try {
+    const urlPresetId = String(new URLSearchParams(window.location.search).get('preset_id') || '').trim();
+    if (urlPresetId) pendingTradePlanPresetId = urlPresetId;
+} catch (_) {}
 
 function consumePendingTradePlanPresetId() {
     const v = String(pendingTradePlanPresetId || '');
@@ -2325,6 +2402,11 @@ function getUsedVariables(signalTypeId) {
 
 // Update Discord embed preview
 function updatePreview() {
+    // Prevent recursive/re-entrant updates (typing in template, DOM changes, etc.)
+    if (window.__ctpIsUpdatingPreview) return;
+    window.__ctpIsUpdatingPreview = true;
+    const isTradePlanOnlyPage = (document.querySelector('.dashboard-page')?.dataset?.mode === 'trade_plan_only');
+    try {
     const signalTypeSelect = document.querySelector('select[name="signal_type"]');
     if (!signalTypeSelect || !signalTypeSelect.value) {
         return;
@@ -2388,7 +2470,10 @@ function updatePreview() {
     const showTitle = showTitleCheckbox ? showTitleCheckbox.checked : true;
     const title = renderTemplate(signalType.title_template, formData);
     const titleEl = document.getElementById('previewTitle');
-    if (title && showTitle) {
+    if (isTradePlanOnlyPage) {
+        titleEl.innerHTML = parseDiscordMarkdown('📝 Trade Plan');
+        titleEl.style.display = 'block';
+    } else if (title && showTitle) {
         titleEl.innerHTML = parseDiscordMarkdown(title);
         titleEl.style.display = 'block';
     } else {
@@ -2400,7 +2485,7 @@ function updatePreview() {
     const showDescription = showDescriptionCheckbox ? showDescriptionCheckbox.checked : true;
     const description = renderTemplate(signalType.description_template, formData);
     const descEl = document.getElementById('previewDescription');
-    if (description && showDescription) {
+    if (!isTradePlanOnlyPage && description && showDescription) {
         descEl.innerHTML = parseDiscordMarkdown(description);
         descEl.style.display = 'block';
     } else {
@@ -2421,7 +2506,7 @@ function updatePreview() {
             fields = [];
         }
     }
-    fields = fields || [];
+    fields = (isTradePlanOnlyPage ? [] : (fields || []));
     
     // First, collect all fields that should be rendered (with all filtering applied)
     const fieldsToRender = [];
@@ -2502,6 +2587,7 @@ function updatePreview() {
     // Inject Trade Plan preview block (Trade Plan / Targets / Stop Loss) below option-related fields
     // so users don't need to manually add these lines into every signal type template.
     if (!isShares) {
+        const tpBlock = { targetsLine: '', stopLossLine: '', tpPlanText: '' };
         const alreadyHasPlan = fieldsToRenderFinal.some(it => {
             const n = String(it.fieldName || '').toLowerCase();
             const v = String(it.fieldValue || '').toLowerCase();
@@ -2510,7 +2596,7 @@ function updatePreview() {
         });
 
         if (!alreadyHasPlan) {
-            // Keep the original Targets summary line
+            // Inject Trade Plan block (Targets, Stop Loss, Take Profit Plan) into Live Preview
             const targets = [];
             for (let i = 1; i <= MAX_TP_LEVELS; i++) {
                 const modeRaw = String(formData[`tp${i}_mode`] ?? '').trim().toLowerCase();
@@ -2611,12 +2697,23 @@ function updatePreview() {
                 });
                 insertAt = insertAt >= 0 ? insertAt + 1 : 0;
 
+                // Remove blank line after options data (single spacer immediately before insertion point)
+                if (insertAt > 0) {
+                    const prev = fieldsToRenderFinal[insertAt - 1];
+                    const prevBlank = !(prev.fieldName || '').trim() && (prev.fieldValue === '\u200b' || (prev.fieldValue || '').trim() === '\u200b');
+                    if (prevBlank) {
+                        fieldsToRenderFinal.splice(insertAt - 1, 1);
+                        insertAt -= 1;
+                    }
+                }
+
                 const injected = [];
-                // blank spacer between option data and Trade Plan
+                // Blank line before Trade Plan (like before Take Profit Plan)
                 injected.push({ field: { inline: false }, index: -1000, fieldName: '', fieldValue: '\u200b' });
                 injected.push({ field: { inline: false }, index: -1001, fieldName: '📝 **Trade Plan**', fieldValue: '' });
                 if (targets.length) {
                     const joiner = targets.some(t => String(t || '').startsWith('TP')) ? ',  ' : ', ';
+                    tpBlock.targetsLine = `🎯 Targets: ${targets.join(joiner)}`;
                     injected.push({
                         field: { inline: false },
                         index: -1002,
@@ -2625,6 +2722,7 @@ function updatePreview() {
                     });
                 }
                 if (slPriceRaw) {
+                    tpBlock.stopLossLine = `🛑 Stop Loss: ${slPriceRaw}${slPerStr ? `(${slPerStr})` : ''}`;
                     injected.push({
                         field: { inline: false },
                         index: -1003,
@@ -2636,6 +2734,7 @@ function updatePreview() {
                 if (tps.length) {
                     // Spacer before Take Profit Plan
                     injected.push({ field: { inline: false }, index: -1003.5, fieldName: '', fieldValue: '\u200b' });
+                    tpBlock.tpPlanText = `💰 Take Profit Plan\n${tps.join('\n')}`;
                     injected.push({
                         field: { inline: false },
                         index: -1004,
@@ -2647,6 +2746,8 @@ function updatePreview() {
                 fieldsToRenderFinal.splice(insertAt, 0, ...injected);
             }
         }
+
+        // New Trade Plan page: no extra message template (Trade Plan block only)
     }
     
     let currentInlineGroup = null;
@@ -2739,6 +2840,9 @@ function updatePreview() {
         footerEl.style.display = 'block';
     } else {
         footerEl.style.display = 'none';
+    }
+    } finally {
+        window.__ctpIsUpdatingPreview = false;
     }
 }
 
@@ -4751,11 +4855,67 @@ document.addEventListener('DOMContentLoaded', function() {
     
     const signalTypeSelect = document.querySelector('select[name="signal_type"]');
     const form = document.getElementById('signalForm');
+    const isTradePlanOnlyPage = (document.querySelector('.dashboard-page')?.dataset?.mode === 'trade_plan_only');
+
+    function setupTradePlanOnlyLayout() {
+        const dynamicFieldsContainer = document.getElementById('dynamicFields');
+        if (!dynamicFieldsContainer) return;
+        const tradePlanGroup = dynamicFieldsContainer.querySelector('.trade-plan-group');
+        if (!tradePlanGroup) return;
+
+        // Append base-price hidden fields into the Trade Plan group so we can hide everything else.
+        const body = tradePlanGroup.children && tradePlanGroup.children.length >= 2 ? tradePlanGroup.children[1] : tradePlanGroup;
+
+        // No Discord message template editor in New Trade Plan.
+
+        const forceSet = (el, value) => {
+            if (!el) return;
+            el.value = String(value ?? '');
+            el.dataset.autoFilled = '1';
+            el.dataset.suppressUserTouched = '1';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            if (el.dataset.suppressUserTouched === '1') delete el.dataset.suppressUserTouched;
+        };
+
+        const ensureHidden = (name, value) => {
+            let el = findFieldByName(name);
+            if (!el) {
+                const g = createSyntheticHiddenField(name, '');
+                body.appendChild(g);
+                el = g.querySelector('input');
+            }
+            forceSet(el, value);
+        };
+
+        // Defaults requested for the New Trade Plan builder:
+        // - underlying stock price = $200
+        // - option price base = $5
+        ensureHidden('current_price', '200.00');
+        ensureHidden('option_price', '5.00');
+        ensureHidden('entry_price', '5.00');
+        ensureHidden('price', '5.00');
+
+        // Hide everything else in the left column; keep only the Trade Plan panel.
+        Array.from(dynamicFieldsContainer.children).forEach((ch) => {
+            if (ch === tradePlanGroup) return;
+            ch.style.display = 'none';
+        });
+
+        // Remove noise for this page
+        const dl = document.getElementById('usTickerList');
+        if (dl) dl.style.display = 'none';
+
+        // Ensure dependent computed fields update + preview shows only the Trade Plan block
+        try { updateTpSlPrices(); } catch (_) {}
+        try { updateDefaultTpStockTargets(); } catch (_) {}
+        try { updatePreview(); } catch (_) {}
+    }
 
     // Upgrade top-level selects to match ticker dropdown styling
     if (signalTypeSelect) upgradeSelectToTickerDropdown(signalTypeSelect, { placeholder: 'Select signal type' });
     const discordChannelSelect = document.getElementById('discord_channel');
-    if (discordChannelSelect) upgradeSelectToTickerDropdown(discordChannelSelect, { placeholder: 'Select channel' });
+    if (discordChannelSelect && !isTradePlanOnlyPage) upgradeSelectToTickerDropdown(discordChannelSelect, { placeholder: 'Select channel' });
     const tradeTypeSelect = document.getElementById('trade_type');
     if (tradeTypeSelect) upgradeSelectToTickerDropdown(tradeTypeSelect, { placeholder: 'Select trade type' });
     
@@ -4771,15 +4931,19 @@ document.addEventListener('DOMContentLoaded', function() {
             signalTypeSelect.value = defaultValue;
             console.log('Creating dynamic fields for default value:', defaultValue);
             createDynamicFields(defaultValue);
+            if (isTradePlanOnlyPage) setupTradePlanOnlyLayout();
         } else {
             console.warn('No default value found. signalTypeSelect.value:', signalTypeSelect.value, 'Options:', signalTypeSelect.options.length);
         }
+
+        // Message template wiring happens inside setupTradePlanOnlyLayout()
         
         // Handle change
         signalTypeSelect.addEventListener('change', function() {
             console.log('Signal type changed to:', this.value);
             if (this.value) {
                 createDynamicFields(this.value);
+                if (isTradePlanOnlyPage) setupTradePlanOnlyLayout();
                 // Update preview immediately - createDynamicFields already calls it, but ensure it happens
                 updatePreview();
             }
@@ -4787,6 +4951,11 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Handle form submission
         form.addEventListener('submit', async function(e) {
+            if (isTradePlanOnlyPage) {
+                // New Trade Plan page is for saving presets only (buttons in the Trade Plan panel).
+                e.preventDefault();
+                return false;
+            }
             // If we already ran the auto-fill flow, proceed with normal submit.
             if (form.dataset.skipAutoFillOnce === '1') {
                 delete form.dataset.skipAutoFillOnce;

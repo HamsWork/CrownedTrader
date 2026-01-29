@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Signal, SignalType, UserProfile, DiscordChannel, UserTradePlan, UserTradePlanPreset
+from .models import Signal, SignalType, UserProfile, DiscordChannel, UserTradePlan, UserTradePlanPreset, Position, Agreement, AgreementAcceptance
 
 @admin.register(Signal)
 class SignalAdmin(admin.ModelAdmin):
@@ -41,4 +41,26 @@ class UserTradePlanPresetAdmin(admin.ModelAdmin):
     list_filter = ['is_default', 'updated_at']
     search_fields = ['user__username', 'user__email', 'name']
     list_editable = ['is_default']
+
+
+@admin.register(Position)
+class PositionAdmin(admin.ModelAdmin):
+    list_display = ['user', 'symbol', 'instrument', 'status', 'entry_price', 'exit_price', 'opened_at', 'closed_at']
+    list_filter = ['status', 'instrument', 'opened_at', 'closed_at']
+    search_fields = ['user__username', 'user__email', 'symbol', 'option_contract']
+
+
+@admin.register(Agreement)
+class AgreementAdmin(admin.ModelAdmin):
+    list_display = ["title", "version", "is_active", "published_at"]
+    list_filter = ["is_active", "published_at"]
+    search_fields = ["title", "version", "body"]
+    list_editable = ["is_active"]
+
+
+@admin.register(AgreementAcceptance)
+class AgreementAcceptanceAdmin(admin.ModelAdmin):
+    list_display = ["user", "agreement", "accepted_at"]
+    list_filter = ["accepted_at", "agreement"]
+    search_fields = ["user__username", "user__email", "agreement__version", "agreement__title"]
 

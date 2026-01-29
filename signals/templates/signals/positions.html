@@ -1,0 +1,793 @@
+{% extends 'signals/base.html' %}
+{% load static %}
+
+{% block title %}Position Management - Crowned Trader{% endblock %}
+
+{% block extra_css %}
+<style>
+  .pm-page {
+    width: 100%;
+    max-width: 1840px;
+    margin: 0 auto;
+  }
+
+  .pm-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 24px;
+  }
+
+  .pm-title h1 {
+    color: #e8ecff;
+    font-size: 2.2em;
+    font-weight: 800;
+    margin: 0 0 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .pm-title p {
+    margin: 0;
+    color: rgba(232, 236, 255, 0.65);
+    font-size: 1.05em;
+    max-width: 880px;
+  }
+
+  .pm-tabs {
+    display: inline-flex;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(42, 55, 95, 0.55);
+    padding: 6px;
+    border-radius: 14px;
+    height: 44px;
+  }
+
+  .pm-tab {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: rgba(232, 236, 255, 0.72);
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .pm-tab.active {
+    background: rgba(var(--accent-rgb), 0.92);
+    color: #0b1020;
+    border-color: rgba(var(--accent-rgb), 0.92);
+  }
+
+  .pm-table-wrap {
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(42, 55, 95, 0.55);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .pm-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .pm-table thead th {
+    text-align: left;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(232, 236, 255, 0.55);
+    background: rgba(10, 16, 35, 0.55);
+    padding: 14px 14px;
+    border-bottom: 1px solid rgba(42, 55, 95, 0.55);
+    white-space: nowrap;
+  }
+
+  .pm-table tbody td {
+    padding: 14px 14px;
+    border-bottom: 1px solid rgba(42, 55, 95, 0.35);
+    color: rgba(232, 236, 255, 0.84);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .pm-table tbody tr:hover td {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .pm-sym {
+    font-weight: 900;
+    color: #e8ecff;
+    letter-spacing: 0.02em;
+  }
+
+  .pm-sub {
+    display: block;
+    margin-top: 4px;
+    color: rgba(232, 236, 255, 0.55);
+    font-size: 12px;
+    white-space: normal;
+  }
+
+  .pm-pill {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(42, 55, 95, 0.55);
+    background: rgba(10, 16, 35, 0.50);
+    color: rgba(232, 236, 255, 0.78);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .pm-pill.good {
+    border-color: rgba(16, 185, 129, 0.35);
+    color: rgba(52, 211, 153, 0.95);
+  }
+
+  .pm-pill.bad {
+    border-color: rgba(248, 113, 113, 0.35);
+    color: rgba(248, 113, 113, 0.95);
+  }
+
+  .pm-action {
+    height: 34px;
+    padding: 0 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(42, 55, 95, 0.75);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(232, 236, 255, 0.9);
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .pm-action:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(42, 55, 95, 0.95);
+  }
+
+  .pm-empty {
+    padding: 18px;
+    color: rgba(232, 236, 255, 0.70);
+  }
+
+  .pm-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(3, 7, 18, 0.72);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 1200;
+  }
+
+  .pm-modal {
+    width: 100%;
+    max-width: 720px;
+    background: rgba(15, 23, 42, 0.96);
+    border: 1px solid rgba(42, 55, 95, 0.75);
+    border-radius: 18px;
+    box-shadow: 0 20px 80px rgba(0, 0, 0, 0.55);
+    overflow: hidden;
+  }
+
+  .pm-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 16px;
+    border-bottom: 1px solid rgba(42, 55, 95, 0.55);
+    background: rgba(10, 16, 35, 0.55);
+  }
+
+  .pm-modal-title {
+    color: #e8ecff;
+    font-weight: 900;
+    font-size: 16px;
+    letter-spacing: 0.02em;
+  }
+
+  .pm-modal-close {
+    height: 34px;
+    width: 34px;
+    border-radius: 12px;
+    border: 1px solid rgba(42, 55, 95, 0.75);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(232, 236, 255, 0.9);
+    cursor: pointer;
+    font-weight: 900;
+  }
+
+  .pm-modal-body {
+    padding: 16px;
+  }
+
+  .pm-modal-row {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+
+  .pm-radio {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(42, 55, 95, 0.75);
+    background: rgba(255, 255, 255, 0.03);
+    cursor: pointer;
+    color: rgba(232, 236, 255, 0.88);
+    font-weight: 900;
+  }
+
+  .pm-radio input {
+    accent-color: rgba(var(--accent-rgb), 0.92);
+  }
+
+  .pm-modal-label {
+    color: rgba(232, 236, 255, 0.65);
+    font-weight: 900;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 0 0 8px 0;
+  }
+
+  /* Discord embed preview (same structure as Post a trade preview) */
+  .discord-embed {
+    display: flex;
+    background: rgba(10, 16, 35, 0.72);
+    border-radius: 4px;
+    max-width: 100%;
+    overflow: hidden;
+    border: 1px solid rgba(42, 55, 95, 0.55);
+  }
+
+  .discord-embed-color-bar {
+    width: 4px;
+    background: #202225;
+    flex-shrink: 0;
+  }
+
+  .discord-embed-content {
+    padding: 12px 14px;
+    flex-grow: 1;
+    min-width: 0;
+  }
+
+  .discord-embed-title {
+    font-weight: 600;
+    font-size: 1em;
+    color: #dcddde;
+    margin-bottom: 8px;
+    line-height: 1.2;
+  }
+
+  .discord-embed-title:empty {
+    display: none;
+  }
+
+  .discord-embed-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .discord-embed-fields-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .discord-embed-field {
+    flex: 1 1 0;
+    min-width: 0;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .discord-embed-field-name {
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.85em;
+    margin-bottom: 2px;
+    word-wrap: break-word;
+    width: 100%;
+    text-align: left;
+  }
+
+  .discord-embed-field-value {
+    color: #dcddde;
+    font-size: 0.95em;
+    word-wrap: break-word;
+    width: 100%;
+    text-align: left;
+  }
+
+  .discord-embed-description {
+    font-size: 0.95em;
+    color: #dcddde;
+    line-height: 1.3;
+    margin-bottom: 8px;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+  }
+
+  .discord-embed-description:empty {
+    display: none;
+  }
+  #pmPreviewDescriptionAfter {
+    margin-top: 10px;
+  }
+
+  .discord-embed-title strong,
+  .discord-embed-description strong {
+    font-weight: 600;
+  }
+
+  .discord-embed-title em,
+  .discord-embed-description em {
+    font-style: italic;
+  }
+
+  .discord-embed-title u,
+  .discord-embed-description u {
+    text-decoration: underline;
+  }
+
+  .discord-embed-title s,
+  .discord-embed-description s {
+    text-decoration: line-through;
+  }
+
+  .discord-embed-title code,
+  .discord-embed-description code {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.9em;
+  }
+
+  .discord-embed-title pre,
+  .discord-embed-description pre {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 8px;
+    border-radius: 4px;
+    margin: 4px 0;
+    overflow-x: auto;
+  }
+
+  .discord-embed-title pre code,
+  .discord-embed-description pre code {
+    background: none;
+    padding: 0;
+  }
+
+  .pm-modal-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 16px;
+    border-top: 1px solid rgba(42, 55, 95, 0.55);
+    background: rgba(10, 16, 35, 0.35);
+  }
+
+  .pm-hidden {
+    display: none;
+  }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<span>Position Management</span>
+{% endblock %}
+
+{% block content %}
+<div class="pm-page">
+  <div class="pm-header">
+    <div class="pm-title">
+      <h1>Position Management</h1>
+      <p>Track open and closed positions with a clean, exchange-style P/L view.</p>
+    </div>
+    <div class="pm-tabs" role="tablist">
+      <button class="pm-tab active" type="button" data-tab="open">Open ({{ open_positions|length }})</button>
+      <button class="pm-tab" type="button" data-tab="closed">Closed ({{ closed_positions|length }})</button>
+    </div>
+  </div>
+
+  <div id="tab-open" class="pm-table-wrap">
+    {% if open_positions %}
+    <table class="pm-table">
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Qty</th>
+          <th>Closed</th>
+          <th>Entry</th>
+          <th>Mark</th>
+          <th>Status</th>
+          <th>P/L %</th>
+          <th>Realized P/L %</th>
+          <th>Opened</th>
+          <th>Track Mode</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in open_positions %}
+        <tr>
+          <td>
+            <span class="pm-sym">{{ p.symbol|default:"-" }}</span>
+            {% if p.instrument == "options" %}
+              <span class="pm-sub">{{ p.option_type }} {{ p.strike }} · {{ p.expiration }}</span>
+            {% endif %}
+          </td>
+          <td>{{ p.display_qty }}</td>
+          <td>
+            {% if p.closed_units and p.closed_units > 0 %}
+              {{ p.closed_units }} ({{ p.closed_pct|floatformat:0 }}%)
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>${{ p.entry_str }}</td>
+          <td>${{ p.mark_str }}</td>
+          <td>
+            <span class="pm-pill {% if p.status_kind == 'good' %}good{% elif p.status_kind == 'bad' %}bad{% endif %}">
+              {{ p.status_label }}
+            </span>
+          </td>
+          <td>
+            <span class="pm-pill {% if p.pnl_pct > 0 %}good{% elif p.pnl_pct < 0 %}bad{% endif %}">
+              {{ p.pnl_pct_str }}
+            </span>
+          </td>
+          <td>
+            <span class="pm-pill {% if p.realized_pnl_pct > 0 %}good{% elif p.realized_pnl_pct < 0 %}bad{% endif %}">
+              {{ p.realized_pnl_pct_str }}
+            </span>
+          </td>
+          <td>{{ p.opened_at|date:"M d, Y H:i" }}</td>
+          <td>
+            <span class="pm-pill">{{ p.mode_label }}</span>
+          </td>
+          <td style="text-align:right;">
+            {% if p.mode == "auto" %}
+            <button class="pm-action" type="button" data-mode="{{ p.id }}" data-mode-to="manual">Switch to manual</button>
+            {% else %}
+            <textarea class="pm-hidden" data-preview-tp-for="{{ p.id }}">{{ p.preview_tp_embed }}</textarea>
+            <textarea class="pm-hidden" data-preview-sl-for="{{ p.id }}">{{ p.preview_sl_embed }}</textarea>
+            <button class="pm-action" type="button" data-post-exit="{{ p.id }}">Post Exit</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="pm-empty">No open positions yet.</div>
+    {% endif %}
+  </div>
+
+  <div id="tab-closed" class="pm-table-wrap" style="display:none; margin-top: 18px;">
+    {% if closed_positions %}
+    <table class="pm-table">
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Qty</th>
+          <th>Entry</th>
+          <th>Exit</th>
+          <th>Status</th>
+          <th>Realized P/L %</th>
+          <th>Closed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in closed_positions %}
+        <tr>
+          <td>
+            <span class="pm-sym">{{ p.symbol|default:"-" }}</span>
+            {% if p.instrument == "options" %}
+              <span class="pm-sub">{{ p.option_type }} {{ p.strike }} · {{ p.expiration }}</span>
+            {% endif %}
+          </td>
+          <td>{{ p.display_qty }}</td>
+          <td>${{ p.entry_str }}</td>
+          <td>${{ p.exit_str }}</td>
+          <td><span class="pm-pill">Closed</span></td>
+          <td>
+            <span class="pm-pill {% if p.pnl_pct > 0 %}good{% elif p.pnl_pct < 0 %}bad{% endif %}">
+              {{ p.pnl_pct_str }}
+            </span>
+          </td>
+          <td>{{ p.closed_at|date:"M d, Y H:i" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="pm-empty">No closed positions yet.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="pm-modal-backdrop" id="pmExitBackdrop" aria-hidden="true">
+  <div class="pm-modal" role="dialog" aria-modal="true" aria-label="Post Exit">
+    <div class="pm-modal-head">
+      <div class="pm-modal-title">Post Exit</div>
+      <button class="pm-modal-close" type="button" data-exit-close>✕</button>
+    </div>
+    <div class="pm-modal-body">
+      <div class="pm-modal-row">
+        <label class="pm-radio">
+          <input type="radio" name="pmExitKind" value="tp" checked />
+          <span>Take Profit</span>
+        </label>
+        <label class="pm-radio">
+          <input type="radio" name="pmExitKind" value="sl" />
+          <span>Stop Loss</span>
+        </label>
+      </div>
+      <div class="pm-modal-label">Discord Preview</div>
+      <div class="discord-embed">
+        <div class="discord-embed-color-bar" id="pmPreviewColorBar"></div>
+        <div class="discord-embed-content">
+          <div class="discord-embed-title" id="pmPreviewTitle"></div>
+          <div class="discord-embed-description" id="pmPreviewDescription"></div>
+          <div class="discord-embed-fields" id="pmPreviewFields"></div>
+          <div class="discord-embed-description" id="pmPreviewDescriptionAfter"></div>
+        </div>
+      </div>
+    </div>
+    <div class="pm-modal-foot">
+      <button class="pm-action" type="button" data-exit-cancel>Cancel</button>
+      <button class="pm-action" type="button" id="pmExitConfirm">Post Update</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const tabs = Array.from(document.querySelectorAll('[data-tab]'));
+  const openEl = document.getElementById('tab-open');
+  const closedEl = document.getElementById('tab-closed');
+  const exitBackdrop = document.getElementById('pmExitBackdrop');
+  const previewColorBar = document.getElementById('pmPreviewColorBar');
+  const previewTitle = document.getElementById('pmPreviewTitle');
+  const previewDesc = document.getElementById('pmPreviewDescription');
+  const previewFields = document.getElementById('pmPreviewFields');
+  const previewDescAfter = document.getElementById('pmPreviewDescriptionAfter');
+  const exitConfirmBtn = document.getElementById('pmExitConfirm');
+  const exitKindEls = Array.from(document.querySelectorAll('input[name="pmExitKind"]'));
+  let activeExitPositionId = null;
+  function setTab(name) {
+    tabs.forEach((t) => t.classList.toggle('active', t.getAttribute('data-tab') === name));
+    if (openEl) openEl.style.display = (name === 'open') ? '' : 'none';
+    if (closedEl) closedEl.style.display = (name === 'closed') ? '' : 'none';
+  }
+  tabs.forEach((t) => t.addEventListener('click', () => setTab(t.getAttribute('data-tab'))));
+
+  function getCookie(name) {
+    const cookies = document.cookie ? document.cookie.split(';') : [];
+    for (let i = 0; i < cookies.length; i++) {
+      const c = cookies[i].trim();
+      if (c.startsWith(name + '=')) return decodeURIComponent(c.substring(name.length + 1));
+    }
+    return '';
+  }
+
+  function getPreviewText(id, kind) {
+    const sel = kind === 'sl' ? `[data-preview-sl-for="${id}"]` : `[data-preview-tp-for="${id}"]`;
+    const el = document.querySelector(sel);
+    return el && typeof el.value === 'string' ? el.value : '';
+  }
+
+  function parseDiscordMarkdown(text) {
+    if (!text) return '';
+    let html = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+    const codeBlocks = [];
+    html = html.replace(/`([^`\n]+)`/g, (match, code) => {
+      const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+      codeBlocks.push(`<code>${code}</code>`);
+      return placeholder;
+    });
+    html = html.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/\*\*([^*]+)\*\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__(?![_*])([^_]+)__(?![_*])/g, '<strong>$1</strong>');
+    html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+    html = html.replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>');
+    html = html.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+    codeBlocks.forEach((code, index) => {
+      html = html.replace(`__CODE_BLOCK_${index}__`, code);
+    });
+    html = html.replace(/\n/g, '<br>');
+    return html;
+  }
+
+  function intToHexColor(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return '#202225';
+    const hex = Math.max(0, Math.min(0xffffff, v)).toString(16).padStart(6, '0');
+    return '#' + hex;
+  }
+
+  function getExitKind() {
+    const el = exitKindEls.find((x) => x && x.checked);
+    return el ? el.value : 'tp';
+  }
+
+  function renderExitPreview() {
+    if (!activeExitPositionId) return;
+    const kind = getExitKind();
+    const raw = getPreviewText(activeExitPositionId, kind);
+    let embed = null;
+    try {
+      embed = raw ? JSON.parse(raw) : null;
+    } catch {
+      embed = null;
+    }
+    const title = embed && embed.title ? String(embed.title) : '';
+    const desc = embed && embed.description ? String(embed.description) : '';
+    const descAfter = embed && embed.description_after ? String(embed.description_after) : '';
+    const color = embed && embed.color != null ? embed.color : null;
+    const fields = Array.isArray(embed && embed.fields) ? embed.fields : [];
+    if (previewTitle) previewTitle.innerHTML = title ? parseDiscordMarkdown(title) : '';
+    if (previewDesc) previewDesc.innerHTML = desc ? parseDiscordMarkdown(desc) : '';
+    if (previewFields) {
+      previewFields.innerHTML = '';
+      const perRow = 3;
+      for (let r = 0; r < fields.length; r += perRow) {
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'discord-embed-fields-row';
+        for (let i = r; i < Math.min(r + perRow, fields.length); i++) {
+          const f = fields[i];
+          const name = (f && f.name != null) ? String(f.name) : '';
+          const value = (f && f.value != null) ? String(f.value) : '';
+          const div = document.createElement('div');
+          div.className = 'discord-embed-field';
+          const nameEl = document.createElement('div');
+          nameEl.className = 'discord-embed-field-name';
+          nameEl.textContent = name;
+          const valueEl = document.createElement('div');
+          valueEl.className = 'discord-embed-field-value';
+          valueEl.textContent = value;
+          div.appendChild(nameEl);
+          div.appendChild(valueEl);
+          rowDiv.appendChild(div);
+        }
+        previewFields.appendChild(rowDiv);
+      }
+    }
+    if (previewDescAfter) {
+      previewDescAfter.innerHTML = descAfter ? parseDiscordMarkdown(descAfter) : '';
+      previewDescAfter.style.display = descAfter ? '' : 'none';
+    }
+    if (previewColorBar) previewColorBar.style.background = intToHexColor(color);
+  }
+
+  function openExitModal(id) {
+    activeExitPositionId = id;
+    // reset to TP by default
+    exitKindEls.forEach((x) => { x.checked = (x.value === 'tp'); });
+    renderExitPreview();
+    if (exitBackdrop) {
+      exitBackdrop.style.display = 'flex';
+      exitBackdrop.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  function closeExitModal() {
+    activeExitPositionId = null;
+    if (exitBackdrop) {
+      exitBackdrop.style.display = 'none';
+      exitBackdrop.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  async function postExitUpdate(id, kind) {
+    const res = await fetch(`/positions/${id}/update/`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken'),
+      },
+      body: JSON.stringify({ kind: kind }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(payload && payload.error ? payload.error : 'Failed to post update');
+    window.location.reload();
+  }
+
+  document.querySelectorAll('[data-post-exit]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-post-exit');
+      if (!id) return;
+      openExitModal(id);
+    });
+  });
+
+  exitKindEls.forEach((el) => el.addEventListener('change', renderExitPreview));
+
+  document.querySelectorAll('[data-exit-close], [data-exit-cancel]').forEach((btn) => {
+    btn.addEventListener('click', closeExitModal);
+  });
+
+  if (exitBackdrop) {
+    exitBackdrop.addEventListener('click', (e) => {
+      if (e.target === exitBackdrop) closeExitModal();
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeExitModal();
+  });
+
+  if (exitConfirmBtn) {
+    exitConfirmBtn.addEventListener('click', async () => {
+      if (!activeExitPositionId) return;
+      const kind = getExitKind();
+      exitConfirmBtn.disabled = true;
+      try {
+        await postExitUpdate(activeExitPositionId, kind);
+      } catch (e) {
+        console.warn('Post update failed:', e);
+        exitConfirmBtn.disabled = false;
+        alert(String(e && e.message ? e.message : 'Failed'));
+      }
+    });
+  }
+
+  async function setMode(id, mode) {
+    const res = await fetch(`/positions/${id}/mode/`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken'),
+      },
+      body: JSON.stringify({ mode: mode }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(payload && payload.error ? payload.error : 'Failed to set mode');
+    window.location.reload();
+  }
+
+  document.querySelectorAll('[data-mode]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-mode');
+      const modeTo = btn.getAttribute('data-mode-to');
+      if (!id || !modeTo) return;
+      btn.disabled = true;
+      try {
+        await setMode(id, modeTo);
+      } catch (e) {
+        console.warn('Set mode failed:', e);
+        btn.disabled = false;
+        alert(String(e && e.message ? e.message : 'Failed'));
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}
+

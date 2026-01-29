@@ -1,0 +1,652 @@
+{% extends 'signals/base.html' %}
+{% load static %}
+
+{% block title %}Post TA - Crowned Trader{% endblock %}
+
+{% block breadcrumbs %}
+<span>Post TA</span>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .dashboard-page {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 30px;
+  }
+
+  .page-title-section h1 {
+    color: #e0e0e0;
+    font-size: 2.5em;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+
+  .page-title-section p {
+    color: #888;
+    font-size: 1.1em;
+  }
+
+  .page-actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  .btn-cancel {
+    background: #2d2d2d;
+    color: #e0e0e0;
+    padding: 12px 24px;
+    border: 1px solid #444;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s;
+    cursor: pointer;
+  }
+
+  .btn-cancel:hover {
+    background: #353535;
+    border-color: #555;
+  }
+
+  .btn-cancel:disabled,
+  .btn-submit:disabled,
+  .btn-publish:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none !important;
+    transform: none !important;
+    filter: grayscale(0.35) saturate(0.65);
+  }
+
+  .btn-publish {
+    background: var(--accent);
+    color: #1a1a1a;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-publish:hover {
+    background: color-mix(in srgb, var(--accent) 85%, #ffffff 15%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3);
+  }
+
+  .content-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(420px, 34vw, 560px);
+    gap: 30px;
+    align-items: start;
+  }
+
+  .form-container {
+    max-width: none;
+    min-width: 0;
+  }
+
+  .form-section {
+    background: rgba(15, 23, 42, 0.72);
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 25px;
+    border: 1px solid rgba(42, 55, 95, 0.55);
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .section-divider {
+    height: 1px;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 14px 0 18px 0;
+  }
+
+  .section-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+
+  .section-icon.blue {
+    background: #2563eb;
+    color: white;
+  }
+
+  .section-icon.purple {
+    background: #9333ea;
+    color: white;
+  }
+
+  .section-icon img {
+    width: 18px;
+    height: 18px;
+    display: block;
+    filter: invert(100%);
+  }
+
+  .section-title {
+    color: #e0e0e0;
+    font-size: 1.3em;
+    font-weight: 600;
+  }
+
+  .form-group {
+    margin-bottom: 20px;
+  }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #e0e0e0;
+    font-weight: 600;
+    font-size: 0.95em;
+  }
+
+  .form-input, .form-textarea, .form-select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 1px solid rgba(42, 55, 95, 0.65);
+    border-radius: 12px;
+    font-size: 1em;
+    transition: all 0.3s;
+    font-family: inherit;
+    background: rgba(10, 16, 35, 0.72);
+    color: #e0e0e0;
+  }
+
+  .form-input:hover, .form-textarea:hover, .form-select:hover {
+    border-color: rgba(42, 55, 95, 0.9);
+  }
+
+  .form-input:focus, .form-textarea:focus, .form-select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
+  }
+
+  .form-input::placeholder, .form-textarea::placeholder {
+    color: #666;
+  }
+
+  .input-with-icon {
+    position: relative;
+  }
+
+  .form-input.has-icon {
+    padding-left: 44px;
+  }
+
+  .input-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgba(232, 236, 255, 0.6);
+    font-size: 18px;
+    pointer-events: none;
+  }
+
+  .ta-drop {
+    border: 1px dashed rgba(42, 55, 95, 0.85);
+    border-radius: 14px;
+    background: rgba(10, 16, 35, 0.62);
+    padding: 16px;
+    cursor: pointer;
+    transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+    display: grid;
+    gap: 8px;
+  }
+
+  .ta-drop:hover {
+    border-color: rgba(var(--accent-rgb), 0.75);
+    background: rgba(var(--accent-rgb), 0.06);
+    transform: translateY(-1px);
+  }
+
+  .ta-drop.dragover {
+    border-color: rgba(var(--accent-rgb), 0.95);
+    background: rgba(var(--accent-rgb), 0.10);
+  }
+
+  .ta-drop-title {
+    color: rgba(232, 236, 255, 0.92);
+    font-weight: 900;
+  }
+
+  .ta-drop-sub {
+    color: rgba(232, 236, 255, 0.62);
+    font-size: 0.92em;
+  }
+
+  .ta-drop-file {
+    margin-top: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(42, 55, 95, 0.55);
+    background: rgba(15, 23, 42, 0.50);
+    color: rgba(232, 236, 255, 0.88);
+    font-weight: 800;
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  .ta-drop-file span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 520px;
+  }
+
+  .ta-drop-preview {
+    margin-top: 6px;
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid rgba(42, 55, 95, 0.55);
+    background: rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    display: none;
+  }
+
+  .ta-drop-preview img,
+  .ta-drop-preview video {
+    width: 100%;
+    display: block;
+    max-height: 260px;
+    object-fit: contain;
+    background: rgba(0,0,0,0.25);
+  }
+
+  .ta-drop-clear {
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(42, 55, 95, 0.75);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(232, 236, 255, 0.9);
+    cursor: pointer;
+    font-weight: 900;
+  }
+
+  .ta-drop-clear:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .ta-preview-box {
+    background: rgba(10, 16, 35, 0.62);
+    border: 1px solid rgba(42, 55, 95, 0.55);
+    border-radius: 12px;
+    padding: 14px;
+  }
+
+  /* Discord-like message preview (simplified) */
+  .dc-shell {
+    background: rgba(49, 51, 56, 0.95);
+    border: 1px solid rgba(42, 55, 95, 0.55);
+    border-radius: 12px;
+    padding: 14px;
+  }
+
+  .dc-content {
+    margin-top: 0;
+    color: rgba(232, 236, 255, 0.88);
+    font-size: 14px;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .dc-content pre {
+    background: rgba(10, 16, 35, 0.85);
+    border: 1px solid rgba(42, 55, 95, 0.55);
+    border-radius: 10px;
+    padding: 10px;
+    overflow: auto;
+    margin: 8px 0;
+  }
+
+  .dc-content code {
+    background: rgba(10, 16, 35, 0.65);
+    border: 1px solid rgba(42, 55, 95, 0.45);
+    border-radius: 8px;
+    padding: 2px 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 12px;
+  }
+
+  .dc-attach {
+    margin-top: 10px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(42, 55, 95, 0.55);
+    background: rgba(0, 0, 0, 0.25);
+    display: none;
+  }
+
+  .dc-attach img,
+  .dc-attach video {
+    width: 100%;
+    display: block;
+    max-height: 360px;
+    object-fit: contain;
+    background: rgba(0,0,0,0.25);
+  }
+
+  @media (max-width: 980px) {
+    .content-layout {
+      grid-template-columns: 1fr;
+    }
+    .page-header {
+      flex-direction: column;
+      gap: 14px;
+    }
+    .page-actions {
+      width: 100%;
+      justify-content: flex-end;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-page">
+  <div class="page-header">
+    <div class="page-title-section">
+      <h1>Post TA</h1>
+      <p>Upload charts (image/video) and share technical analysis notes with your community.</p>
+    </div>
+    <div class="page-actions">
+      <a class="btn-cancel" href="{% url 'dashboard' %}">Cancel</a>
+      <button type="submit" form="taForm" class="btn-publish" {% if not discord_channels or discord_channels|length == 0 %}disabled{% endif %}>
+        <span>📤</span>
+        <span>Post TA</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="content-layout">
+    <div class="form-container">
+      <form class="form-section" id="taForm" method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <div class="section-header">
+          <div class="section-icon blue"><img src="{% static 'signals/icons/trending_up.svg' %}" alt="" /></div>
+          <div class="section-title">Technical Analysis</div>
+        </div>
+        <div class="section-divider"></div>
+
+        <div class="form-group">
+          <label for="discord_channel">Destination Channel</label>
+          <div class="input-with-icon">
+            {% if discord_channels and discord_channels|length > 0 %}
+              <select name="discord_channel" id="discord_channel" class="form-input has-icon" required>
+                {% for channel in discord_channels %}
+                <option value="{{ channel.id }}" {% if channel.is_default %}selected{% elif forloop.first %}selected{% endif %}>
+                  {{ channel.channel_name }}{% if channel.is_default %} (Default){% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            {% else %}
+              <select name="discord_channel" id="discord_channel" class="form-input has-icon" disabled>
+                <option selected>No Discord channels configured</option>
+              </select>
+              <small style="display:block; margin-top:8px; color:#9ca3af;">Add a Discord channel in Settings / User Management, then refresh.</small>
+            {% endif %}
+            <span class="input-icon">💬</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>TA Media (Image or Video)</label>
+          <input class="form-input" id="ta_media" name="ta_media" type="file" accept="image/*,video/*" required style="display:none;" />
+          <div class="ta-drop" id="taDrop">
+            <div class="ta-drop-title">Drag & drop a file here</div>
+            <div class="ta-drop-sub">or click to browse (images/videos)</div>
+            <div class="ta-drop-file" id="taDropFile" style="display:none;">
+              <span id="taDropFileName"></span>
+              <button class="ta-drop-clear" type="button" id="taDropClear">Remove</button>
+            </div>
+            <div class="ta-drop-preview" id="taDropPreview">
+              <img id="taDropImg" alt="" style="display:none;" />
+              <video id="taDropVid" controls style="display:none;"></video>
+            </div>
+          </div>
+          <small style="display:block; margin-top:8px; color:#9ca3af;">
+            Supported: images and video clips. Keep files small enough for Discord webhook limits.
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label for="commentary">Commentary</label>
+          <textarea class="form-textarea" id="commentary" name="commentary" rows="6" placeholder="Write your analysis..."></textarea>
+          <small style="display:block; margin-top:8px; color:#9ca3af;">Optional: this will be sent with the media.</small>
+        </div>
+      </form>
+    </div>
+
+    <div class="form-container">
+      <div class="form-section">
+        <div class="section-header">
+          <div class="section-icon purple"><img src="{% static 'signals/icons/eye.svg' %}" alt="" /></div>
+          <div class="section-title">Discord Preview</div>
+        </div>
+        <div class="section-divider"></div>
+
+        <div class="ta-preview-box">
+          <div class="dc-shell">
+            <div class="dc-content" id="taPreviewContent">(No commentary)</div>
+            <div class="dc-attach" id="taMediaBox">
+              <img id="taImg" alt="" style="display:none;" />
+              <video id="taVid" controls style="display:none;"></video>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const media = document.getElementById('ta_media');
+  const drop = document.getElementById('taDrop');
+  const dropFile = document.getElementById('taDropFile');
+  const dropFileName = document.getElementById('taDropFileName');
+  const dropClear = document.getElementById('taDropClear');
+  const dropPreview = document.getElementById('taDropPreview');
+  const dropImg = document.getElementById('taDropImg');
+  const dropVid = document.getElementById('taDropVid');
+  const commentary = document.getElementById('commentary');
+  const contentEl = document.getElementById('taPreviewContent');
+  const box = document.getElementById('taMediaBox');
+  const img = document.getElementById('taImg');
+  const vid = document.getElementById('taVid');
+  let lastObjectUrl = null;
+
+  function parseDiscordMarkdown(text) {
+    if (!text) return '';
+    let html = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+    const codeBlocks = [];
+    html = html.replace(/`([^`\n]+)`/g, (match, code) => {
+      const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+      codeBlocks.push(`<code>${code}</code>`);
+      return placeholder;
+    });
+    html = html.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__(?![_*])([^_]+)__(?![_*])/g, '<strong>$1</strong>');
+    html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+    html = html.replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>');
+    html = html.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+    codeBlocks.forEach((code, index) => {
+      html = html.replace(`__CODE_BLOCK_${index}__`, code);
+    });
+    html = html.replace(/\n/g, '<br>');
+    return html;
+  }
+
+  function fmtBytes(n) {
+    const v = Number(n || 0);
+    if (!v) return '0B';
+    const u = ['B','KB','MB','GB'];
+    const i = Math.min(u.length - 1, Math.floor(Math.log(v) / Math.log(1024)));
+    return (v / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2) + u[i];
+  }
+
+  function update() {
+    const text = (commentary && commentary.value ? commentary.value.trim() : '');
+    const file = media && media.files && media.files[0] ? media.files[0] : null;
+
+    if (contentEl) contentEl.innerHTML = text ? parseDiscordMarkdown(text) : '(No commentary)';
+
+    if (!box || !img || !vid) return;
+    img.style.display = 'none';
+    vid.style.display = 'none';
+    box.style.display = 'none';
+    if (dropPreview && dropImg && dropVid) {
+      dropImg.style.display = 'none';
+      dropVid.style.display = 'none';
+      dropPreview.style.display = 'none';
+      // clear old preview src
+      dropImg.removeAttribute('src');
+      dropVid.removeAttribute('src');
+    }
+    if (!file) return;
+
+    const url = URL.createObjectURL(file);
+    if (lastObjectUrl) {
+      try { URL.revokeObjectURL(lastObjectUrl); } catch {}
+    }
+    lastObjectUrl = url;
+
+    if ((file.type || '').startsWith('image/')) {
+      img.src = url;
+      img.style.display = '';
+      box.style.display = 'block';
+      if (dropPreview && dropImg) {
+        dropImg.src = url;
+        dropImg.style.display = '';
+        dropPreview.style.display = 'block';
+      }
+    } else if ((file.type || '').startsWith('video/')) {
+      vid.src = url;
+      vid.style.display = '';
+      box.style.display = 'block';
+      if (dropPreview && dropVid) {
+        dropVid.src = url;
+        dropVid.style.display = '';
+        dropPreview.style.display = 'block';
+      }
+    }
+  }
+
+  function setFile(file) {
+    if (!media) return;
+    if (!file) {
+      try {
+        media.value = '';
+      } catch {}
+      if (dropFile) dropFile.style.display = 'none';
+      if (dropFileName) dropFileName.textContent = '';
+      if (dropPreview && dropImg && dropVid) {
+        dropPreview.style.display = 'none';
+        dropImg.style.display = 'none';
+        dropVid.style.display = 'none';
+        dropImg.removeAttribute('src');
+        dropVid.removeAttribute('src');
+      }
+      if (lastObjectUrl) {
+        try { URL.revokeObjectURL(lastObjectUrl); } catch {}
+        lastObjectUrl = null;
+      }
+      update();
+      return;
+    }
+
+    // Assign file to the hidden input (so form submission works)
+    try {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      media.files = dt.files;
+    } catch (e) {
+      // Fallback: if DataTransfer unsupported, trigger native picker instead.
+      // (Submission would otherwise miss the file.)
+      console.warn('Could not set file programmatically:', e);
+    }
+
+    if (dropFileName) dropFileName.textContent = file.name + ' (' + fmtBytes(file.size) + ')';
+    if (dropFile) dropFile.style.display = '';
+    update();
+  }
+
+  function accepts(file) {
+    const t = (file && file.type) ? String(file.type) : '';
+    return t.startsWith('image/') || t.startsWith('video/');
+  }
+
+  if (drop && media) {
+    drop.addEventListener('click', () => media.click());
+    drop.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      drop.classList.add('dragover');
+    });
+    drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+    drop.addEventListener('drop', (e) => {
+      e.preventDefault();
+      drop.classList.remove('dragover');
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0] ? e.dataTransfer.files[0] : null;
+      if (!f) return;
+      if (!accepts(f)) {
+        alert('Please drop an image or video file.');
+        return;
+      }
+      setFile(f);
+    });
+  }
+
+  if (dropClear) dropClear.addEventListener('click', () => setFile(null));
+
+  if (media) media.addEventListener('change', () => {
+    const f = media.files && media.files[0] ? media.files[0] : null;
+    if (f) {
+      if (dropFileName) dropFileName.textContent = f.name + ' (' + fmtBytes(f.size) + ')';
+      if (dropFile) dropFile.style.display = '';
+    } else {
+      if (dropFile) dropFile.style.display = 'none';
+      if (dropFileName) dropFileName.textContent = '';
+    }
+    update();
+  });
+  if (commentary) commentary.addEventListener('input', update);
+  update();
+})();
+</script>
+{% endblock %}
+

@@ -391,7 +391,7 @@
     </style>
     {% block extra_css %}{% endblock %}
 </head>
-<body class="{% if user.is_authenticated %}has-sidebar{% endif %}">
+<body class="{% if user.is_authenticated and request.resolver_match.url_name != 'agreement' %}has-sidebar{% endif %}">
     <!-- Top Header Bar -->
     <div class="top-header">
         <div class="header-left">
@@ -417,14 +417,48 @@
 
     <div class="app-layout">
         <!-- Left Sidebar -->
-        {% if user.is_authenticated %}
+        {% if user.is_authenticated and request.resolver_match.url_name != 'agreement' %}
         <div class="sidebar">
             <ul class="sidebar-nav">
                 <li>
                     <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
                         <span class="sidebar-nav-icon"><img src="{% static 'signals/icons/dashboard.svg' %}" alt="" /></span>
-                        <span>Dashboard</span>
+                        <span>Post a trade</span>
                     </a>
+                </li>
+                <li>
+                    <a href="{% url 'post_ta' %}" class="{% if request.resolver_match.url_name == 'post_ta' %}active{% endif %}">
+                        <span class="sidebar-nav-icon"><img src="{% static 'signals/icons/trending_up.svg' %}" alt="" /></span>
+                        <span>Post TA</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'saved_trade_plans' %}" class="{% if request.resolver_match.url_name == 'saved_trade_plans' %}active{% endif %}">
+                        <span class="sidebar-nav-icon"><img src="{% static 'signals/icons/stack.svg' %}" alt="" /></span>
+                        <span>Saved Trade plans</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'new_trade_plan' %}" class="{% if request.resolver_match.url_name == 'new_trade_plan' %}active{% endif %}">
+                        <span class="sidebar-nav-icon"><img src="{% static 'signals/icons/layers.svg' %}" alt="" /></span>
+                        <span>New Trade Plan</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'position_management' %}" class="{% if request.resolver_match.url_name == 'position_management' %}active{% endif %}">
+                        <span class="sidebar-nav-icon"><img src="{% static 'signals/icons/stack.svg' %}" alt="" /></span>
+                        <span>Position Management</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'leaderboard' %}" class="{% if request.resolver_match.url_name == 'leaderboard' %}active{% endif %}">
+                        <span class="sidebar-nav-icon"><img src="{% static 'signals/icons/trending_up.svg' %}" alt="" /></span>
+                        <span>Leaderboard</span>
+                    </a>
+                </li>
+                {% if user.is_superuser %}
+                <li style="margin: 10px 0 6px 0;">
+                    <div style="height: 1px; background: rgba(42, 55, 95, 0.55);"></div>
                 </li>
                 <li>
                     <a href="{% url 'signal_types_list' %}" class="{% if 'signal_type' in request.resolver_match.url_name %}active{% endif %}">
@@ -432,7 +466,6 @@
                         <span>Signal Types</span>
                     </a>
                 </li>
-                {% if user.is_superuser %}
                 <li>
                     <a href="{% url 'user_management' %}" class="{% if request.resolver_match.url_name == 'user_management' or request.resolver_match.url_name == 'user_create' or request.resolver_match.url_name == 'user_edit' %}active{% endif %}">
                         <span class="sidebar-nav-icon"><img src="{% static 'signals/icons/user_management.svg' %}" alt="" /></span>
