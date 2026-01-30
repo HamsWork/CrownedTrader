@@ -168,6 +168,11 @@
     color: rgba(232, 236, 255, 0.4);
   }
 
+  .pm-manual-exit-input:read-only {
+    cursor: default;
+    background: rgba(42, 55, 95, 0.35);
+  }
+
   .pm-empty {
     padding: 18px;
     color: rgba(232, 236, 255, 0.70);
@@ -247,6 +252,64 @@
 
   .pm-radio input {
     accent-color: rgba(var(--accent-rgb), 0.92);
+  }
+
+  .pm-current-price-input-row {
+    align-items: center;
+    gap: 12px;
+    margin-top: 6px;
+  }
+
+  .pm-exit-manual-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    color: rgba(232, 236, 255, 0.84);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .pm-exit-manual-switch input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .pm-exit-manual-slider {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    background: rgba(42, 55, 95, 0.55);
+    border-radius: 11px;
+    transition: background 0.2s;
+  }
+
+  .pm-exit-manual-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 2px;
+    top: 2px;
+    background: rgba(232, 236, 255, 0.9);
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+
+  .pm-exit-manual-switch input:checked + .pm-exit-manual-slider {
+    background: rgba(var(--accent-rgb), 0.7);
+  }
+
+  .pm-exit-manual-switch input:checked + .pm-exit-manual-slider::before {
+    transform: translateX(18px);
+  }
+
+  .pm-exit-manual-label {
+    white-space: nowrap;
   }
 
   .pm-modal-label {
@@ -559,15 +622,16 @@
           <input type="radio" name="pmExitKind" value="sl" />
           <span>Stop Loss</span>
         </label>
-        <label class="pm-radio">
-          <input type="radio" name="pmExitKind" value="manual" />
-          <span>Manual exit</span>
-        </label>
       </div>
       <div class="pm-current-price-row">
         <div class="pm-modal-label">Current Price</div>
-        <div class="pm-modal-row" style="align-items: center; gap: 12px; margin-top: 6px;">
+        <div class="pm-modal-row pm-current-price-input-row">
           <input type="number" id="pmCurrentPrice" class="pm-manual-exit-input" step="0.01" min="0" placeholder="0.00" />
+          <label class="pm-exit-manual-switch">
+            <input type="checkbox" id="pmUseManualPrice" aria-label="Use manual price" />
+            <span class="pm-exit-manual-slider"></span>
+            <span class="pm-exit-manual-label">Use Manual Price</span>
+          </label>
         </div>
       </div>
       <div class="pm-modal-label">Discord Preview</div>
@@ -662,10 +726,52 @@
   }
 
   const currentPriceInput = document.getElementById('pmCurrentPrice');
-  const useCurrentPriceBtn = document.getElementById('pmUseCurrentPrice');
+  const useManualPriceSwitch = document.getElementById('pmUseManualPrice');
 
   let activeExitSymbol = '';
   let activeExitEntry = '';
+  let exitLivePriceInterval = null;
+  const EXIT_LIVE_PRICE_INTERVAL_MS = 5000;
+
+  function useManualPrice() {
+    return useManualPriceSwitch && useManualPriceSwitch.checked;
+  }
+
+  function syncCurrentPriceInputEditable() {
+    if (currentPriceInput) {
+      currentPriceInput.readOnly = !useManualPrice();
+    }
+  }
+
+  function clearExitLivePriceInterval() {
+    if (exitLivePriceInterval != null) {
+      clearInterval(exitLivePriceInterval);
+      exitLivePriceInterval = null;
+    }
+  }
+
+  async function fetchLivePriceForExitModal() {
+    if (useManualPrice() || !activeExitPositionId || !currentPriceInput) return;
+    try {
+      const res = await fetch('/positions/api/live/', { credentials: 'same-origin' });
+      const data = res.ok ? await res.json().catch(() => null) : null;
+      if (data && Array.isArray(data.positions) && currentPriceInput) {
+        const pos = data.positions.find((p) => String(p.id) === String(activeExitPositionId));
+        if (pos && pos.mark_str && pos.mark_str !== '-') {
+          const price = parseFloat(String(pos.mark_str).replace(/[$,]/g, ''));
+          if (!isNaN(price) && price > 0) currentPriceInput.value = price.toFixed(2);
+        }
+      }
+    } catch (_) {}
+    renderExitPreview();
+  }
+
+  function startExitLivePriceInterval() {
+    clearExitLivePriceInterval();
+    if (!activeExitPositionId || useManualPrice()) return;
+    fetchLivePriceForExitModal();
+    exitLivePriceInterval = setInterval(fetchLivePriceForExitModal, EXIT_LIVE_PRICE_INTERVAL_MS);
+  }
 
   function getCurrentPriceOverride() {
     if (!currentPriceInput) return null;
@@ -804,18 +910,11 @@
     activeExitSymbol = (symbol || '').trim();
     activeExitEntry = (entry || '').trim();
     exitKindEls.forEach((x) => { x.checked = (x.value === 'tp'); });
+    if (useManualPriceSwitch) useManualPriceSwitch.checked = false;
     if (currentPriceInput) currentPriceInput.value = '';
-    try {
-      const res = await fetch('/positions/api/live/', { credentials: 'same-origin' });
-      const data = res.ok ? await res.json().catch(() => null) : null;
-      if (data && Array.isArray(data.positions) && currentPriceInput) {
-        const pos = data.positions.find((p) => String(p.id) === String(id));
-        if (pos && pos.mark_str && pos.mark_str !== '-') {
-          const price = parseFloat(String(pos.mark_str).replace(/[$,]/g, ''));
-          if (!isNaN(price) && price > 0) currentPriceInput.value = price.toFixed(2);
-        }
-      }
-    } catch (_) {}
+    syncCurrentPriceInputEditable();
+    clearExitLivePriceInterval();
+    startExitLivePriceInterval();
     renderExitPreview();
     if (exitBackdrop) {
       exitBackdrop.style.display = 'flex';
@@ -825,6 +924,7 @@
 
   function closeExitModal() {
     activeExitPositionId = null;
+    clearExitLivePriceInterval();
     if (exitBackdrop) {
       exitBackdrop.style.display = 'none';
       exitBackdrop.setAttribute('aria-hidden', 'true');
@@ -848,21 +948,6 @@
     window.location.reload();
   }
 
-  async function closePositionManual(id, exitPrice) {
-    const res = await fetch(`/positions/${id}/close/`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCookie('csrftoken'),
-      },
-      body: JSON.stringify({ exit_price: exitPrice }),
-    });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(payload && payload.error ? payload.error : 'Failed to close position');
-    window.location.reload();
-  }
-
   document.querySelectorAll('[data-post-exit]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-post-exit');
@@ -876,6 +961,17 @@
   if (currentPriceInput) {
     currentPriceInput.addEventListener('input', renderExitPreview);
     currentPriceInput.addEventListener('change', renderExitPreview);
+  }
+
+  if (useManualPriceSwitch) {
+    useManualPriceSwitch.addEventListener('change', () => {
+      syncCurrentPriceInputEditable();
+      if (useManualPrice()) {
+        clearExitLivePriceInterval();
+      } else {
+        startExitLivePriceInterval();
+      }
+    });
   }
 
   exitKindEls.forEach((el) => el.addEventListener('change', renderExitPreview));
@@ -901,16 +997,7 @@
       const currentPrice = getCurrentPriceOverride();
       exitConfirmBtn.disabled = true;
       try {
-        if (kind === 'manual') {
-          if (currentPrice == null || currentPrice <= 0) {
-            alert('Please enter a valid exit price.');
-            exitConfirmBtn.disabled = false;
-            return;
-          }
-          await closePositionManual(activeExitPositionId, currentPrice);
-        } else {
-          await postExitUpdate(activeExitPositionId, kind, currentPrice);
-        }
+        await postExitUpdate(activeExitPositionId, kind, currentPrice);
       } catch (e) {
         console.warn('Post update failed:', e);
         exitConfirmBtn.disabled = false;

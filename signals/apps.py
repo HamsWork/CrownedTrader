@@ -58,4 +58,3 @@ class SignalsConfig(AppConfig):
 
     def ready(self):
         _maybe_start_auto_tracking_thread()
-
