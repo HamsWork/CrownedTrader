@@ -152,6 +152,22 @@
     border-color: rgba(42, 55, 95, 0.95);
   }
 
+  .pm-manual-exit-input {
+    width: 120px;
+    height: 34px;
+    padding: 0 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(42, 55, 95, 0.75);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(232, 236, 255, 0.9);
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  .pm-manual-exit-input::placeholder {
+    color: rgba(232, 236, 255, 0.4);
+  }
+
   .pm-empty {
     padding: 18px;
     color: rgba(232, 236, 255, 0.70);
@@ -430,7 +446,7 @@
       </thead>
       <tbody>
         {% for p in open_positions %}
-        <tr>
+        <tr data-position-id="{{ p.id }}">
           <td>
             <span class="pm-sym">{{ p.symbol|default:"-" }}</span>
             {% if p.instrument == "options" %}
@@ -446,19 +462,19 @@
             {% endif %}
           </td>
           <td>${{ p.entry_str }}</td>
-          <td>${{ p.mark_str }}</td>
+          <td class="pm-live-mark">${{ p.mark_str }}</td>
           <td>
-            <span class="pm-pill {% if p.status_kind == 'good' %}good{% elif p.status_kind == 'bad' %}bad{% endif %}">
+            <span class="pm-pill pm-live-status {% if p.status_kind == 'good' %}good{% elif p.status_kind == 'bad' %}bad{% endif %}">
               {{ p.status_label }}
             </span>
           </td>
           <td>
-            <span class="pm-pill {% if p.pnl_pct > 0 %}good{% elif p.pnl_pct < 0 %}bad{% endif %}">
+            <span class="pm-pill pm-live-pnl {% if p.pnl_pct > 0 %}good{% elif p.pnl_pct < 0 %}bad{% endif %}">
               {{ p.pnl_pct_str }}
             </span>
           </td>
           <td>
-            <span class="pm-pill {% if p.realized_pnl_pct > 0 %}good{% elif p.realized_pnl_pct < 0 %}bad{% endif %}">
+            <span class="pm-pill pm-live-realized-pnl {% if p.realized_pnl_pct > 0 %}good{% elif p.realized_pnl_pct < 0 %}bad{% endif %}">
               {{ p.realized_pnl_pct_str }}
             </span>
           </td>
@@ -472,7 +488,7 @@
             {% else %}
             <textarea class="pm-hidden" data-preview-tp-for="{{ p.id }}">{{ p.preview_tp_embed }}</textarea>
             <textarea class="pm-hidden" data-preview-sl-for="{{ p.id }}">{{ p.preview_sl_embed }}</textarea>
-            <button class="pm-action" type="button" data-post-exit="{{ p.id }}">Post Exit</button>
+            <button class="pm-action" type="button" data-post-exit="{{ p.id }}" data-exit-symbol="{{ p.symbol|default:'' }}" data-exit-entry="{{ p.entry_str|default:'' }}">Post Exit</button>
             {% endif %}
           </td>
         </tr>
@@ -543,9 +559,19 @@
           <input type="radio" name="pmExitKind" value="sl" />
           <span>Stop Loss</span>
         </label>
+        <label class="pm-radio">
+          <input type="radio" name="pmExitKind" value="manual" />
+          <span>Manual exit</span>
+        </label>
+      </div>
+      <div class="pm-current-price-row">
+        <div class="pm-modal-label">Current Price</div>
+        <div class="pm-modal-row" style="align-items: center; gap: 12px; margin-top: 6px;">
+          <input type="number" id="pmCurrentPrice" class="pm-manual-exit-input" step="0.01" min="0" placeholder="0.00" />
+        </div>
       </div>
       <div class="pm-modal-label">Discord Preview</div>
-      <div class="discord-embed">
+      <div class="discord-embed" id="pmDiscordPreviewEmbed">
         <div class="discord-embed-color-bar" id="pmPreviewColorBar"></div>
         <div class="discord-embed-content">
           <div class="discord-embed-title" id="pmPreviewTitle"></div>
@@ -635,9 +661,73 @@
     return el ? el.value : 'tp';
   }
 
+  const currentPriceInput = document.getElementById('pmCurrentPrice');
+  const useCurrentPriceBtn = document.getElementById('pmUseCurrentPrice');
+
+  let activeExitSymbol = '';
+  let activeExitEntry = '';
+
+  function getCurrentPriceOverride() {
+    if (!currentPriceInput) return null;
+    const raw = String(currentPriceInput.value || '').trim();
+    const n = parseFloat(raw);
+    return !isNaN(n) && n > 0 ? n : null;
+  }
+
+  function formatPriceForPreview(price) {
+    if (price == null || isNaN(price) || price <= 0) return '—';
+    return '$' + Number(price).toFixed(2);
+  }
+
+  function renderManualExitPreview() {
+    const symbol = (activeExitSymbol || '').trim().toUpperCase() || 'Trade';
+    const entryStr = (activeExitEntry || '').trim();
+    const entry = parseFloat(entryStr) || 0;
+    const exitRaw = currentPriceInput ? String(currentPriceInput.value || '').trim() : '';
+    const exitPrice = parseFloat(exitRaw) || 0;
+    const pnlPct = entry > 0 && exitPrice > 0 ? ((exitPrice - entry) / entry * 100).toFixed(1) : '—';
+    const exitStr = exitPrice > 0 ? exitPrice.toFixed(2) : '—';
+    const color = 0x808080;
+    if (previewTitle) previewTitle.innerHTML = parseDiscordMarkdown(symbol + ' Manual Exit');
+    if (previewDesc) previewDesc.innerHTML = parseDiscordMarkdown('Manual exit at your chosen price.');
+    if (previewFields) {
+      previewFields.innerHTML = '';
+      const rowDiv = document.createElement('div');
+      rowDiv.className = 'discord-embed-fields-row';
+      const fields = [
+        { name: '✅ Entry', value: entry > 0 ? '$' + entry.toFixed(2) : '—' },
+        { name: '🚪 Exit', value: exitPrice > 0 ? '$' + exitStr : '—' },
+        { name: '💸 P/L %', value: pnlPct !== '—' ? (parseFloat(pnlPct) >= 0 ? '+' : '') + pnlPct + '%' : '—' },
+      ];
+      fields.forEach((f) => {
+        const div = document.createElement('div');
+        div.className = 'discord-embed-field';
+        const nameEl = document.createElement('div');
+        nameEl.className = 'discord-embed-field-name';
+        nameEl.textContent = f.name;
+        const valueEl = document.createElement('div');
+        valueEl.className = 'discord-embed-field-value';
+        valueEl.textContent = f.value;
+        div.appendChild(nameEl);
+        div.appendChild(valueEl);
+        rowDiv.appendChild(div);
+      });
+      previewFields.appendChild(rowDiv);
+    }
+    if (previewDescAfter) {
+      previewDescAfter.innerHTML = parseDiscordMarkdown('🚨 Status: Manual exit');
+      previewDescAfter.style.display = 'block';
+    }
+    if (previewColorBar) previewColorBar.style.background = intToHexColor(color);
+  }
+
   function renderExitPreview() {
     if (!activeExitPositionId) return;
     const kind = getExitKind();
+    if (kind === 'manual') {
+      renderManualExitPreview();
+      return;
+    }
     const raw = getPreviewText(activeExitPositionId, kind);
     let embed = null;
     try {
@@ -649,7 +739,32 @@
     const desc = embed && embed.description ? String(embed.description) : '';
     const descAfter = embed && embed.description_after ? String(embed.description_after) : '';
     const color = embed && embed.color != null ? embed.color : null;
-    const fields = Array.isArray(embed && embed.fields) ? embed.fields : [];
+    let fields = Array.isArray(embed && embed.fields) ? embed.fields : [];
+    const priceOverride = getCurrentPriceOverride();
+    if (priceOverride != null && fields.length) {
+      var entryFromEmbed = null;
+      fields.forEach((f) => {
+        const n = (f && f.name != null) ? String(f.name) : '';
+        const v = (f && f.value != null) ? String(f.value) : '';
+        if (n.indexOf('Entry') !== -1 && (n.indexOf('✅') !== -1 || n.indexOf('Entry') !== -1) && /\$?[\d.]+/.test(v)) {
+          var num = parseFloat(String(v).replace(/[$,]/g, ''));
+          if (!isNaN(num) && num > 0) entryFromEmbed = num;
+        }
+      });
+      fields = fields.map((f) => {
+        const name = (f && f.name != null) ? String(f.name) : '';
+        let value = (f && f.value != null) ? String(f.value) : '';
+        const isPriceField = name.indexOf('Price') !== -1 && name.indexOf('Hit') === -1;
+        const isProfitField = name.indexOf('Profit') !== -1 || name.indexOf('P/L') !== -1;
+        if (isPriceField && priceOverride != null) {
+          value = formatPriceForPreview(priceOverride);
+        } else if (isProfitField && entryFromEmbed != null && entryFromEmbed > 0 && priceOverride > 0) {
+          var pct = ((priceOverride - entryFromEmbed) / entryFromEmbed * 100).toFixed(1);
+          value = (parseFloat(pct) >= 0 ? '+' : '') + pct + '%';
+        }
+        return Object.assign({}, f, { value });
+      });
+    }
     if (previewTitle) previewTitle.innerHTML = title ? parseDiscordMarkdown(title) : '';
     if (previewDesc) previewDesc.innerHTML = desc ? parseDiscordMarkdown(desc) : '';
     if (previewFields) {
@@ -684,10 +799,23 @@
     if (previewColorBar) previewColorBar.style.background = intToHexColor(color);
   }
 
-  function openExitModal(id) {
+  async function openExitModal(id, symbol, entry) {
     activeExitPositionId = id;
-    // reset to TP by default
+    activeExitSymbol = (symbol || '').trim();
+    activeExitEntry = (entry || '').trim();
     exitKindEls.forEach((x) => { x.checked = (x.value === 'tp'); });
+    if (currentPriceInput) currentPriceInput.value = '';
+    try {
+      const res = await fetch('/positions/api/live/', { credentials: 'same-origin' });
+      const data = res.ok ? await res.json().catch(() => null) : null;
+      if (data && Array.isArray(data.positions) && currentPriceInput) {
+        const pos = data.positions.find((p) => String(p.id) === String(id));
+        if (pos && pos.mark_str && pos.mark_str !== '-') {
+          const price = parseFloat(String(pos.mark_str).replace(/[$,]/g, ''));
+          if (!isNaN(price) && price > 0) currentPriceInput.value = price.toFixed(2);
+        }
+      }
+    } catch (_) {}
     renderExitPreview();
     if (exitBackdrop) {
       exitBackdrop.style.display = 'flex';
@@ -703,7 +831,9 @@
     }
   }
 
-  async function postExitUpdate(id, kind) {
+  async function postExitUpdate(id, kind, currentPrice) {
+    const body = { kind: kind };
+    if (currentPrice != null && currentPrice > 0) body.current_price = currentPrice;
     const res = await fetch(`/positions/${id}/update/`, {
       method: 'POST',
       credentials: 'same-origin',
@@ -711,10 +841,25 @@
         'Content-Type': 'application/json',
         'X-CSRFToken': getCookie('csrftoken'),
       },
-      body: JSON.stringify({ kind: kind }),
+      body: JSON.stringify(body),
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(payload && payload.error ? payload.error : 'Failed to post update');
+    window.location.reload();
+  }
+
+  async function closePositionManual(id, exitPrice) {
+    const res = await fetch(`/positions/${id}/close/`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken'),
+      },
+      body: JSON.stringify({ exit_price: exitPrice }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(payload && payload.error ? payload.error : 'Failed to close position');
     window.location.reload();
   }
 
@@ -722,9 +867,16 @@
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-post-exit');
       if (!id) return;
-      openExitModal(id);
+      const symbol = btn.getAttribute('data-exit-symbol') || '';
+      const entry = btn.getAttribute('data-exit-entry') || '';
+      openExitModal(id, symbol, entry);
     });
   });
+
+  if (currentPriceInput) {
+    currentPriceInput.addEventListener('input', renderExitPreview);
+    currentPriceInput.addEventListener('change', renderExitPreview);
+  }
 
   exitKindEls.forEach((el) => el.addEventListener('change', renderExitPreview));
 
@@ -746,9 +898,19 @@
     exitConfirmBtn.addEventListener('click', async () => {
       if (!activeExitPositionId) return;
       const kind = getExitKind();
+      const currentPrice = getCurrentPriceOverride();
       exitConfirmBtn.disabled = true;
       try {
-        await postExitUpdate(activeExitPositionId, kind);
+        if (kind === 'manual') {
+          if (currentPrice == null || currentPrice <= 0) {
+            alert('Please enter a valid exit price.');
+            exitConfirmBtn.disabled = false;
+            return;
+          }
+          await closePositionManual(activeExitPositionId, currentPrice);
+        } else {
+          await postExitUpdate(activeExitPositionId, kind, currentPrice);
+        }
       } catch (e) {
         console.warn('Post update failed:', e);
         exitConfirmBtn.disabled = false;
@@ -787,6 +949,42 @@
       }
     });
   });
+
+  // Real-time update of current price (Mark) and P/L for open positions
+  const LIVE_POLL_INTERVAL_MS = 5000;
+  function updateLivePositions() {
+    const openTab = document.getElementById('tab-open');
+    if (!openTab || openTab.style.display === 'none') return;
+    const rows = document.querySelectorAll('#tab-open tr[data-position-id]');
+    if (!rows.length) return;
+    fetch('/positions/api/live/', { credentials: 'same-origin' })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (!data || !Array.isArray(data.positions)) return;
+        const byId = {};
+        data.positions.forEach((p) => { byId[String(p.id)] = p; });
+        rows.forEach((row) => {
+          const id = row.getAttribute('data-position-id');
+          const pos = id ? byId[id] : null;
+          if (!pos) return;
+          const markCell = row.querySelector('td.pm-live-mark');
+          if (markCell) markCell.textContent = pos.mark_str === '-' ? '-' : '$' + pos.mark_str;
+          const pnlSpan = row.querySelector('span.pm-live-pnl');
+          if (pnlSpan) {
+            pnlSpan.textContent = pos.pnl_pct_str;
+            pnlSpan.className = 'pm-pill pm-live-pnl ' + (pos.status_kind || '');
+          }
+          const realizedSpan = row.querySelector('span.pm-live-realized-pnl');
+          if (realizedSpan) {
+            realizedSpan.textContent = pos.realized_pnl_pct_str;
+            realizedSpan.className = 'pm-pill pm-live-realized-pnl ' + (pos.realized_kind || '');
+          }
+        });
+      })
+      .catch(() => {});
+  }
+  updateLivePositions();
+  setInterval(updateLivePositions, LIVE_POLL_INTERVAL_MS);
 })();
 </script>
 {% endblock %}

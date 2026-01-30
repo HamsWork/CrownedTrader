@@ -82,6 +82,25 @@ A modern Django web dashboard for managing and submitting trading signals with a
 - Filter signals by type using the filter tabs
 - View all signal details including timestamps
 
+### Automatic trade tracking (TP/SL auto-exit)
+
+When you post a trade with **Trade Tracking** set to **"Automatic updates (system tracked)"**, the system can post an exit to Discord when the current price hits your take profit or stop loss level.
+
+1. **Set up real-time checks**  
+   Run the management command periodically (e.g. every 1–2 minutes) via cron:
+   ```bash
+   */2 * * * * cd /path/to/CrownedTrader && python manage.py check_auto_positions
+   ```
+2. **Polygon API**  
+   Ensure `POLYGON_API_KEY` is set in your environment so the command can fetch current prices for stocks and options.
+3. **Behavior**  
+   For each open position with automatic tracking, the command fetches the current price, compares it to your TP and SL levels from the trade plan, and if the price hits stop loss or a take profit level, it posts the corresponding exit to Discord and updates the position (close or partial close).
+
+Use `--dry-run` to log what would be done without sending to Discord or updating the database:
+   ```bash
+   python manage.py check_auto_positions --dry-run
+   ```
+
 ## Configuration
 
 ### Discord Bot Messages

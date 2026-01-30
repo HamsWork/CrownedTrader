@@ -435,13 +435,7 @@
                 <li>
                     <a href="{% url 'saved_trade_plans' %}" class="{% if request.resolver_match.url_name == 'saved_trade_plans' %}active{% endif %}">
                         <span class="sidebar-nav-icon"><img src="{% static 'signals/icons/stack.svg' %}" alt="" /></span>
-                        <span>Saved Trade plans</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="{% url 'new_trade_plan' %}" class="{% if request.resolver_match.url_name == 'new_trade_plan' %}active{% endif %}">
-                        <span class="sidebar-nav-icon"><img src="{% static 'signals/icons/layers.svg' %}" alt="" /></span>
-                        <span>New Trade Plan</span>
+                        <span>Trade Plan</span>
                     </a>
                 </li>
                 <li>

@@ -136,6 +136,10 @@ DISCORD_CHANNEL_ID = os.environ.get('DISCORD_CHANNEL_ID', '')
 # Market data (Polygon)
 POLYGON_API_KEY = os.environ.get('POLYGON_API_KEY', '')
 
+# Automatic position tracking: background thread checks open auto positions every N seconds
+# (0 = disabled; rely on cron + manage.py check_auto_positions instead)
+AUTO_TRACKING_BACKGROUND_INTERVAL_SECONDS = int(os.environ.get('AUTO_TRACKING_BACKGROUND_INTERVAL_SECONDS', '60'))
+
 # Additional settings
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 

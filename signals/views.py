@@ -243,7 +243,9 @@ def send_to_discord(signal):
         print(f"ERROR: Discord embed validation failed - {validation_error}")
         return False
     
+    # @everyone goes in message content (outside embed), not in embed footer
     payload = {
+        "content": "@everyone",
         "embeds": [embed]
     }
     
@@ -314,7 +316,9 @@ def _send_discord_embed(url, embed):
     if not url:
         return False
     try:
-        payload = {"embeds": [embed or {}]}
+        e = dict(embed or {})
+        # @everyone in content (outside embed), not in embed footer
+        payload = {"content": "@everyone", "embeds": [e]}
         resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=30)
         resp.raise_for_status()
         return True
@@ -964,13 +968,39 @@ def post_ta(request):
         messages.error(request, "Only image or video files are allowed.")
         return render(request, "signals/post_ta.html", {"discord_channels": discord_channels})
 
-    payload_json = json.dumps({"content": commentary}) if commentary else "{}"
+    # Build Discord embed: title, description (commentary), optional image in embed
+    description = (commentary or "").strip()
+    if len(description) > DISCORD_EMBED_DESCRIPTION_MAX_CHARS:
+        description = description[: DISCORD_EMBED_DESCRIPTION_MAX_CHARS - 3] + "..."
+    if not description:
+        description = "\u2014"  # em dash so embed has visible body
+
+    embed = {
+        "title": "Technical Analysis",
+        "description": description,
+        "color": 0x5865F2,  # Discord blurple
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+    }
+    # Use one filename for both embed reference and form attachment so they match
+    file_name = (ta_file.name or "ta_media").strip() or "ta_media"
+    # Show uploaded image inside the embed when it's an image (video stays as message attachment)
+    if content_type.startswith("image/"):
+        embed["image"] = {"url": f"attachment://{file_name}"}
+
+    is_valid, _, embed_error = validate_embed(embed)
+    if not is_valid:
+        messages.error(request, embed_error or "Content too long for Discord.")
+        return render(request, "signals/post_ta.html", {"discord_channels": discord_channels})
+
+    # @everyone in content (outside embed), not in embed footer
+    payload = {"content": "@everyone", "embeds": [embed]}
+    payload_json = json.dumps(payload)
     try:
         ta_file.seek(0)
         resp = requests.post(
             channel.webhook_url,
             data={"payload_json": payload_json},
-            files={"file": (ta_file.name, ta_file.read(), content_type)},
+            files={"file": (file_name, ta_file.read(), content_type)},
             timeout=30,
         )
         resp.raise_for_status()
@@ -1289,21 +1319,30 @@ def dashboard(request):
                     except (ValueError, InvalidOperation, TypeError):
                         quantity = 1
                     multiplier = 1 if is_shares else 100
+                    position_mode = (request.POST.get("position_mode") or "").strip().lower()
+                    mode = Position.MODE_AUTO if position_mode == "auto" else Position.MODE_MANUAL
                     Position.objects.create(
                         user=request.user,
                         signal=signal_instance,
                         status=Position.STATUS_OPEN,
-                        mode=Position.MODE_MANUAL,
+                        mode=mode,
                         symbol=symbol,
                         instrument=instrument,
                         option_contract=str(signal_data.get('option_contract') or '')[:64],
                         option_type=str(signal_data.get('option_type') or '').strip().upper()[:10],
                         strike=str(signal_data.get('strike') or '')[:32],
                         expiration=str(signal_data.get('expiration') or '')[:32],
-                        quantity=max(1, quantity),
-                        multiplier=multiplier,
-                        entry_price=entry_price,
+                    quantity=max(1, quantity),
+                    multiplier=multiplier,
+                    entry_price=entry_price,
                     )
+                    # Set mode from form: "auto" = automatic tracking (system checks TP/SL and posts exit)
+                    position_mode = (request.POST.get("position_mode") or "").strip().lower()
+                    if position_mode == "auto":
+                        created = Position.objects.filter(user=request.user, signal=signal_instance).order_by("-id").first()
+                        if created:
+                            created.mode = Position.MODE_AUTO
+                            created.save(update_fields=["mode"])
                 except Exception as e:
                     logger.warning('Could not create position for signal %s: %s', signal_instance.id, e)
                 success = send_to_discord(signal_instance)
@@ -1580,8 +1619,8 @@ def _exp_display(expiration_str):
     return s[:10] if len(s) >= 10 else s
 
 
-def _build_position_update_embed(pos, *, kind, tp_level=None):
-    """Build Discord embed for Post Exit (TP or SL) matching Take Profit preview image."""
+def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=None):
+    """Build Discord embed for Post Exit (TP or SL). override_price is optional user-entered current price."""
     from django.utils import timezone
     symbol = (pos.symbol or "").strip().upper() or "TRADE"
     data = pos.signal.data if (pos.signal and isinstance(getattr(pos.signal, "data", None), dict)) else {}
@@ -1630,8 +1669,14 @@ def _build_position_update_embed(pos, *, kind, tp_level=None):
         {"name": "✍️ Strike", "value": strike_str, "inline": True},
         {"name": "💵 Price", "value": price_str, "inline": True},
     ]
+    try:
+        override_f = float(override_price) if override_price is not None else None
+    except (TypeError, ValueError):
+        override_f = None
     if kind == "tp" and tp_level and tp_level > 0:
         tp_price = _to_float(data.get(f"tp{tp_level}_price"))
+        if override_f is not None and override_f > 0:
+            tp_price = override_f
         tp_per = _to_float(data.get(f"tp{tp_level}_per"))
         takeoff = _to_float(data.get(f"tp{tp_level}_takeoff_per")) or 50.0
         next_price = _to_float(data.get(f"tp{tp_level + 1}_price"))
@@ -1653,6 +1698,8 @@ def _build_position_update_embed(pos, *, kind, tp_level=None):
         embed["description_after"] = status_line + "\n\n" + "\n".join(mgmt_lines)
     else:
         sl_price = _to_float(data.get("sl_price"))
+        if override_f is not None and override_f > 0:
+            sl_price = override_f
         sl_per = _to_float(data.get("sl_per"))
         entry_str = f"${_fmt_money(entry)}" if entry > 0 else "-"
         sl_hit_str = f"${_fmt_money(sl_price)}" if sl_price > 0 else "-"
@@ -1666,6 +1713,110 @@ def _build_position_update_embed(pos, *, kind, tp_level=None):
         embed["description"] = f"🟢 Trade Performance:\nTicker: {symbol}{company_part}"
         embed["description_after"] = "🚨 Status: Stop Loss Triggered 🚨"
     return embed
+
+
+def _get_position_current_price(pos):
+    """
+    Return current market price for a position (stock or option), or None if unavailable.
+    Used for automatic TP/SL tracking.
+    """
+    if not getattr(settings, "POLYGON_API_KEY", None) or not pos.symbol:
+        return None
+    try:
+        client = PolygonClient(getattr(settings, "POLYGON_API_KEY", ""))
+        if pos.instrument == Position.INSTRUMENT_SHARES:
+            return client.get_share_current_price(pos.symbol)
+        if pos.option_contract:
+            q = client.get_option_quote(pos.option_contract)
+            if q and q.get("price") is not None:
+                return float(q["price"])
+    except Exception:
+        pass
+    return None
+
+
+def _apply_position_exit(pos, kind, current_price=None):
+    """
+    Apply a TP or SL exit for a position: build Discord embed, send to webhook, update DB.
+    kind must be "tp" or "sl". current_price is optional user-entered price for the embed.
+    Returns True on success, False if Discord send failed.
+    """
+    next_tp = (pos.tp_hit_level or 0) + 1
+    override = None
+    if current_price is not None:
+        try:
+            override = float(current_price)
+        except (TypeError, ValueError):
+            pass
+    embed = _build_position_update_embed(
+        pos, kind=kind, tp_level=next_tp if kind == "tp" else None, override_price=override
+    )
+    desc_after = embed.pop("description_after", None)
+    if desc_after:
+        embed["description"] = (embed.get("description") or "") + "\n\n" + desc_after
+    url = None
+    if pos.signal and getattr(pos.signal, "discord_channel", None) and pos.signal.discord_channel.is_active:
+        url = pos.signal.discord_channel.webhook_url
+    if not url:
+        ch = DiscordChannel.objects.filter(user=pos.user, is_default=True, is_active=True).first()
+        if ch:
+            url = ch.webhook_url
+        if not url:
+            ch = DiscordChannel.objects.filter(user=pos.user, is_active=True).first()
+            url = ch.webhook_url if ch else None
+    if url and not _send_discord_embed(url, embed):
+        return False
+    from django.utils import timezone
+    now = timezone.now()
+    if kind == "tp":
+        pos.tp_hit_level = next_tp
+        data = (pos.signal.data if pos.signal and isinstance(getattr(pos.signal, "data", None), dict) else {}) or {}
+        takeoff_pct = 50.0
+        try:
+            t = data.get(f"tp{next_tp}_takeoff_per")
+            if t is not None:
+                takeoff_pct = float(str(t).strip().replace("%", "")) if str(t).strip() else 50.0
+        except (TypeError, ValueError):
+            pass
+        total_units = (pos.quantity or 1) * (pos.multiplier or 100)
+        closed_u = pos.closed_units or 0
+        remaining = max(0, total_units - closed_u)
+        add_units = int(round(remaining * takeoff_pct / 100.0))
+        pos.closed_units = closed_u + add_units
+        tp_price = None
+        try:
+            tp_price_val = data.get(f"tp{next_tp}_price")
+            if tp_price_val is not None:
+                tp_price = float(str(tp_price_val).strip())
+        except (TypeError, ValueError):
+            pass
+        entry = float(pos.entry_price) if pos.entry_price is not None else 0
+        update_fields = ["tp_hit_level", "closed_units", "updated_at"]
+        if tp_price is not None and entry and add_units > 0:
+            realized_this_tp = (tp_price - entry) * add_units
+            current_realized = float(pos.realized_pnl) if pos.realized_pnl is not None else 0
+            pos.realized_pnl = Decimal(str(round(current_realized + realized_this_tp, 2)))
+            update_fields.append("realized_pnl")
+        if pos.closed_units >= total_units:
+            pos.status = Position.STATUS_CLOSED
+            pos.closed_at = now
+            try:
+                tp_price_val = data.get(f"tp{next_tp}_price")
+                if tp_price_val is not None:
+                    pos.exit_price = float(str(tp_price_val).strip())
+                else:
+                    pos.exit_price = pos.entry_price
+            except (TypeError, ValueError):
+                pos.exit_price = pos.entry_price
+            update_fields.extend(["status", "exit_price", "closed_at"])
+        pos.save(update_fields=update_fields)
+    else:
+        pos.sl_hit = True
+        pos.status = Position.STATUS_CLOSED
+        pos.exit_price = pos.entry_price
+        pos.closed_at = now
+        pos.save(update_fields=["sl_hit", "status", "exit_price", "closed_at", "updated_at"])
+    return True
 
 
 @login_required
@@ -1748,6 +1899,38 @@ def position_management(request):
             "closed_at": p.closed_at,
         })
     return render(request, "signals/positions.html", {"open_positions": open_positions, "closed_positions": closed_positions})
+
+
+@login_required
+@require_GET
+def positions_live(request):
+    """
+    API: return current price (mark) and P/L for all open positions.
+    Used by Position Management page for real-time updates.
+    """
+    open_qs = Position.objects.filter(
+        user=request.user,
+        status=Position.STATUS_OPEN,
+    ).select_related("signal").order_by("-opened_at")
+    positions = []
+    for p in open_qs:
+        entry = float(p.entry_price) if p.entry_price is not None else 0
+        qty = (p.quantity or 1) * (p.multiplier or 100)
+        mark_val = _get_position_current_price(p)
+        pnl_pct = (100 * (mark_val - entry) / entry) if entry and mark_val is not None else None
+        realized = float(p.realized_pnl) if p.realized_pnl is not None else 0
+        realized_pct = (100 * realized / (entry * qty)) if entry and qty else None
+        status_kind = "good" if (pnl_pct or 0) >= 0 else "bad"
+        realized_kind = "good" if (realized_pct or 0) >= 0 else "bad"
+        positions.append({
+            "id": p.id,
+            "mark_str": f"{mark_val:.2f}" if mark_val is not None else "-",
+            "pnl_pct_str": f"{pnl_pct:+.1f}%" if pnl_pct is not None else "-",
+            "status_kind": status_kind,
+            "realized_pnl_pct_str": f"{realized_pct:+.1f}%" if realized_pct is not None else "-",
+            "realized_kind": realized_kind,
+        })
+    return JsonResponse({"positions": positions})
 
 
 @login_required
@@ -1924,76 +2107,9 @@ def post_position_update(request, position_id):
     kind = (payload.get("kind") or "tp").strip().lower()
     if kind not in ("tp", "sl"):
         return JsonResponse({"error": "kind must be tp or sl"}, status=400)
-    next_tp = (pos.tp_hit_level or 0) + 1
-    embed = _build_position_update_embed(pos, kind=kind, tp_level=next_tp if kind == "tp" else None)
-    # Discord API expects a single description: merge description_after for sending
-    desc_after = embed.pop("description_after", None)
-    if desc_after:
-        embed["description"] = (embed.get("description") or "") + "\n\n" + desc_after
-    url = None
-    if pos.signal and getattr(pos.signal, "discord_channel", None) and pos.signal.discord_channel.is_active:
-        url = pos.signal.discord_channel.webhook_url
-    if not url:
-        ch = DiscordChannel.objects.filter(user=request.user, is_default=True, is_active=True).first()
-        if ch:
-            url = ch.webhook_url
-        if not url:
-            ch = DiscordChannel.objects.filter(user=request.user, is_active=True).first()
-            url = ch.webhook_url if ch else None
-    if url and not _send_discord_embed(url, embed):
+    current_price = payload.get("current_price")
+    if not _apply_position_exit(pos, kind, current_price=current_price):
         return JsonResponse({"error": "Failed to send to Discord"}, status=500)
-    from django.utils import timezone
-    now = timezone.now()
-    if kind == "tp":
-        pos.tp_hit_level = next_tp
-        # Update closed_units from takeoff % for this TP level; close position when 100% exited
-        data = (pos.signal.data if pos.signal and isinstance(getattr(pos.signal, "data", None), dict) else {}) or {}
-        takeoff_pct = 50.0
-        try:
-            t = data.get(f"tp{next_tp}_takeoff_per")
-            if t is not None:
-                takeoff_pct = float(str(t).strip().replace("%", "")) if str(t).strip() else 50.0
-        except (TypeError, ValueError):
-            pass
-        total_units = (pos.quantity or 1) * (pos.multiplier or 100)
-        closed_u = pos.closed_units or 0
-        remaining = max(0, total_units - closed_u)
-        add_units = int(round(remaining * takeoff_pct / 100.0))
-        pos.closed_units = closed_u + add_units
-        # Realized P/L from this TP hit: (tp_price - entry_price) * add_units
-        tp_price = None
-        try:
-            tp_price_val = data.get(f"tp{next_tp}_price")
-            if tp_price_val is not None:
-                tp_price = float(str(tp_price_val).strip())
-        except (TypeError, ValueError):
-            pass
-        entry = float(pos.entry_price) if pos.entry_price is not None else 0
-        update_fields = ["tp_hit_level", "closed_units", "updated_at"]
-        if tp_price is not None and entry and add_units > 0:
-            realized_this_tp = (tp_price - entry) * add_units
-            current_realized = float(pos.realized_pnl) if pos.realized_pnl is not None else 0
-            pos.realized_pnl = Decimal(str(round(current_realized + realized_this_tp, 2)))
-            update_fields.append("realized_pnl")
-        if pos.closed_units >= total_units:
-            pos.status = Position.STATUS_CLOSED
-            pos.closed_at = now
-            try:
-                tp_price_val = data.get(f"tp{next_tp}_price")
-                if tp_price_val is not None:
-                    pos.exit_price = float(str(tp_price_val).strip())
-                else:
-                    pos.exit_price = pos.entry_price
-            except (TypeError, ValueError):
-                pos.exit_price = pos.entry_price
-            update_fields.extend(["status", "exit_price", "closed_at"])
-        pos.save(update_fields=update_fields)
-    else:
-        pos.sl_hit = True
-        pos.status = Position.STATUS_CLOSED
-        pos.exit_price = pos.entry_price
-        pos.closed_at = now
-        pos.save(update_fields=["sl_hit", "status", "exit_price", "closed_at", "updated_at"])
     return JsonResponse({"ok": True})
 
 

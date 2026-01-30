@@ -2060,6 +2060,65 @@ async function maybeAutoPickBestOption() {
     updatePreview();
 }
 
+// Refresh stock and option prices for live preview (called on an interval)
+const PREVIEW_REFRESH_INTERVAL_MS = 10000; // 10 seconds
+async function refreshPreviewPrices() {
+    const signalTypeSelect = document.querySelector('select[name="signal_type"]');
+    if (!signalTypeSelect || !signalTypeSelect.value) return;
+    const sym = getCurrentTickerSymbol();
+    if (!sym) return;
+
+    const isSharesCheckbox = document.getElementById('id_is_shares');
+    const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+
+    const quote = await fetchQuote(sym);
+    if (quote) {
+        tickerMetaCache[sym] = {
+            price: quote.price,
+            company_name: quote.company_name || '',
+        };
+    }
+
+    if (isShares) {
+        if (quote) {
+            const currentPriceEl = findFieldByName('current_price');
+            const entryPriceEl = findFieldByName('entry_price');
+            const priceEl = findFieldByName('price');
+            const companyNameEl = findFieldByName('company_name');
+            setValueIfAllowed(currentPriceEl, formatFloat3(quote.price));
+            setValueIfAllowed(entryPriceEl, formatFloat3(quote.price));
+            setValueIfAllowed(priceEl, formatFloat3(quote.price));
+            if (companyNameEl) setValueIfAllowed(companyNameEl, quote.company_name || '');
+            updateDefaultTpStockTargets();
+        }
+        updatePreview();
+        return;
+    }
+
+    // Options mode: refresh option quote when we have strike, expiration, option_type
+    const strikeEl = findFieldByName('strike');
+    const expEl = findFieldByName('expiration');
+    const optTypeEl = findFieldByName('option_type');
+    const strike = strikeEl ? String(strikeEl.value || '').trim() : '';
+    const expiration = expEl ? String(expEl.value || '').trim() : '';
+    const optTypeRaw = optTypeEl ? String(optTypeEl.value || '').trim().toLowerCase() : '';
+    const side = optTypeRaw.includes('put') ? 'put' : 'call';
+
+    if (strike && expiration) {
+        const optQuote = await fetchOptionQuote(sym, { strike, expiration, side });
+        if (optQuote && optQuote.price != null) {
+            const optionPriceEl = findFieldByName('option_price');
+            const entryPriceEl = findFieldByName('entry_price');
+            const priceEl = findFieldByName('price');
+            setValueIfAllowed(optionPriceEl, formatFloat3(optQuote.price));
+            setValueIfAllowed(entryPriceEl, formatFloat3(optQuote.price));
+            setValueIfAllowed(priceEl, formatFloat3(optQuote.price));
+            updateTpSlPrices();
+        }
+    }
+    updatePreview();
+}
+
 // Map variable types to input field types
 function getInputType(variableType) {
     const typeMap = {
@@ -4962,6 +5021,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 updatePreview();
             }
         });
+
+        // Real-time preview: refresh stock and option prices on an interval so preview stays current
+        if (document.getElementById('dynamicFields')) {
+            setTimeout(refreshPreviewPrices, 2000);
+            setInterval(refreshPreviewPrices, PREVIEW_REFRESH_INTERVAL_MS);
+        }
         
         // Handle form submission
         form.addEventListener('submit', async function(e) {

@@ -8,6 +8,7 @@ urlpatterns = [
     path('trade-plans/', views.saved_trade_plans, name='saved_trade_plans'),
     path('trade-plans/new/', views.new_trade_plan, name='new_trade_plan'),
     path('positions/', views.position_management, name='position_management'),
+    path('positions/api/live/', views.positions_live, name='positions_live'),
     path('leaderboard/', views.leaderboard, name='leaderboard'),
     path('positions/<int:position_id>/close/', views.close_position, name='close_position'),
     path('positions/<int:position_id>/mode/', views.set_position_mode, name='set_position_mode'),
