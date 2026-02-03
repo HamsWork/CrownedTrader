@@ -450,6 +450,7 @@
     .form-textarea {
         resize: none;
         overflow-y: hidden;
+        min-height: 6em; /* ~3 lines so Related Variables textareas show full hint and don't collapse to 1 line */
     }
 
     .form-checkbox {
@@ -854,6 +855,25 @@
         margin-top: 8px;
     }
 
+    .discord-embed-media {
+        margin-top: 10px;
+        border-radius: 8px;
+        overflow: hidden;
+        background: rgba(0, 0, 0, 0.2);
+    }
+
+    .discord-embed-disclaimer {
+        color: #dcddde;
+        font-size: 0.95em;
+        margin-top: 1.2em; /* blank line above Disclaimer in Post a trade Preview */
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .discord-embed-disclaimer:empty {
+        display: none;
+    }
+
     .discord-embed-field {
         margin-bottom: 8px;
     }
@@ -900,6 +920,85 @@
 
     .discord-embed-footer:empty {
         display: none;
+    }
+
+    /* TA Media drag & drop (same as Post TA) */
+    .ta-drop {
+        border: 1px dashed rgba(42, 55, 95, 0.85);
+        border-radius: 14px;
+        background: rgba(10, 16, 35, 0.62);
+        padding: 16px;
+        cursor: pointer;
+        transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+        display: grid;
+        gap: 8px;
+    }
+    .ta-drop:hover {
+        border-color: rgba(var(--accent-rgb), 0.75);
+        background: rgba(var(--accent-rgb), 0.06);
+        transform: translateY(-1px);
+    }
+    .ta-drop.dragover {
+        border-color: rgba(var(--accent-rgb), 0.95);
+        background: rgba(var(--accent-rgb), 0.10);
+    }
+    .ta-drop-title {
+        color: rgba(232, 236, 255, 0.92);
+        font-weight: 900;
+    }
+    .ta-drop-sub {
+        color: rgba(232, 236, 255, 0.62);
+        font-size: 0.92em;
+    }
+    .ta-drop-file {
+        margin-top: 6px;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        background: rgba(15, 23, 42, 0.50);
+        color: rgba(232, 236, 255, 0.88);
+        font-weight: 800;
+        width: fit-content;
+        max-width: 100%;
+    }
+    .ta-drop-file span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 520px;
+    }
+    .ta-drop-preview {
+        margin-top: 6px;
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid rgba(42, 55, 95, 0.55);
+        background: rgba(0, 0, 0, 0.25);
+        overflow: hidden;
+        display: none;
+    }
+    .ta-drop-preview img,
+    .ta-drop-preview video {
+        width: 100%;
+        display: block;
+        max-height: 260px;
+        object-fit: contain;
+        background: rgba(0,0,0,0.25);
+    }
+    .ta-drop-clear {
+        height: 28px;
+        padding: 0 10px;
+        border-radius: 10px;
+        border: 1px solid rgba(42, 55, 95, 0.75);
+        background: rgba(255, 255, 255, 0.04);
+        color: rgba(232, 236, 255, 0.9);
+        cursor: pointer;
+        font-weight: 900;
+    }
+    .ta-drop-clear:hover {
+        background: rgba(255, 255, 255, 0.06);
     }
 
     /* Discord Markdown Styles */
@@ -1113,7 +1212,7 @@
                     </div>
                     <div class="section-divider"></div>
                     
-                    <div class="form-group">
+                    <div class="form-group" id="signalTypeRow" style="display: none;">
                         <label for="{{ form.signal_type.id_for_label }}">Signal Type *</label>
                         {{ form.signal_type }}
                         {% if form.signal_type.errors %}
@@ -1258,6 +1357,11 @@
                             <div class="discord-embed-title" id="previewTitle">Select a signal type to see preview</div>
                             <div class="discord-embed-description" id="previewDescription"></div>
                             <div class="discord-embed-fields" id="previewFields"></div>
+                            <div class="discord-embed-media" id="previewMedia" style="display: none;">
+                                <img id="previewMediaImg" alt="" style="display: none; max-width: 100%; max-height: 300px; border-radius: 8px; object-fit: contain;" />
+                                <video id="previewMediaVid" controls style="display: none; max-width: 100%; max-height: 300px; border-radius: 8px;"></video>
+                            </div>
+                            <div class="discord-embed-disclaimer" id="previewDisclaimer"></div>
                             <div class="discord-embed-footer" id="previewFooter"></div>
                         </div>
                     </div>
@@ -1389,6 +1493,106 @@ function getInitialTradePlanPreset() {
 // Track visibility of optional fields (default: hidden)
 const optionalFieldsVisibility = {};
 
+// TA Media drag & drop (same as Post TA) – build DOM and wire to file input
+function buildTaDropDom() {
+    const drop = document.createElement('div');
+    drop.className = 'ta-drop';
+    drop.innerHTML = '<div class="ta-drop-title">Drag &amp; drop a file here</div><div class="ta-drop-sub">or click to browse (images/videos)</div><div class="ta-drop-file" style="display:none;"><span class="ta-drop-file-name"></span><button type="button" class="ta-drop-clear">Remove</button></div><div class="ta-drop-preview"><img alt="" style="display:none;" /><video controls style="display:none;"></video></div>';
+    return drop;
+}
+
+function wireTaDropForInput(mediaInput, dropEl, onChange) {
+    if (!mediaInput || !dropEl) return;
+    const fileRow = dropEl.querySelector('.ta-drop-file');
+    const fileNameSpan = dropEl.querySelector('.ta-drop-file-name');
+    const clearBtn = dropEl.querySelector('.ta-drop-clear');
+    const previewEl = dropEl.querySelector('.ta-drop-preview');
+    const imgEl = dropEl.querySelector('.ta-drop-preview img');
+    const vidEl = dropEl.querySelector('.ta-drop-preview video');
+    let lastObjectUrl = null;
+
+    function fmtBytes(n) {
+        const v = Number(n || 0);
+        if (!v) return '0B';
+        const u = ['B','KB','MB','GB'];
+        const i = Math.min(u.length - 1, Math.floor(Math.log(v) / Math.log(1024)));
+        return (v / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2) + u[i];
+    }
+
+    function updatePreview() {
+        const file = mediaInput.files && mediaInput.files[0] ? mediaInput.files[0] : null;
+        if (imgEl) imgEl.style.display = 'none';
+        if (vidEl) vidEl.style.display = 'none';
+        if (previewEl) previewEl.style.display = 'none';
+        if (imgEl) imgEl.removeAttribute('src');
+        if (vidEl) vidEl.removeAttribute('src');
+        if (lastObjectUrl) { try { URL.revokeObjectURL(lastObjectUrl); } catch (_) {} lastObjectUrl = null; }
+        if (!file) { if (typeof onChange === 'function') onChange(); return; }
+        const url = URL.createObjectURL(file);
+        lastObjectUrl = url;
+        const type = (file.type || '').toLowerCase();
+        if (type.startsWith('image/')) {
+            imgEl.src = url; imgEl.style.display = ''; previewEl.style.display = 'block';
+        } else if (type.startsWith('video/')) {
+            vidEl.src = url; vidEl.style.display = ''; previewEl.style.display = 'block';
+        }
+        if (typeof onChange === 'function') onChange();
+    }
+
+    function setFile(file) {
+        if (!file) {
+            try { mediaInput.value = ''; } catch (_) {}
+            if (fileRow) fileRow.style.display = 'none';
+            if (fileNameSpan) fileNameSpan.textContent = '';
+            if (previewEl) previewEl.style.display = 'none';
+            if (imgEl) { imgEl.style.display = 'none'; imgEl.removeAttribute('src'); }
+            if (vidEl) { vidEl.style.display = 'none'; vidEl.removeAttribute('src'); }
+            if (lastObjectUrl) { try { URL.revokeObjectURL(lastObjectUrl); } catch (_) {} lastObjectUrl = null; }
+            if (typeof onChange === 'function') onChange();
+            return;
+        }
+        try {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            mediaInput.files = dt.files;
+        } catch (e) { console.warn('Could not set file programmatically:', e); }
+        if (fileNameSpan) fileNameSpan.textContent = file.name + ' (' + fmtBytes(file.size) + ')';
+        if (fileRow) fileRow.style.display = '';
+        updatePreview();
+    }
+
+    function accepts(file) {
+        const t = (file && file.type) ? String(file.type) : '';
+        return t.startsWith('image/') || t.startsWith('video/');
+    }
+
+    dropEl.addEventListener('click', (e) => { if (!e.target.closest('.ta-drop-clear')) mediaInput.click(); });
+    dropEl.addEventListener('dragover', (e) => { e.preventDefault(); dropEl.classList.add('dragover'); });
+    dropEl.addEventListener('dragleave', () => dropEl.classList.remove('dragover'));
+    dropEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropEl.classList.remove('dragover');
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0] ? e.dataTransfer.files[0] : null;
+        if (!f) return;
+        if (!accepts(f)) { alert('Please drop an image or video file.'); return; }
+        setFile(f);
+    });
+    if (clearBtn) clearBtn.addEventListener('click', (e) => { e.stopPropagation(); setFile(null); });
+    mediaInput.addEventListener('change', () => {
+        const f = mediaInput.files && mediaInput.files[0] ? mediaInput.files[0] : null;
+        if (f) {
+            if (fileNameSpan) fileNameSpan.textContent = f.name + ' (' + fmtBytes(f.size) + ')';
+            if (fileRow) fileRow.style.display = '';
+        } else {
+            if (fileRow) fileRow.style.display = 'none';
+            if (fileNameSpan) fileNameSpan.textContent = '';
+        }
+        updatePreview();
+    });
+    mediaInput.style.display = 'none';
+    updatePreview();
+}
+
 // Cached US ticker list for searchable dropdowns (datalist)
 let usTickersLoaded = false;
 let usTickersLoadingPromise = null;
@@ -1450,10 +1654,14 @@ function getTodayISODate() {
 
 function autoResizeTextarea(textarea) {
     if (!textarea) return;
-    // Grow/shrink based on content; prevent inner scrollbars.
+    // Grow/shrink based on content; prevent inner scrollbars. Don't shrink below ~3 lines (show full hint).
+    const minLines = Math.max(textarea.rows || 3, 3);
+    const lineHeight = 24;
+    const minHeight = minLines * lineHeight;
     textarea.style.height = 'auto';
     textarea.style.overflowY = 'hidden';
-    textarea.style.height = `${textarea.scrollHeight}px`;
+    const h = Math.max(textarea.scrollHeight, minHeight);
+    textarea.style.height = `${h}px`;
 }
 
 function wireAutoResizeTextareas(root = document) {
@@ -2128,7 +2336,8 @@ function getInputType(variableType) {
         'date': 'date',
         'text': 'textarea',
         'boolean': 'checkbox',
-        'ticker_type': 'text'
+        'ticker_type': 'text',
+        'file': 'file'
     };
     return typeMap[variableType] || 'text';
 }
@@ -2539,16 +2748,24 @@ function updatePreview() {
         titleEl.style.display = 'none';
     }
     
-    // Update description - check if description should be shown
+    // Update description (disclaimer is shown below fields, not in description)
     const showDescriptionCheckbox = document.getElementById('showDescriptionCheckbox');
     const showDescription = showDescriptionCheckbox ? showDescriptionCheckbox.checked : true;
     const description = renderTemplate(signalType.description_template, formData);
     const descEl = document.getElementById('previewDescription');
-    if (!isTradePlanOnlyPage && description && showDescription) {
-        descEl.innerHTML = parseDiscordMarkdown(description);
+    if (!isTradePlanOnlyPage && description && description.trim() && showDescription) {
+        descEl.innerHTML = parseDiscordMarkdown(description.trim());
         descEl.style.display = 'block';
     } else {
         descEl.style.display = 'none';
+    }
+
+    // Disclaimer: always show below fields (after Take Profit Plan), minimal gap
+    const disclaimerText = 'Disclaimer: Not financial advice. Trade at your own risk.';
+    const disclaimerEl = document.getElementById('previewDisclaimer');
+    if (disclaimerEl) {
+        disclaimerEl.innerHTML = parseDiscordMarkdown(disclaimerText);
+        disclaimerEl.style.display = isTradePlanOnlyPage ? 'none' : 'block';
     }
     
     // Update fields
@@ -2891,15 +3108,50 @@ function updatePreview() {
     // Adjust widths for any remaining inline group at the end
     adjustInlineGroupWidths(currentInlineGroup);
     
-    // Update footer
+    // Update footer (custom template only; disclaimer is in description)
     const footer = renderTemplate(signalType.footer_template, formData);
     const footerEl = document.getElementById('previewFooter');
-    if (footer) {
-        footerEl.innerHTML = parseDiscordMarkdown(footer);
-        footerEl.style.display = 'block';
-    } else {
-        footerEl.style.display = 'none';
+    if (footerEl) {
+        if (footer && footer.trim()) {
+            footerEl.innerHTML = parseDiscordMarkdown(footer.trim());
+            footerEl.style.display = 'block';
+        } else {
+            footerEl.style.display = 'none';
+        }
     }
+
+    // TA Media (Chart Analysis) preview: show image/video in Discord-style embed when file is selected
+    const previewMediaEl = document.getElementById('previewMedia');
+    const previewMediaImg = document.getElementById('previewMediaImg');
+    const previewMediaVid = document.getElementById('previewMediaVid');
+    if (previewMediaEl && previewMediaImg && previewMediaVid) {
+        if (window._previewMediaObjectUrl) {
+            try { URL.revokeObjectURL(window._previewMediaObjectUrl); } catch (_) {}
+            window._previewMediaObjectUrl = null;
+        }
+        const chartInput = document.querySelector('#optionalFieldsVariablesContainer input[name="chart_analysis"]');
+        const file = chartInput && chartInput.files && chartInput.files[0] ? chartInput.files[0] : null;
+        previewMediaImg.style.display = 'none';
+        previewMediaVid.style.display = 'none';
+        previewMediaImg.removeAttribute('src');
+        previewMediaVid.removeAttribute('src');
+        previewMediaEl.style.display = 'none';
+        if (file) {
+            const url = URL.createObjectURL(file);
+            window._previewMediaObjectUrl = url;
+            const type = (file.type || '').toLowerCase();
+            if (type.startsWith('image/')) {
+                previewMediaImg.src = url;
+                previewMediaImg.style.display = 'block';
+                previewMediaEl.style.display = 'block';
+            } else if (type.startsWith('video/')) {
+                previewMediaVid.src = url;
+                previewMediaVid.style.display = 'block';
+                previewMediaEl.style.display = 'block';
+            }
+        }
+    }
+
     } finally {
         window.__ctpIsUpdatingPreview = false;
     }
@@ -4308,8 +4560,16 @@ function createDynamicFields(signalTypeId) {
             if (inputType === 'textarea') {
                 input = document.createElement('textarea');
                 input.className = 'form-textarea';
-                input.rows = 3;
-                // input.placeholder = 'Additional information (optional)';
+                input.rows = variable.name === 'risk_management' ? 5 : 3;
+                if (variable.name === 'risk_management') {
+                    input.placeholder = 'Enter Risk Management (e.g. position size, 0DTE rules, due diligence)';
+                }
+            } else if (inputType === 'file') {
+                input = document.createElement('input');
+                input.type = 'file';
+                input.className = 'form-input';
+                input.accept = 'image/*,video/*';
+                input.setAttribute('data-ignore-dynamic', '1'); // Excluded from signalData JSON
             } else if (inputType === 'checkbox') {
                 // Handle boolean/checkbox (special-case is_shares later for switch UI)
                 input = document.createElement('input');
@@ -4612,6 +4872,17 @@ function createDynamicFields(signalTypeId) {
     // Update variable visibility after fields are created
     updateVariableVisibility();
 
+    // If signal type has a file variable (e.g. Chart Analysis), form must use multipart
+    const hasFileVariable = (signalType.variables || []).some(v => v && v.type === 'file');
+    const signalForm = document.getElementById('signalForm');
+    if (signalForm) {
+        if (hasFileVariable) {
+            signalForm.enctype = 'multipart/form-data';
+        } else {
+            signalForm.enctype = 'application/x-www-form-urlencoded';
+        }
+    }
+
     // Auto-resize any textareas in the Send Signal panel (no scrollbars)
     wireAutoResizeTextareas(document.getElementById('dynamicFields'));
     wireAutoResizeTextareas(document.getElementById('optionalFieldsVariablesContainer'));
@@ -4727,6 +4998,67 @@ function updateVariableVisibility() {
     });
     
     // Show/hide optional fields variables container based on visible variable inputs
+    // Chart Analysis: show image/video upload (TA Media) only when Chart Analysis switch is on
+    const showChartAnalysis = optionalFieldsVariablesContainer && window._chartAnalysisFieldKey !== undefined && window._chartAnalysisFieldKey !== null && !!optionalFieldsVisibility[window._chartAnalysisFieldKey];
+    const hasRealChartAnalysis = optionalFieldsVariablesContainer ? !!optionalFieldsVariablesContainer.querySelector('[data-variable-name="chart_analysis"]:not([data-synthetic-ta-media])') : false;
+    if (optionalFieldsVariablesContainer && window._chartAnalysisFieldKey !== undefined && window._chartAnalysisFieldKey !== null) {
+        const chartAnalysisGroup = optionalFieldsVariablesContainer.querySelector('[data-variable-name="chart_analysis"]:not([data-synthetic-ta-media])');
+        if (chartAnalysisGroup) {
+            chartAnalysisGroup.style.display = showChartAnalysis ? 'block' : 'none';
+        }
+        // When Chart Analysis is on and signal type has no chart_analysis variable, show synthetic TA Media field (like Post TA)
+        let syntheticTaMedia = document.getElementById('syntheticChartAnalysisGroup');
+        if (showChartAnalysis && !hasRealChartAnalysis) {
+            if (!syntheticTaMedia) {
+                syntheticTaMedia = document.createElement('div');
+                syntheticTaMedia.id = 'syntheticChartAnalysisGroup';
+                syntheticTaMedia.setAttribute('data-variable-name', 'chart_analysis');
+                syntheticTaMedia.setAttribute('data-synthetic-ta-media', '1');
+                syntheticTaMedia.className = 'form-group';
+                const label = document.createElement('label');
+                label.textContent = 'TA Media (Image or Video)';
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.name = 'chart_analysis';
+                input.id = 'syntheticChartAnalysisInput';
+                input.className = 'form-input';
+                input.accept = 'image/*,video/*';
+                input.setAttribute('data-ignore-dynamic', '1');
+                const dropEl = buildTaDropDom();
+                wireTaDropForInput(input, dropEl, updatePreview);
+                const small = document.createElement('small');
+                small.style.cssText = 'display:block; margin-top:8px; color:#9ca3af;';
+                small.textContent = 'Supported: images and video clips. Keep files small enough for Discord webhook limits.';
+                syntheticTaMedia.appendChild(label);
+                syntheticTaMedia.appendChild(input);
+                syntheticTaMedia.appendChild(dropEl);
+                syntheticTaMedia.appendChild(small);
+                optionalFieldsVariablesContainer.appendChild(syntheticTaMedia);
+            }
+            syntheticTaMedia.style.display = 'block';
+        } else if (syntheticTaMedia) {
+            syntheticTaMedia.style.display = 'none';
+        }
+    }
+
+    // When Chart Analysis switch is on and signal type has chart_analysis variable, style it as TA Media drag & drop (like Post TA)
+    if (showChartAnalysis && hasRealChartAnalysis) {
+        const realGroup = optionalFieldsVariablesContainer.querySelector('[data-variable-name="chart_analysis"]:not([data-synthetic-ta-media])');
+        const existingInput = realGroup && realGroup.querySelector('input[name="chart_analysis"]');
+        if (existingInput && !existingInput.dataset.taDropWired) {
+            existingInput.dataset.taDropWired = '1';
+            const dropEl = buildTaDropDom();
+            existingInput.parentNode.insertBefore(dropEl, existingInput.nextSibling);
+            wireTaDropForInput(existingInput, dropEl, updatePreview);
+        }
+    }
+
+    // Form must use multipart when Chart Analysis (TA Media) is shown
+    const signalForm = document.getElementById('signalForm') || document.querySelector('form[action*="dashboard"]');
+    if (signalForm && showChartAnalysis) {
+        signalForm.enctype = 'multipart/form-data';
+    }
+
     if (optionalFieldsVariablesContainer) {
         // Count visible variable inputs (form groups with data-variable-name that are not hidden)
         const visibleVariables = Array.from(optionalFieldsVariablesContainer.children).filter(child => {
@@ -4735,7 +5067,7 @@ function updateVariableVisibility() {
             const isVisible = child.style && child.style.display !== 'none';
             return hasVariableName && isVisible;
         });
-        
+
         // Only show the container if there are visible variable inputs
         if (visibleVariables.length > 0) {
             optionalFieldsVariablesContainer.style.display = 'block';
@@ -4798,19 +5130,45 @@ function createOptionalFieldsCheckboxes(signalTypeId) {
             });
         }
     });
-    
+
+    // Always add Chart Analysis switch in Optional Fields panel (UI only, no Signal Type DB change)
+    const hasChartAnalysisInOptional = optionalFields.some((f) => (f.name || '').toLowerCase().includes('chart analysis'));
+    if (!hasChartAnalysisInOptional) {
+        const chartAnalysisIdx = fields.findIndex((f) =>
+            (String(f.name || '').includes('Chart Analysis') || String(f.value || '').includes('chart_analysis'))
+        );
+        if (chartAnalysisIdx >= 0) {
+            optionalFields.unshift({
+                index: chartAnalysisIdx,
+                name: 'Chart Analysis',
+                field: fields[chartAnalysisIdx]
+            });
+        } else {
+            optionalFields.unshift({
+                index: fields.length,
+                name: 'Chart Analysis',
+                field: { name: '📊 Chart Analysis', value: '{{chart_analysis}}' }
+            });
+        }
+    }
+
     // Show/hide section based on whether there are optional fields
     if (optionalFields.length === 0) {
         optionalFieldsSection.style.display = 'none';
         return;
     }
-    
+
     optionalFieldsSection.style.display = 'block';
-    
+    window._chartAnalysisFieldKey = null;
+
     // Create checkboxes for each optional field
     optionalFields.forEach(({index, name, field}) => {
         const fieldKey = `field_${signalTypeId}_${index}`;
-        
+        const isChartAnalysis = (name || '').toLowerCase().includes('chart analysis') || (field.value || '').includes('chart_analysis');
+        if (isChartAnalysis) {
+            window._chartAnalysisFieldKey = fieldKey;
+        }
+
         // Create row container
         const row = document.createElement('div');
         row.className = 'switch-item';
@@ -4835,14 +5193,14 @@ function createOptionalFieldsCheckboxes(signalTypeId) {
         label.className = 'switch-text';
         label.htmlFor = checkbox.id;
         label.textContent = name;
-        
+
         // Add change event listener
         checkbox.addEventListener('change', function() {
             optionalFieldsVisibility[fieldKey] = this.checked;
             updateVariableVisibility(); // Update variable visibility when optional fields change
             updatePreview();
         });
-        
+
         row.appendChild(switchWrap);
         row.appendChild(label);
         optionalFieldsContainer.appendChild(row);
@@ -4996,8 +5354,9 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('signalTypesData keys:', Object.keys(signalTypesData));
     
     if (signalTypeSelect) {
-        // Initial load - always create fields for the first/default value
-        const defaultValue = signalTypeSelect.value || signalTypeSelect.options[signalTypeSelect.selectedIndex]?.value || Object.keys(signalTypesData)[0];
+        // Default to Common Trade Alert; fallback to current value or first type
+        const commonTradeAlertId = Object.keys(signalTypesData).find((id) => (signalTypesData[id].name || '') === 'Common Trade Alert');
+        const defaultValue = signalTypeSelect.value || commonTradeAlertId || signalTypeSelect.options[signalTypeSelect.selectedIndex]?.value || Object.keys(signalTypesData)[0];
         console.log('Default value determined:', defaultValue);
         
         if (defaultValue) {
@@ -5137,6 +5496,10 @@ document.addEventListener('DOMContentLoaded', function() {
             dynamicInputs.forEach(input => {
                 // Skip cosmetic controls (e.g. custom dropdown inputs) or unnamed elements
                 if (!input.name || input.dataset.ignoreDynamic === '1') {
+                    return;
+                }
+                // File inputs are sent as FILES; do not put in signalData JSON
+                if (input.type === 'file') {
                     return;
                 }
                 // Handle checkbox

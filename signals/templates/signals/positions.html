@@ -413,6 +413,17 @@
     margin-top: 10px;
   }
 
+  .discord-embed-footer {
+    font-size: 0.95em;
+    color: #dcddde;
+    margin-top: 10px;
+    line-height: 1.3;
+  }
+
+  .discord-embed-footer:empty {
+    display: none;
+  }
+
   .discord-embed-title strong,
   .discord-embed-description strong {
     font-weight: 600;
@@ -550,8 +561,10 @@
             <button class="pm-action" type="button" data-mode="{{ p.id }}" data-mode-to="manual">Switch to manual</button>
             {% else %}
             <textarea class="pm-hidden" data-preview-tp-for="{{ p.id }}">{{ p.preview_tp_embed }}</textarea>
+            <textarea class="pm-hidden" data-preview-tp-partial-for="{{ p.id }}">{{ p.preview_tp_partial_embed }}</textarea>
             <textarea class="pm-hidden" data-preview-sl-for="{{ p.id }}">{{ p.preview_sl_embed }}</textarea>
-            <button class="pm-action" type="button" data-post-exit="{{ p.id }}" data-exit-symbol="{{ p.symbol|default:'' }}" data-exit-entry="{{ p.entry_str|default:'' }}">Post Exit</button>
+            <button class="pm-action" type="button" data-partial-exit="{{ p.id }}" data-partial-symbol="{{ p.symbol|default:'' }}" data-partial-entry="{{ p.entry_str|default:'' }}" data-partial-qty="{{ p.display_qty|default:'' }}">Partial Exit</button>
+            <button class="pm-action" type="button" data-post-exit="{{ p.id }}" data-exit-symbol="{{ p.symbol|default:'' }}" data-exit-entry="{{ p.entry_str|default:'' }}">Full Exit</button>
             {% endif %}
           </td>
         </tr>
@@ -607,9 +620,9 @@
 </div>
 
 <div class="pm-modal-backdrop" id="pmExitBackdrop" aria-hidden="true">
-  <div class="pm-modal" role="dialog" aria-modal="true" aria-label="Post Exit">
+  <div class="pm-modal" role="dialog" aria-modal="true" aria-label="Full Exit">
     <div class="pm-modal-head">
-      <div class="pm-modal-title">Post Exit</div>
+      <div class="pm-modal-title">Full Exit</div>
       <button class="pm-modal-close" type="button" data-exit-close>✕</button>
     </div>
     <div class="pm-modal-body">
@@ -642,12 +655,50 @@
           <div class="discord-embed-description" id="pmPreviewDescription"></div>
           <div class="discord-embed-fields" id="pmPreviewFields"></div>
           <div class="discord-embed-description" id="pmPreviewDescriptionAfter"></div>
+          <div class="discord-embed-footer" id="pmPreviewFooter"></div>
         </div>
       </div>
     </div>
     <div class="pm-modal-foot">
       <button class="pm-action" type="button" data-exit-cancel>Cancel</button>
-      <button class="pm-action" type="button" id="pmExitConfirm">Post Update</button>
+      <button class="pm-action" type="button" id="pmExitConfirm">Full Exit</button>
+    </div>
+  </div>
+</div>
+
+<div class="pm-modal-backdrop" id="pmPartialExitBackdrop" aria-hidden="true">
+  <div class="pm-modal" role="dialog" aria-modal="true" aria-label="Partial Exit (Take Profit)">
+    <div class="pm-modal-head">
+      <div class="pm-modal-title">Partial Exit (Take Profit)</div>
+      <button class="pm-modal-close" type="button" data-partial-exit-close>✕</button>
+    </div>
+    <div class="pm-modal-body">
+      <div class="pm-current-price-row">
+        <div class="pm-modal-label">Current Price</div>
+        <div class="pm-modal-row pm-current-price-input-row">
+          <input type="number" id="pmPartialCurrentPrice" class="pm-manual-exit-input" step="0.01" min="0" placeholder="0.00" />
+          <label class="pm-exit-manual-switch">
+            <input type="checkbox" id="pmPartialUseManualPrice" aria-label="Use manual price" />
+            <span class="pm-exit-manual-slider"></span>
+            <span class="pm-exit-manual-label">Use Manual Price</span>
+          </label>
+        </div>
+      </div>
+      <div class="pm-modal-label">Discord Preview</div>
+      <div class="discord-embed" id="pmPartialDiscordPreviewEmbed">
+        <div class="discord-embed-color-bar" id="pmPartialPreviewColorBar"></div>
+        <div class="discord-embed-content">
+          <div class="discord-embed-title" id="pmPartialPreviewTitle"></div>
+          <div class="discord-embed-description" id="pmPartialPreviewDescription"></div>
+          <div class="discord-embed-fields" id="pmPartialPreviewFields"></div>
+          <div class="discord-embed-description" id="pmPartialPreviewDescriptionAfter"></div>
+          <div class="discord-embed-footer" id="pmPartialPreviewFooter"></div>
+        </div>
+      </div>
+    </div>
+    <div class="pm-modal-foot">
+      <button class="pm-action" type="button" data-partial-exit-cancel>Cancel</button>
+      <button class="pm-action" type="button" id="pmPartialExitConfirm">Partial Exit</button>
     </div>
   </div>
 </div>
@@ -665,9 +716,24 @@
   const previewDesc = document.getElementById('pmPreviewDescription');
   const previewFields = document.getElementById('pmPreviewFields');
   const previewDescAfter = document.getElementById('pmPreviewDescriptionAfter');
+  const previewFooter = document.getElementById('pmPreviewFooter');
   const exitConfirmBtn = document.getElementById('pmExitConfirm');
   const exitKindEls = Array.from(document.querySelectorAll('input[name="pmExitKind"]'));
   let activeExitPositionId = null;
+
+  const partialExitBackdrop = document.getElementById('pmPartialExitBackdrop');
+  const partialCurrentPriceInput = document.getElementById('pmPartialCurrentPrice');
+  const partialUseManualPriceSwitch = document.getElementById('pmPartialUseManualPrice');
+  const partialPreviewTitle = document.getElementById('pmPartialPreviewTitle');
+  const partialPreviewDesc = document.getElementById('pmPartialPreviewDescription');
+  const partialPreviewFields = document.getElementById('pmPartialPreviewFields');
+  const partialPreviewDescAfter = document.getElementById('pmPartialPreviewDescriptionAfter');
+  const partialPreviewFooter = document.getElementById('pmPartialPreviewFooter');
+  const partialPreviewColorBar = document.getElementById('pmPartialPreviewColorBar');
+  const partialExitConfirmBtn = document.getElementById('pmPartialExitConfirm');
+  let activePartialExitPositionId = null;
+  let activePartialExitEntry = '';
+  let partialLivePriceInterval = null;
   function setTab(name) {
     tabs.forEach((t) => t.classList.toggle('active', t.getAttribute('data-tab') === name));
     if (openEl) openEl.style.display = (name === 'open') ? '' : 'none';
@@ -684,8 +750,11 @@
     return '';
   }
 
-  function getPreviewText(id, kind) {
-    const sel = kind === 'sl' ? `[data-preview-sl-for="${id}"]` : `[data-preview-tp-for="${id}"]`;
+  function getPreviewText(id, kind, partial) {
+    let sel;
+    if (kind === 'sl') sel = `[data-preview-sl-for="${id}"]`;
+    else if (partial) sel = `[data-preview-tp-partial-for="${id}"]`;
+    else sel = `[data-preview-tp-for="${id}"]`;
     const el = document.querySelector(sel);
     return el && typeof el.value === 'string' ? el.value : '';
   }
@@ -821,9 +890,10 @@
       previewFields.appendChild(rowDiv);
     }
     if (previewDescAfter) {
-      previewDescAfter.innerHTML = parseDiscordMarkdown('🚨 Status: Manual exit');
+      previewDescAfter.innerHTML = parseDiscordMarkdown('🚨 Status: Manual exit\n\nDisclaimer: Not financial advice. Trade at your own risk.');
       previewDescAfter.style.display = 'block';
     }
+    if (previewFooter) { previewFooter.innerHTML = ''; previewFooter.style.display = 'none'; }
     if (previewColorBar) previewColorBar.style.background = intToHexColor(color);
   }
 
@@ -871,8 +941,10 @@
         return Object.assign({}, f, { value });
       });
     }
+    const disclaimerText = 'Disclaimer: Not financial advice. Trade at your own risk.';
+    const descWithoutDisclaimer = (desc || '').replace(/\n*\s*Disclaimer: Not financial advice\. Trade at your own risk\.\s*$/i, '').trim();
     if (previewTitle) previewTitle.innerHTML = title ? parseDiscordMarkdown(title) : '';
-    if (previewDesc) previewDesc.innerHTML = desc ? parseDiscordMarkdown(desc) : '';
+    if (previewDesc) previewDesc.innerHTML = descWithoutDisclaimer ? parseDiscordMarkdown(descWithoutDisclaimer) : '';
     if (previewFields) {
       previewFields.innerHTML = '';
       const perRow = 3;
@@ -901,6 +973,10 @@
     if (previewDescAfter) {
       previewDescAfter.innerHTML = descAfter ? parseDiscordMarkdown(descAfter) : '';
       previewDescAfter.style.display = descAfter ? '' : 'none';
+    }
+    if (previewFooter) {
+      previewFooter.innerHTML = parseDiscordMarkdown(disclaimerText);
+      previewFooter.style.display = 'block';
     }
     if (previewColorBar) previewColorBar.style.background = intToHexColor(color);
   }
@@ -931,8 +1007,162 @@
     }
   }
 
-  async function postExitUpdate(id, kind, currentPrice) {
-    const body = { kind: kind };
+  function usePartialManualPrice() {
+    return partialUseManualPriceSwitch && partialUseManualPriceSwitch.checked;
+  }
+
+  function syncPartialCurrentPriceEditable() {
+    if (partialCurrentPriceInput) {
+      partialCurrentPriceInput.readOnly = !usePartialManualPrice();
+    }
+  }
+
+  function clearPartialLivePriceInterval() {
+    if (partialLivePriceInterval != null) {
+      clearInterval(partialLivePriceInterval);
+      partialLivePriceInterval = null;
+    }
+  }
+
+  async function fetchLivePriceForPartialModal() {
+    if (usePartialManualPrice() || !activePartialExitPositionId || !partialCurrentPriceInput) return;
+    try {
+      const res = await fetch('/positions/api/live/', { credentials: 'same-origin' });
+      const data = res.ok ? await res.json().catch(() => null) : null;
+      if (data && Array.isArray(data.positions) && partialCurrentPriceInput) {
+        const pos = data.positions.find((p) => String(p.id) === String(activePartialExitPositionId));
+        if (pos && pos.mark_str && pos.mark_str !== '-') {
+          const price = parseFloat(String(pos.mark_str).replace(/[$,]/g, ''));
+          if (!isNaN(price) && price > 0) partialCurrentPriceInput.value = price.toFixed(2);
+        }
+      }
+    } catch (_) {}
+    renderPartialExitPreview();
+  }
+
+  function startPartialLivePriceInterval() {
+    clearPartialLivePriceInterval();
+    if (!activePartialExitPositionId || usePartialManualPrice()) return;
+    fetchLivePriceForPartialModal();
+    partialLivePriceInterval = setInterval(fetchLivePriceForPartialModal, EXIT_LIVE_PRICE_INTERVAL_MS);
+  }
+
+  function getPartialCurrentPriceOverride() {
+    if (!partialCurrentPriceInput) return null;
+    const raw = String(partialCurrentPriceInput.value || '').trim();
+    const n = parseFloat(raw);
+    return !isNaN(n) && n > 0 ? n : null;
+  }
+
+  function getPartialRiskManagement() {
+    return partialRiskManagementEl ? String(partialRiskManagementEl.value || '').trim() : '';
+  }
+
+  function renderPartialExitPreview() {
+    if (!activePartialExitPositionId) return;
+    const raw = getPreviewText(activePartialExitPositionId, 'tp', true);
+    let embed = null;
+    try {
+      embed = raw ? JSON.parse(raw) : null;
+    } catch {
+      embed = null;
+    }
+    const title = embed && embed.title ? String(embed.title) : '';
+    const desc = embed && embed.description ? String(embed.description) : '';
+    const descAfter = embed && embed.description_after ? String(embed.description_after) : '';
+    const color = embed && embed.color != null ? embed.color : null;
+    const partialDisclaimerText = 'Disclaimer: Not financial advice. Trade at your own risk.';
+    const partialDescWithoutDisclaimer = (desc || '').replace(/\n*\s*Disclaimer: Not financial advice\. Trade at your own risk\.\s*$/i, '').trim();
+    let fields = Array.isArray(embed && embed.fields) ? embed.fields : [];
+    const priceOverride = getPartialCurrentPriceOverride();
+    if (priceOverride != null && fields.length) {
+      var entryFromEmbed = null;
+      fields.forEach((f) => {
+        const n = (f && f.name != null) ? String(f.name) : '';
+        const v = (f && f.value != null) ? String(f.value) : '';
+        if (n.indexOf('Entry') !== -1 && (n.indexOf('✅') !== -1 || n.indexOf('Entry') !== -1) && /\$?[\d.]+/.test(v)) {
+          var num = parseFloat(String(v).replace(/[$,]/g, ''));
+          if (!isNaN(num) && num > 0) entryFromEmbed = num;
+        }
+      });
+      fields = fields.map((f) => {
+        const name = (f && f.name != null) ? String(f.name) : '';
+        let value = (f && f.value != null) ? String(f.value) : '';
+        const isPriceField = name.indexOf('Price') !== -1 && name.indexOf('Hit') === -1;
+        const isProfitField = name.indexOf('Profit') !== -1 || name.indexOf('P/L') !== -1;
+        if (isPriceField && priceOverride != null) {
+          value = formatPriceForPreview(priceOverride);
+        } else if (isProfitField && entryFromEmbed != null && entryFromEmbed > 0 && priceOverride > 0) {
+          var pct = ((priceOverride - entryFromEmbed) / entryFromEmbed * 100).toFixed(1);
+          value = (parseFloat(pct) >= 0 ? '+' : '') + pct + '%';
+        }
+        return Object.assign({}, f, { value });
+      });
+    }
+    if (partialPreviewTitle) partialPreviewTitle.innerHTML = title ? parseDiscordMarkdown(title) : '';
+    if (partialPreviewDesc) partialPreviewDesc.innerHTML = partialDescWithoutDisclaimer ? parseDiscordMarkdown(partialDescWithoutDisclaimer) : '';
+    if (partialPreviewFields) {
+      partialPreviewFields.innerHTML = '';
+      const perRow = 3;
+      for (let r = 0; r < fields.length; r += perRow) {
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'discord-embed-fields-row';
+        for (let i = r; i < Math.min(r + perRow, fields.length); i++) {
+          const f = fields[i];
+          const name = (f && f.name != null) ? String(f.name) : '';
+          const value = (f && f.value != null) ? String(f.value) : '';
+          const div = document.createElement('div');
+          div.className = 'discord-embed-field';
+          const nameEl = document.createElement('div');
+          nameEl.className = 'discord-embed-field-name';
+          nameEl.textContent = name;
+          const valueEl = document.createElement('div');
+          valueEl.className = 'discord-embed-field-value';
+          valueEl.textContent = value;
+          div.appendChild(nameEl);
+          div.appendChild(valueEl);
+          rowDiv.appendChild(div);
+        }
+        partialPreviewFields.appendChild(rowDiv);
+      }
+    }
+    if (partialPreviewDescAfter) {
+      partialPreviewDescAfter.innerHTML = descAfter ? parseDiscordMarkdown(descAfter) : '';
+      partialPreviewDescAfter.style.display = descAfter ? '' : 'none';
+    }
+    if (partialPreviewFooter) {
+      partialPreviewFooter.innerHTML = parseDiscordMarkdown(partialDisclaimerText);
+      partialPreviewFooter.style.display = 'block';
+    }
+    if (partialPreviewColorBar) partialPreviewColorBar.style.background = intToHexColor(color);
+  }
+
+  async function openPartialExitModal(id, symbol, entry, qty) {
+    activePartialExitPositionId = id;
+    activePartialExitEntry = (entry || '').trim();
+    if (partialUseManualPriceSwitch) partialUseManualPriceSwitch.checked = false;
+    if (partialCurrentPriceInput) partialCurrentPriceInput.value = '';
+    syncPartialCurrentPriceEditable();
+    clearPartialLivePriceInterval();
+    startPartialLivePriceInterval();
+    renderPartialExitPreview();
+    if (partialExitBackdrop) {
+      partialExitBackdrop.style.display = 'flex';
+      partialExitBackdrop.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  function closePartialExitModal() {
+    activePartialExitPositionId = null;
+    clearPartialLivePriceInterval();
+    if (partialExitBackdrop) {
+      partialExitBackdrop.style.display = 'none';
+      partialExitBackdrop.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  async function postPartialExitUpdate(id, currentPrice) {
+    const body = { kind: 'tp', partial_exit: true };
     if (currentPrice != null && currentPrice > 0) body.current_price = currentPrice;
     const res = await fetch(`/positions/${id}/update/`, {
       method: 'POST',
@@ -948,6 +1178,34 @@
     window.location.reload();
   }
 
+  async function postExitUpdate(id, kind, currentPrice) {
+    const body = { kind: kind, partial_exit: false };
+    if (currentPrice != null && currentPrice > 0) body.current_price = currentPrice;
+    const res = await fetch(`/positions/${id}/update/`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken'),
+      },
+      body: JSON.stringify(body),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(payload && payload.error ? payload.error : 'Failed to post update');
+    window.location.reload();
+  }
+
+  document.querySelectorAll('[data-partial-exit]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-partial-exit');
+      if (!id) return;
+      const symbol = btn.getAttribute('data-partial-symbol') || '';
+      const entry = btn.getAttribute('data-partial-entry') || '';
+      const qty = btn.getAttribute('data-partial-qty') || '';
+      openPartialExitModal(id, symbol, entry, qty);
+    });
+  });
+
   document.querySelectorAll('[data-post-exit]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-post-exit');
@@ -962,7 +1220,6 @@
     currentPriceInput.addEventListener('input', renderExitPreview);
     currentPriceInput.addEventListener('change', renderExitPreview);
   }
-
   if (useManualPriceSwitch) {
     useManualPriceSwitch.addEventListener('change', () => {
       syncCurrentPriceInputEditable();
@@ -986,9 +1243,52 @@
     });
   }
 
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeExitModal();
+  if (partialCurrentPriceInput) {
+    partialCurrentPriceInput.addEventListener('input', renderPartialExitPreview);
+    partialCurrentPriceInput.addEventListener('change', renderPartialExitPreview);
+  }
+  if (partialUseManualPriceSwitch) {
+    partialUseManualPriceSwitch.addEventListener('change', () => {
+      syncPartialCurrentPriceEditable();
+      if (usePartialManualPrice()) {
+        clearPartialLivePriceInterval();
+      } else {
+        startPartialLivePriceInterval();
+      }
+    });
+  }
+  document.querySelectorAll('[data-partial-exit-close], [data-partial-exit-cancel]').forEach((btn) => {
+    btn.addEventListener('click', closePartialExitModal);
   });
+
+  if (partialExitBackdrop) {
+    partialExitBackdrop.addEventListener('click', (e) => {
+      if (e.target === partialExitBackdrop) closePartialExitModal();
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (partialExitBackdrop && partialExitBackdrop.style.display === 'flex') closePartialExitModal();
+      else closeExitModal();
+    }
+  });
+
+  if (partialExitConfirmBtn) {
+    partialExitConfirmBtn.addEventListener('click', async () => {
+      if (!activePartialExitPositionId) return;
+      const currentPrice = getPartialCurrentPriceOverride();
+      const riskManagement = getPartialRiskManagement();
+      partialExitConfirmBtn.disabled = true;
+      try {
+        await postPartialExitUpdate(activePartialExitPositionId, currentPrice, riskManagement);
+      } catch (e) {
+        console.warn('Partial exit failed:', e);
+        partialExitConfirmBtn.disabled = false;
+        alert(String(e && e.message ? e.message : 'Failed'));
+      }
+    });
+  }
 
   if (exitConfirmBtn) {
     exitConfirmBtn.addEventListener('click', async () => {

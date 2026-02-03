@@ -138,6 +138,23 @@ DISCORD_EMBED_FOOTER_MAX_CHARS = 2048
 DISCORD_EMBED_MAX_FIELDS = 25
 DISCORD_EMBED_MAX_TOTAL_CHARS = 6000
 
+DISCORD_EMBED_DISCLAIMER = "Disclaimer: Not financial advice. Trade at your own risk."
+
+
+def _ensure_embed_disclaimer(embed):
+    """Place disclaimer at the end of the message (embed footer). Does not mutate; returns copy."""
+    if not embed:
+        return embed
+    e = dict(embed)
+    disclaimer = DISCORD_EMBED_DISCLAIMER
+    footer = e.get("footer")
+    if isinstance(footer, dict) and footer.get("text"):
+        footer_text = (footer.get("text") or "").rstrip()
+        e["footer"] = {"text": footer_text + ("\n\n" if footer_text else "") + disclaimer}
+    else:
+        e["footer"] = {"text": disclaimer}
+    return e
+
 
 def _coerce_to_str(value):
     if value is None:
@@ -232,40 +249,39 @@ def validate_embed(embed):
 
     return True, total, None
 
-def send_to_discord(signal):
-    """Send signal data to Discord channel using user's webhook"""
-    
+def send_to_discord(signal, file_attachment=None):
+    """Send signal data to Discord channel using user's webhook. file_attachment: optional uploaded file (image/video) for Chart Analysis."""
     # Get the appropriate template based on signal type
     embed = get_signal_template(signal)
+    embed = _ensure_embed_disclaimer(embed)
+
+    if file_attachment:
+        file_name = (getattr(file_attachment, "name", None) or "chart_analysis").strip() or "chart_analysis"
+        content_type = getattr(file_attachment, "content_type", "") or "application/octet-stream"
+        if content_type.startswith("image/"):
+            embed["image"] = {"url": f"attachment://{file_name}"}
+        # Video is sent as message attachment; no embed.video for webhook
 
     is_valid, _, validation_error = validate_embed(embed)
     if not is_valid:
         print(f"ERROR: Discord embed validation failed - {validation_error}")
         return False
-    
-    # @everyone goes in message content (outside embed), not in embed footer
-    payload = {
-        "content": "@everyone",
-        "embeds": [embed]
-    }
-    
+
+    payload = {"content": "@everyone", "embeds": [embed]}
+
     # Try to get user's webhook - check for selected channel or default channel
     try:
-        # Check if signal has a selected discord_channel
         if signal.discord_channel and signal.discord_channel.is_active:
             url = signal.discord_channel.webhook_url
         else:
-            # Try to get default channel
             default_channel = DiscordChannel.objects.filter(user=signal.user, is_default=True, is_active=True).first()
             if default_channel:
                 url = default_channel.webhook_url
             else:
-                # Fallback to first active channel
                 first_channel = DiscordChannel.objects.filter(user=signal.user, is_active=True).first()
                 if first_channel:
                     url = first_channel.webhook_url
                 else:
-                    # Fallback to old UserProfile webhook for backward compatibility
                     try:
                         user_profile = signal.user.profile
                         if user_profile and user_profile.discord_channel_webhook:
@@ -276,17 +292,23 @@ def send_to_discord(signal):
                     except UserProfile.DoesNotExist:
                         print(f"ERROR: User {signal.user.username} does not have a profile or Discord channels")
                         return False
-        
-        headers = {
-            "Content-Type": "application/json"
-        }
     except Exception as e:
         print(f"ERROR: Failed to get Discord webhook: {e}")
         return False
-    
+
     try:
-        response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()
+        if file_attachment:
+            file_attachment.seek(0)
+            payload_json = json.dumps(payload, ensure_ascii=False)
+            resp = requests.post(
+                url,
+                data={"payload_json": payload_json},
+                files={"file": (file_name, file_attachment.read(), content_type)},
+                timeout=30,
+            )
+        else:
+            resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=30)
+        resp.raise_for_status()
         return True
     except requests.HTTPError as e:
         error_msg = response.json() if response.text else {}
@@ -297,11 +319,11 @@ def send_to_discord(signal):
         # Provide specific guidance based on status code
         if response.status_code == 401:
             print("ERROR: Invalid webhook URL")
-        elif response.status_code == 403:
+        elif resp and resp.status_code == 403:
             print("ERROR: Webhook lacks permissions")
-        elif response.status_code == 404:
+        elif resp and resp.status_code == 404:
             print("ERROR: Webhook not found")
-        elif response.status_code == 400:
+        elif resp and resp.status_code == 400:
             print("ERROR: Invalid webhook URL or bad request")
         
         return False
@@ -316,7 +338,7 @@ def _send_discord_embed(url, embed):
     if not url:
         return False
     try:
-        e = dict(embed or {})
+        e = _ensure_embed_disclaimer(embed or {})
         # @everyone in content (outside embed), not in embed footer
         payload = {"content": "@everyone", "embeds": [e]}
         resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=30)
@@ -986,6 +1008,7 @@ def post_ta(request):
     # Show uploaded image inside the embed when it's an image (video stays as message attachment)
     if content_type.startswith("image/"):
         embed["image"] = {"url": f"attachment://{file_name}"}
+    embed = _ensure_embed_disclaimer(embed)
 
     is_valid, _, embed_error = validate_embed(embed)
     if not is_valid:
@@ -1154,10 +1177,44 @@ def new_trade_plan(request):
     })
 
 
+def _get_dashboard_context(request, form):
+    """Build context dict for dashboard template (form, signal_types_data, discord_channels, presets)."""
+    recent_signals = []
+    signal_types = SignalType.objects.filter(Q(user__isnull=True) | Q(user=request.user))
+    signal_types_data = [
+        {
+            'id': st.id,
+            'variables': st.variables or [],
+            'title_template': st.title_template or '',
+            'description_template': st.description_template or '',
+            'footer_template': st.footer_template or '',
+            'color': st.color or '#000000',
+            'fields_template': st.fileds_template or [],
+            'show_title_default': getattr(st, 'show_title_default', True),
+            'show_description_default': getattr(st, 'show_description_default', True),
+        }
+        for st in signal_types
+    ]
+    discord_channels = DiscordChannel.objects.filter(user=request.user, is_active=True).order_by('-is_default', 'channel_name')
+    presets = []
+    try:
+        for p in UserTradePlanPreset.objects.filter(user=request.user).order_by("-is_default", "-updated_at", "name"):
+            presets.append({"id": p.id, "name": p.name, "plan": p.plan if isinstance(p.plan, dict) else {}, "is_default": bool(p.is_default)})
+    except Exception:
+        pass
+    return {
+        'form': form,
+        'recent_signals': recent_signals,
+        'signal_types_data': signal_types_data,
+        'discord_channels': discord_channels,
+        'trade_plan_presets': presets,
+    }
+
+
 @login_required
 def dashboard(request):
     if request.method == 'POST':
-        form = SignalForm(request.POST, user=request.user)
+        form = SignalForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
             # Get signal type and data from cleaned form data
             signal_type = form.cleaned_data['signal_type']
@@ -1169,6 +1226,19 @@ def dashboard(request):
                     signal_data = json.loads(signal_data) if signal_data else {}
                 except (json.JSONDecodeError, TypeError):
                     signal_data = {}
+
+            # Chart Analysis (optional file): if user uploaded image/video, mark for embed and validate
+            chart_file = request.FILES.get('chart_analysis')
+            if chart_file:
+                signal_data['chart_analysis'] = '[Attachment included]'
+                max_bytes = 8 * 1024 * 1024
+                if chart_file.size > max_bytes:
+                    messages.error(request, 'Chart Analysis file is too large. Keep under 8 MB.')
+                    return render(request, 'signals/dashboard.html', _get_dashboard_context(request, form))
+                ct = getattr(chart_file, 'content_type', '') or ''
+                if not (ct.startswith('image/') or ct.startswith('video/')):
+                    messages.error(request, 'Chart Analysis: only image or video files are allowed.')
+                    return render(request, 'signals/dashboard.html', _get_dashboard_context(request, form))
 
             # Capture trade_type (global publish control) into signal_data for templates/history
             trade_type = (request.POST.get('trade_type') or '').strip()
@@ -1345,7 +1415,7 @@ def dashboard(request):
                             created.save(update_fields=["mode"])
                 except Exception as e:
                     logger.warning('Could not create position for signal %s: %s', signal_instance.id, e)
-                success = send_to_discord(signal_instance)
+                success = send_to_discord(signal_instance, file_attachment=chart_file)
                 
                 if success:
                     messages.success(
@@ -1362,56 +1432,7 @@ def dashboard(request):
     else:
         form = SignalForm(user=request.user)
     
-    # Get recent signals for display (only for current user)
-    # recent_signals = Signal.objects.filter(user=request.user).select_related('signal_type', 'user').all()[:10]
-    recent_signals = []
-    
-    # Get all signal types (system defaults + user's custom types) for JavaScript with serialized variables
-    signal_types = SignalType.objects.filter(
-        Q(user__isnull=True) | Q(user=request.user)
-    )
-    signal_types_data = []
-    for st in signal_types:
-        # JSONField values are already JSON-serializable (lists/dicts); pass them as native
-        # objects and use Django's json_script in the template.
-        signal_types_data.append({
-            'id': st.id,
-            'variables': st.variables or [],
-            'title_template': st.title_template or '',
-            'description_template': st.description_template or '',
-            'footer_template': st.footer_template or '',
-            'color': st.color or '#000000',
-            'fields_template': st.fileds_template or [],
-            'show_title_default': getattr(st, 'show_title_default', True),
-            'show_description_default': getattr(st, 'show_description_default', True)
-        })
-    
-    # Get user's Discord channels
-    discord_channels = DiscordChannel.objects.filter(user=request.user, is_active=True).order_by('-is_default', 'channel_name')
-    
-    # Saved per-user Trade Plan presets (for dropdown)
-    presets = []
-    try:
-        qs = UserTradePlanPreset.objects.filter(user=request.user).order_by("-is_default", "-updated_at", "name")
-        for p in qs:
-            presets.append(
-                {
-                    "id": p.id,
-                    "name": p.name,
-                    "plan": p.plan if isinstance(p.plan, dict) else {},
-                    "is_default": bool(p.is_default),
-                }
-            )
-    except Exception:
-        presets = []
-
-    return render(request, 'signals/dashboard.html', {
-        'form': form,
-        'recent_signals': recent_signals,
-        'signal_types_data': signal_types_data,
-        'discord_channels': discord_channels,
-        'trade_plan_presets': presets,
-    })
+    return render(request, 'signals/dashboard.html', _get_dashboard_context(request, form))
 
 
 @login_required
@@ -1619,8 +1640,115 @@ def _exp_display(expiration_str):
     return s[:10] if len(s) >= 10 else s
 
 
-def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=None):
-    """Build Discord embed for Post Exit (TP or SL). override_price is optional user-entered current price."""
+def _get_auto_risk_management(data, entry, takeoff, tp_level):
+    """
+    Build auto Risk Management text for Partial Exit (TP): raise stop loss to previous level.
+    TP1 → entry, TP2 → TP1, TP3 → TP2, etc.
+    Example: "Raising stop loss to previous level: $2.00 (entry) on final 50% runner position to secure gains while allowing room to run."
+    """
+    def _to_float(v):
+        try:
+            s = str(v or "").strip().replace("%", "")
+            return float(s) if s else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    remaining = max(0, min(100, 100.0 - float(takeoff)))
+    if tp_level == 1:
+        prev_price = entry
+        prev_label = "entry"
+    else:
+        prev_price = _to_float(data.get(f"tp{tp_level - 1}_price"))
+        prev_label = f"TP{tp_level - 1}"
+
+    if prev_price and prev_price > 0:
+        return (
+            f"Raising stop loss to previous level: ${prev_price:.2f} ({prev_label}) "
+            f"on final {remaining:.0f}% runner position to secure gains while allowing room to run."
+        )
+    if remaining > 0:
+        return f"Final {remaining:.0f}% runner position to secure gains while allowing room to run."
+    return ""
+
+
+def _get_auto_strategy_executed_full_tp(data, entry, tp_level, override_price=None):
+    """
+    Build Strategy Executed text for Full Exit (TP): Full Exit is always 100% at the current TP level.
+    No Trailing Stop. Example:
+      ✅ TP3 Exit (100%) : 10.72 (+30.0%)
+      🟢 Average exit: $10.72 (+30.0% blended)
+    """
+    def _to_float(v):
+        try:
+            s = str(v or "").strip().replace("%", "")
+            return float(s) if s else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _fmt_money(v):
+        try:
+            return f"{float(v):.2f}"
+        except Exception:
+            return "0.00"
+
+    level = int(tp_level)
+    if level < 1:
+        return f"Full exit at TP{tp_level}."
+
+    price = _to_float(data.get(f"tp{level}_price"))
+    if override_price is not None:
+        try:
+            override_f = float(override_price)
+            if override_f > 0:
+                price = override_f
+        except (TypeError, ValueError):
+            pass
+    if not price or not entry:
+        return f"Full exit at TP{level}."
+
+    pct = (price - entry) / entry * 100 if entry and entry > 0 else _to_float(data.get(f"tp{level}_per"))
+    lines = [f"✅ TP{level} Exit (100%) : {_fmt_money(price)} ({pct:+.1f}%)"]
+    icon = "🔴" if pct < 0 else "🟢"
+    lines.append(f"{icon} Average exit: ${_fmt_money(price)} ({pct:+.1f}% blended)")
+    return "\n".join(lines)
+
+
+def _get_auto_strategy_executed_full_sl(data, entry, sl_price, override_price=None):
+    """Build Strategy Executed text for Full Exit (SL): stop loss exit and blended %."""
+    def _to_float(v):
+        try:
+            s = str(v or "").strip().replace("%", "")
+            return float(s) if s else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _fmt_money(v):
+        try:
+            return f"{float(v):.2f}"
+        except Exception:
+            return "0.00"
+
+    price = sl_price
+    if override_price is not None:
+        try:
+            override_f = float(override_price)
+            if override_f > 0:
+                price = override_f
+        except (TypeError, ValueError):
+            pass
+
+    if not price or not entry:
+        return "Full exit at stop loss."
+
+    pct = (price - entry) / entry * 100
+    lines = [f"✅ Stop Loss Exit (100%) : {_fmt_money(price)} ({pct:+.1f}%)"]
+    icon = "🔴" if pct < 0 else "🟢"
+    lines.append(f"{icon} Average exit: ${_fmt_money(price)} ({pct:+.1f}% blended)")
+    return "\n".join(lines)
+
+
+def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=None, next_steps=None, risk_management=None, strategy_executed=None, partial_exit=False):
+    """Build Discord embed. partial_exit=True: TP only, add Risk Management (auto), no Strategy Executed. partial_exit=False (Full Exit): add Strategy Executed below Status (auto), no Risk Management."""
     from django.utils import timezone
     symbol = (pos.symbol or "").strip().upper() or "TRADE"
     data = pos.signal.data if (pos.signal and isinstance(getattr(pos.signal, "data", None), dict)) else {}
@@ -1695,7 +1823,17 @@ def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=Non
         mgmt_lines = ["🔍 Position Management:", f"✅ Reduce position by {int(round(takeoff))}% (lock in +{_fmt_pct1(tp_per)} on half)"]
         if next_line:
             mgmt_lines.append(f"🎯 {next_line}")
-        embed["description_after"] = status_line + "\n\n" + "\n".join(mgmt_lines)
+        desc_after = status_line + "\n\n" + "\n".join(mgmt_lines)
+        if next_steps and isinstance(next_steps, str) and next_steps.strip():
+            desc_after += "\n\n📌 **Next steps:** " + next_steps.strip()
+        if partial_exit:
+            risk_text = risk_management if risk_management and isinstance(risk_management, str) and risk_management.strip() else _get_auto_risk_management(data, entry, takeoff, tp_level)
+            if risk_text:
+                desc_after += "\n\n🛡️ Risk Management:\n" + risk_text
+        else:
+            strategy_text = strategy_executed if strategy_executed and isinstance(strategy_executed, str) and strategy_executed.strip() else _get_auto_strategy_executed_full_tp(data, entry, tp_level, override_price)
+            desc_after += "\n\n🔍 Strategy Executed:\n" + strategy_text
+        embed["description_after"] = desc_after
     else:
         sl_price = _to_float(data.get("sl_price"))
         if override_f is not None and override_f > 0:
@@ -1711,7 +1849,10 @@ def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=Non
             {"name": "💸 Profit", "value": profit_str, "inline": True},
         ])
         embed["description"] = f"🟢 Trade Performance:\nTicker: {symbol}{company_part}"
-        embed["description_after"] = "🚨 Status: Stop Loss Triggered 🚨"
+        desc_after_sl = "🚨 Status: Stop Loss Triggered 🚨"
+        strategy_text = strategy_executed if strategy_executed and isinstance(strategy_executed, str) and strategy_executed.strip() else _get_auto_strategy_executed_full_sl(data, entry, sl_price, override_price)
+        desc_after_sl += "\n\n🔍 Strategy Executed:\n" + strategy_text
+        embed["description_after"] = desc_after_sl
     return embed
 
 
@@ -1735,11 +1876,9 @@ def _get_position_current_price(pos):
     return None
 
 
-def _apply_position_exit(pos, kind, current_price=None):
+def _apply_position_exit(pos, kind, current_price=None, next_steps=None, risk_management=None, strategy_executed=None, partial_exit=False):
     """
-    Apply a TP or SL exit for a position: build Discord embed, send to webhook, update DB.
-    kind must be "tp" or "sl". current_price is optional user-entered price for the embed.
-    Returns True on success, False if Discord send failed.
+    Apply a TP or SL exit. partial_exit=True: Partial Exit (TP, Risk Management). partial_exit=False: Full Exit (Strategy Executed below Status). Returns True on success.
     """
     next_tp = (pos.tp_hit_level or 0) + 1
     override = None
@@ -1749,7 +1888,8 @@ def _apply_position_exit(pos, kind, current_price=None):
         except (TypeError, ValueError):
             pass
     embed = _build_position_update_embed(
-        pos, kind=kind, tp_level=next_tp if kind == "tp" else None, override_price=override
+        pos, kind=kind, tp_level=next_tp if kind == "tp" else None, override_price=override,
+        next_steps=next_steps, risk_management=risk_management, strategy_executed=strategy_executed, partial_exit=partial_exit
     )
     desc_after = embed.pop("description_after", None)
     if desc_after:
@@ -1848,12 +1988,14 @@ def position_management(request):
         realized = float(p.realized_pnl) if p.realized_pnl is not None else 0
         realized_pct = (100 * realized / (entry * qty)) if entry and qty else None
         next_tp = (p.tp_hit_level or 0) + 1
-        _tp_embed = _build_position_update_embed(p, kind="tp", tp_level=next_tp) if (not p.sl_hit and next_tp) else {}
-        _sl_embed = _build_position_update_embed(p, kind="sl", tp_level=None) if not p.sl_hit else {}
+        _tp_embed = _build_position_update_embed(p, kind="tp", tp_level=next_tp, partial_exit=False) if (not p.sl_hit and next_tp) else {}
+        _tp_embed_partial = _build_position_update_embed(p, kind="tp", tp_level=next_tp, partial_exit=True) if (not p.sl_hit and next_tp) else {}
+        _sl_embed = _build_position_update_embed(p, kind="sl", tp_level=None, partial_exit=False) if not p.sl_hit else {}
         import json as _json
-        # Keep description_after in preview JSON for modal; do not mutate originals
-        preview_tp = dict(_tp_embed) if _tp_embed else {}
-        preview_sl = dict(_sl_embed) if _sl_embed else {}
+        # Keep description_after in preview JSON for modal; add disclaimer to match sent embeds
+        preview_tp = _ensure_embed_disclaimer(dict(_tp_embed)) if _tp_embed else {}
+        preview_tp_partial = _ensure_embed_disclaimer(dict(_tp_embed_partial)) if _tp_embed_partial else {}
+        preview_sl = _ensure_embed_disclaimer(dict(_sl_embed)) if _sl_embed else {}
         open_positions.append({
             "id": p.id,
             "symbol": p.symbol,
@@ -1876,6 +2018,7 @@ def position_management(request):
             "mode": p.mode,
             "mode_label": "Automatic" if p.mode == Position.MODE_AUTO else "Manual",
             "preview_tp_embed": _json.dumps(preview_tp, ensure_ascii=False) if preview_tp else "",
+            "preview_tp_partial_embed": _json.dumps(preview_tp_partial, ensure_ascii=False) if preview_tp_partial else "",
             "preview_sl_embed": _json.dumps(preview_sl, ensure_ascii=False) if preview_sl else "",
         })
     closed_positions = []
@@ -2108,7 +2251,16 @@ def post_position_update(request, position_id):
     if kind not in ("tp", "sl"):
         return JsonResponse({"error": "kind must be tp or sl"}, status=400)
     current_price = payload.get("current_price")
-    if not _apply_position_exit(pos, kind, current_price=current_price):
+    next_steps = payload.get("next_steps")
+    if next_steps is not None and not isinstance(next_steps, str):
+        next_steps = str(next_steps) if next_steps else ""
+    risk_management = payload.get("risk_management")
+    if risk_management is not None and not isinstance(risk_management, str):
+        risk_management = str(risk_management) if risk_management else ""
+    strategy_executed = payload.get("strategy_executed")
+    if strategy_executed is not None and not isinstance(strategy_executed, str):
+        strategy_executed = str(strategy_executed) if strategy_executed else ""
+    if not _apply_position_exit(pos, kind, current_price=current_price, next_steps=next_steps, risk_management=risk_management, strategy_executed=strategy_executed):
         return JsonResponse({"error": "Failed to send to Discord"}, status=500)
     return JsonResponse({"ok": True})
 

@@ -2066,15 +2066,17 @@ function updatePreview() {
         }
     });
     
-    // Update footer
+    // Update footer (custom template only; disclaimer is in description)
     const footerTemplate = document.getElementById('id_footer_template').value || '';
     const footer = renderTemplate(footerTemplate, sampleData);
     const footerEl = document.getElementById('previewFooter');
-    if (footer) {
-        footerEl.innerHTML = parseDiscordMarkdown(footer);
-        footerEl.style.display = 'block';
-    } else {
-        footerEl.style.display = 'none';
+    if (footerEl) {
+        if (footer && footer.trim()) {
+            footerEl.innerHTML = parseDiscordMarkdown(footer.trim());
+            footerEl.style.display = 'block';
+        } else {
+            footerEl.style.display = 'none';
+        }
     }
 }
 
