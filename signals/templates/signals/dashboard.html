@@ -1880,11 +1880,20 @@ function createSelectDropdownControlFromSelect(selectEl, { placeholder = '' } = 
     wrap.appendChild(input);
     wrap.appendChild(dropdown);
 
-    const options = Array.from(selectEl.options || []).map(o => ({
+    let options = Array.from(selectEl.options || []).map(o => ({
         value: String(o.value),
         label: String(o.textContent || '').trim(),
         disabled: !!o.disabled,
     }));
+
+    function refreshOptionsFromSelect() {
+        options = Array.from(selectEl.options || []).map(o => ({
+            value: String(o.value),
+            label: String(o.textContent || '').trim(),
+            disabled: !!o.disabled,
+        }));
+        syncFromSelect();
+    }
 
     let activeIndex = -1;
     let currentItems = [];
@@ -2029,7 +2038,7 @@ function createSelectDropdownControlFromSelect(selectEl, { placeholder = '' } = 
         input.disabled = true;
     }
 
-    return { wrap, input };
+    return { wrap, input, refreshOptionsFromSelect };
 }
 
 function upgradeSelectToTickerDropdown(selectEl, { placeholder = '' } = {}) {
@@ -2037,6 +2046,9 @@ function upgradeSelectToTickerDropdown(selectEl, { placeholder = '' } = {}) {
     selectEl.dataset.upgradedDropdown = '1';
 
     const control = createSelectDropdownControlFromSelect(selectEl, { placeholder });
+    if (control && control.refreshOptionsFromSelect) {
+        selectEl._refreshDropdownOptions = control.refreshOptionsFromSelect;
+    }
     // Hide original select but keep it for form submission.
     selectEl.style.display = 'none';
     selectEl.insertAdjacentElement('afterend', control.wrap);
@@ -2098,17 +2110,31 @@ function parsePercent(value) {
 const MAX_TP_LEVELS = 6;
 
 function updateTpSlPrices() {
-    // Base is the option entry price if available.
+    // Take Profit Price: stock-based when is_shares on, option-based when is_shares off
+    const isShares = (findFieldByName('is_shares') && findFieldByName('is_shares').checked) || false;
+    const currentPriceEl = findFieldByName('current_price');
     const optionPriceEl = findFieldByName('option_price');
     const entryPriceEl = findFieldByName('entry_price');
     const priceEl = findFieldByName('price');
-    const baseRaw = (optionPriceEl && optionPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '';
+    let baseRaw = isShares
+        ? ((currentPriceEl && currentPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '')
+        : ((optionPriceEl && optionPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '');
+    // When is_shares on: fall back to ticker quote cache so Price updates from stock price after quote fetch
+    if (isShares && (!baseRaw || !String(baseRaw).trim())) {
+        const sym = getCurrentTickerSymbol();
+        const cached = sym ? tickerMetaCache[sym] : null;
+        if (cached && cached.price != null) baseRaw = String(cached.price);
+    }
     const base = Number(String(baseRaw).trim());
     if (!Number.isFinite(base) || base <= 0) return;
 
     const slPer = parsePercent(findFieldByName('sl_per')?.value);
 
     const slPriceEl = findFieldByName('sl_price');
+
+    const optTypeEl = findFieldByName('option_type');
+    const optTypeRaw = String(optTypeEl ? optTypeEl.value : '').trim().toLowerCase();
+    const isSell = isShares && optTypeRaw.includes('put');
 
     for (let i = 1; i <= MAX_TP_LEVELS; i++) {
         const modeEl = findFieldByName(`tp${i}_mode`);
@@ -2122,51 +2148,113 @@ function updateTpSlPrices() {
         if (!perEl || !priceElN) continue;
         const tpPer = parsePercent(perEl.value);
         if (Number.isFinite(tpPer)) {
-            const computed = formatFloat3(base * (1 + tpPer / 100));
+            const computed = isSell
+                ? formatFloat3(base * (1 - Math.abs(tpPer) / 100))
+                : formatFloat3(base * (1 + tpPer / 100));
             setValueIfAllowed(priceElN, computed);
             const priceDisplayEl = document.querySelector(`input[data-tp-price-display][data-tp-level="${i}"]`);
             if (priceDisplayEl) {
-                // Avoid infinite loops: do not dispatch input/change when we are programmatically
-                // updating the display-only field (it has listeners that back-compute %).
-                if (canAutoFill(priceDisplayEl)) {
-                    priceDisplayEl.value = String(computed);
-                    priceDisplayEl.dataset.autoFilled = '1';
-                }
+                // Always sync Price display to computed value (stock when is_shares on, option when off)
+                priceDisplayEl.value = String(computed);
+                priceDisplayEl.dataset.autoFilled = '1';
             }
         }
     }
-    if (Number.isFinite(slPer)) setValueIfAllowed(slPriceEl, formatFloat3(base * (1 - slPer / 100)));
+    if (Number.isFinite(slPer)) {
+        const slPrice = isSell ? base * (1 + slPer / 100) : base * (1 - slPer / 100);
+        setValueIfAllowed(slPriceEl, formatFloat3(slPrice));
+    }
 }
 
 // When Target Type = Stock price ($), default TP stock targets to +10/20/30/40/50/60%
 // of the current underlying stock price (without overwriting user edits).
+// Base: when is_shares on use same resolution as updateTpSlPrices (current_price/entry/price/cache);
+// when is_shares off (options) use underlying from ticker cache first.
+// If we have a ticker but no base yet, fetch quote and recalculate.
 function updateDefaultTpStockTargets() {
     const modeEl = findFieldByName('tp1_mode');
     const mode = String(modeEl ? modeEl.value : '').trim().toLowerCase();
     const isStock = mode === 'stock' || mode === 'stock_price' || mode === 'underlying' || mode === 'share_price';
     if (!isStock) return;
 
+    const isShares = (findFieldByName('is_shares') && findFieldByName('is_shares').checked) || false;
+    const currentPriceEl = findFieldByName('current_price');
+    const entryPriceEl = findFieldByName('entry_price');
+    const priceEl = findFieldByName('price');
     const sym = getCurrentTickerSymbol();
     const cached = sym ? tickerMetaCache[sym] : null;
-    const currentPriceEl = findFieldByName('current_price');
-    const baseRaw = (currentPriceEl && currentPriceEl.value) || (cached && cached.price != null ? cached.price : '');
-    const base = Number(String(baseRaw).trim());
-    // Allow base=0 so defaults still show as $0.00 when price isn't available yet.
+
+    let baseRaw;
+    if (isShares) {
+        baseRaw = (currentPriceEl && currentPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '';
+        if (!baseRaw || !String(baseRaw).trim()) {
+            if (cached && cached.price != null) baseRaw = String(cached.price);
+        }
+    } else {
+        baseRaw = (cached && cached.price != null ? String(cached.price) : '') ||
+            (currentPriceEl && currentPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '';
+    }
+    let base = Number(String(baseRaw).trim());
+
+    // If we have a ticker but no valid base, fetch quote and recalculate so Stock price targets aren't stuck at 0.00
+    if ((!Number.isFinite(base) || base <= 0) && sym) {
+        fetchQuote(sym).then(function(quote) {
+            if (quote && quote.price != null) {
+                tickerMetaCache[sym] = { price: quote.price, company_name: quote.company_name || '' };
+                const priceStr = Number(quote.price).toFixed(2);
+                if (currentPriceEl) setValueIfAllowed(currentPriceEl, priceStr);
+                if (entryPriceEl) setValueIfAllowed(entryPriceEl, priceStr);
+                if (priceEl) setValueIfAllowed(priceEl, priceStr);
+                updateDefaultTpStockTargets();
+                updateTpSlPrices();
+                if (typeof updatePreview === 'function') updatePreview();
+            }
+        });
+        return;
+    }
     if (!Number.isFinite(base) || base < 0) return;
 
-    // If option type is PUT, defaults should be -10%/-20%/-30%
+    // BUY (CALL) = +10/+20/... %, SELL (PUT) = -10/-20/... %
     const optTypeEl = findFieldByName('option_type');
     const optTypeRaw = String(optTypeEl ? optTypeEl.value : '').trim().toLowerCase();
     const isPut = optTypeRaw.includes('put');
+    const dir = isPut ? -1 : 1;
 
     const defaults = [10, 20, 30, 40, 50, 60];
     for (let i = 1; i <= defaults.length; i++) {
         const el = findFieldByName(`tp${i}_stock_price`);
         if (!el) continue;
-        const dir = isPut ? -1 : 1;
-        const target = (base * (1 + dir * defaults[i - 1] / 100));
+        const target = base * (1 + dir * defaults[i - 1] / 100);
         setValueIfAllowed(el, target.toFixed(2));
     }
+}
+
+// When is_shares is on: set TP level % direction from Buy or Sell (CALL = +10/+20/..., PUT = -10/-20/...)
+// force: when true (e.g. user changed Buy/Sell), always set; when false, only set if allowed (auto-filled or empty)
+function applyTpLevelDirectionForShares(force) {
+    const isSharesCheckbox = document.getElementById('id_is_shares');
+    if (!isSharesCheckbox || !isSharesCheckbox.checked) return;
+    const optTypeEl = findFieldByName('option_type');
+    const optTypeRaw = String(optTypeEl ? optTypeEl.value : '').trim().toLowerCase();
+    const isPut = optTypeRaw.includes('put');
+    const dir = isPut ? -1 : 1;
+    const defaults = [10, 20, 30, 40, 50, 60];
+    for (let i = 1; i <= defaults.length; i++) {
+        const el = findFieldByName(`tp${i}_per`);
+        if (!el) continue;
+        const val = dir * defaults[i - 1];
+        el.setAttribute('min', isPut ? '-100' : '0');
+        if (force) {
+            el.value = String(val);
+            el.dataset.autoFilled = '1';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+            setValueIfAllowed(el, String(val));
+        }
+    }
+    updateTpSlPrices();
+    updatePreview();
 }
 
 function findFieldByName(name) {
@@ -2418,15 +2506,13 @@ function isOptionalFieldForSignalType(field, signalType) {
     return isOptionalField(field) || isInferredOptionalField(field, signalType);
 }
 
-// Get label from variable or fall back to default
+// Get label from variable or fall back to default (option_type shown as Buy or Sell only when is_shares is on; see toggleOptionFields)
 function getLabel(variable) {
-    // If variable has a label property, use it
-    if (variable.label) {
+    if (variable && variable.label) {
         return variable.label;
     }
-    // Otherwise, capitalize the name
-    const name = variable.name || variable;
-    return name.charAt(0).toUpperCase() + name.slice(1).replace(/_/g, ' ');
+    const name = variable && variable.name ? variable.name : (typeof variable === 'string' ? variable : '');
+    return String(name || variable).charAt(0).toUpperCase() + String(name || variable).slice(1).replace(/_/g, ' ');
 }
 
 // Parse Discord markdown to HTML
@@ -2703,7 +2789,8 @@ function updatePreview() {
     const dynamicInputs = document.querySelectorAll('#dynamicFields input, #dynamicFields textarea, #dynamicFields select, #optionalFieldsVariablesContainer input, #optionalFieldsVariablesContainer textarea, #optionalFieldsVariablesContainer select');
     dynamicInputs.forEach(input => {
         // Skip cosmetic controls (e.g. custom dropdown inputs) or unnamed elements
-        if (!input.name || input.dataset.ignoreDynamic === '1') {
+        // Include Trade Plan inputs (e.g. tp*_stock_price) in formData even if ignoreDynamic, so Live Preview shows correct target prices when Target Type is Stock price ($)
+        if (!input.name || (input.dataset.ignoreDynamic === '1' && !input.closest('.trade-plan-group'))) {
             return;
         }
         // Skip option-related fields if is_shares is checked
@@ -2711,8 +2798,9 @@ function updatePreview() {
             return;
         }
         
-        // Skip hidden fields (those with data-requires-options when is_shares is true)
-        if (input.closest('[data-requires-options="true"]') && isShares) {
+        // Skip hidden fields (those with data-requires-options when is_shares is true),
+        // but always include Trade Plan inputs so Preview shows targets and Take Profit Plan like when is_shares is off
+        if (input.closest('[data-requires-options="true"]') && isShares && !input.closest('.trade-plan-group')) {
             return;
         }
         
@@ -2861,9 +2949,8 @@ function updatePreview() {
     const fieldsToRenderFinal = filteredFields;
 
     // Inject Trade Plan preview block (Trade Plan / Targets / Stop Loss) below option-related fields
-    // so users don't need to manually add these lines into every signal type template.
-    if (!isShares) {
-        const tpBlock = { targetsLine: '', stopLossLine: '', tpPlanText: '' };
+    // so users don't need to manually add these lines into every signal type template. Show when is_shares on or off.
+    const tpBlock = { targetsLine: '', stopLossLine: '', tpPlanText: '' };
         const alreadyHasPlan = fieldsToRenderFinal.some(it => {
             const n = String(it.fieldName || '').toLowerCase();
             const v = String(it.fieldValue || '').toLowerCase();
@@ -2987,13 +3074,16 @@ function updatePreview() {
                 // Blank line before Trade Plan (like before Take Profit Plan)
                 injected.push({ field: { inline: false }, index: -1000, fieldName: '', fieldValue: '\u200b' });
                 injected.push({ field: { inline: false }, index: -1001, fieldName: '📝 **Trade Plan**', fieldValue: '' });
-                if (targets.length) {
+                // When is_shares on: show Targets line directly below Trade Plan in Discord preview
+                const showTargetsLine = targets.length > 0 || isShares;
+                if (showTargetsLine) {
                     const joiner = targets.some(t => String(t || '').startsWith('TP')) ? ',  ' : ', ';
-                    tpBlock.targetsLine = `🎯 Targets: ${targets.join(joiner)}`;
+                    const targetsText = targets.length ? targets.join(joiner) : '—';
+                    tpBlock.targetsLine = `🎯 Targets: ${targetsText}`;
                     injected.push({
                         field: { inline: false },
                         index: -1002,
-                        fieldName: `🎯 Targets: ${targets.join(joiner)}`,
+                        fieldName: `🎯 Targets: ${targetsText}`,
                         fieldValue: '',
                     });
                 }
@@ -3023,8 +3113,7 @@ function updatePreview() {
             }
         }
 
-        // New Trade Plan page: no extra message template (Trade Plan block only)
-    }
+    // New Trade Plan page: no extra message template (Trade Plan block only)
     
     let currentInlineGroup = null;
     
@@ -3297,9 +3386,27 @@ function createDynamicFields(signalTypeId) {
         input.addEventListener('change', updatePreview);
         input.addEventListener('input', () => markUserTouched(input));
 
-        // When synthetic option_type changes, pick best option (strike/expiration are auto-selected).
+        // When synthetic option_type (Buy/Sell) changes: update Trade Plan targets and preview; when is_shares off, pick best option.
         if (name === 'option_type') {
-            input.addEventListener('change', () => maybeAutoPickBestOption());
+            input.dataset.optionTypeChangeWired = '1';
+            const onOptionTypeChange = async () => {
+                const isSharesCheckbox = document.getElementById('id_is_shares');
+                if (isSharesCheckbox && isSharesCheckbox.checked) {
+                    applyTpLevelDirectionForShares(true);
+                    updateTpSlPrices();
+                    updatePreview();
+                } else {
+                    updateDefaultTpStockTargets();
+                    if (typeof maybeAutoPickBestOption === 'function') await maybeAutoPickBestOption();
+                    updateTpSlPrices();
+                    updatePreview();
+                }
+            };
+            input.addEventListener('change', onOptionTypeChange);
+            input.addEventListener('input', () => {
+                const isSharesCheckbox = document.getElementById('id_is_shares');
+                if (isSharesCheckbox && isSharesCheckbox.checked) onOptionTypeChange();
+            });
         }
 
         return formGroup;
@@ -3326,7 +3433,7 @@ function createDynamicFields(signalTypeId) {
         return wrapper;
     }
 
-    function createSyntheticPercentField(name, defaultValue, labelText, { showPercentSuffix = false } = {}) {
+    function createSyntheticPercentField(name, defaultValue, labelText, { showPercentSuffix = false, allowNegative = false } = {}) {
         const formGroup = document.createElement('div');
         formGroup.className = 'form-group';
         formGroup.setAttribute('data-variable-name', name);
@@ -3339,7 +3446,7 @@ function createDynamicFields(signalTypeId) {
         const input = document.createElement('input');
         input.type = 'number';
         input.step = '0.1';
-        input.min = '0';
+        input.min = allowNegative ? '-100' : '0';
         input.className = 'form-input';
         input.id = `id_${name}`;
         input.name = name;
@@ -3424,16 +3531,13 @@ function createDynamicFields(signalTypeId) {
         header.className = 'tp-level-row-header';
         rowWrap.appendChild(header);
 
-        // Hidden per-row mode field (kept for form submission + preview/discord logic)
+        // Hidden per-row mode (percent or stock; set by Target Type selector)
         const modeHidden = document.createElement('input');
         modeHidden.type = 'hidden';
         modeHidden.id = `id_tp${level}_mode`;
         modeHidden.name = `tp${level}_mode`;
-        modeHidden.value = String(defaultMode || 'percent');
-        // allow programmatic overwrite
-        modeHidden.dataset.autoFilled = '1';
-        modeHidden.addEventListener('input', updatePreview);
-        modeHidden.addEventListener('change', updatePreview);
+        const modeVal = (defaultMode === 'stock' || defaultMode === 'stock_price' || defaultMode === 'underlying' || defaultMode === 'share_price') ? 'stock' : 'percent';
+        modeHidden.value = modeVal;
         rowWrap.appendChild(modeHidden);
 
         // Add a remove button (we'll only show it on the last row)
@@ -3458,14 +3562,17 @@ function createDynamicFields(signalTypeId) {
         body.className = 'tp-level-row-body';
         body.style.gridTemplateColumns = '2.2fr 0.8fr';
 
-        // Left column: target value (driven by global mode)
+        // Left column: target value (driven by global mode) — percent col and stock col toggled by Target Type
         const targetCol = document.createElement('div');
         targetCol.style.display = 'flex';
         targetCol.style.flexDirection = 'column';
         targetCol.style.gap = '10px';
 
-        // TP % input (label goes in header)
-        const tpGroup = createSyntheticPercentField(`tp${level}_per`, defaultPer, `TP %`, { showPercentSuffix: true });
+        const percentCol = document.createElement('div');
+        percentCol.dataset.tpPercentCol = '1';
+
+        // TP % input (label goes in header); allowNegative for SELL (is_shares on, negative %)
+        const tpGroup = createSyntheticPercentField(`tp${level}_per`, defaultPer, `TP %`, { showPercentSuffix: true, allowNegative: true });
         const tpLabel = tpGroup.querySelector('label');
         if (tpLabel) {
             // Put "Take Profit N" in header, remove inner label to avoid duplication
@@ -3541,13 +3648,24 @@ function createDynamicFields(signalTypeId) {
             priceDisplayInput.value = String(val ?? '');
             priceDisplayInput.dataset.autoFilled = '1';
         };
+        function getTpBasePrice() {
+            const isShares = (findFieldByName('is_shares') && findFieldByName('is_shares').checked) || false;
+            const currentPriceEl = findFieldByName('current_price');
+            const optionPriceEl = findFieldByName('option_price');
+            const entryPriceEl = findFieldByName('entry_price');
+            const priceEl = findFieldByName('price');
+            const baseRaw = isShares
+                ? ((currentPriceEl && currentPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '')
+                : ((optionPriceEl && optionPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '');
+            const base = Number(String(baseRaw).trim());
+            return Number.isFinite(base) ? base : NaN;
+        }
         function applyPriceFromPercent() {
             if (priceDisplayInput.dataset.skipNextInput === '1') {
                 delete priceDisplayInput.dataset.skipNextInput;
                 return;
             }
-            const baseRaw = (findFieldByName('option_price')?.value) || (findFieldByName('entry_price')?.value) || (findFieldByName('price')?.value) || '';
-            const base = Number(String(baseRaw).trim());
+            const base = getTpBasePrice();
             if (!Number.isFinite(base) || base <= 0) return;
             const per = parsePercent(perInput?.value);
             if (Number.isFinite(per)) {
@@ -3562,8 +3680,7 @@ function createDynamicFields(signalTypeId) {
                 delete priceDisplayInput.dataset.skipNextInput;
                 return;
             }
-            const baseRaw = (findFieldByName('option_price')?.value) || (findFieldByName('entry_price')?.value) || (findFieldByName('price')?.value) || '';
-            const base = Number(String(baseRaw).trim());
+            const base = getTpBasePrice();
             if (!Number.isFinite(base) || base <= 0) return;
             const price = Number(String(priceDisplayInput.value || '').trim());
             if (!Number.isFinite(price) || price <= 0) return;
@@ -3590,31 +3707,34 @@ function createDynamicFields(signalTypeId) {
         rowWrap._tpPriceDisplayEl = priceDisplayInput;
         rowWrap._tpApplyPriceFromPercent = applyPriceFromPercent;
 
-        // Stock price target input (underlying)
-        const stockGroup = createSyntheticPriceField(
-            `tp${level}_stock_price`,
-            defaultStockPrice,
-            'Stock Price Target',
-            { showDollarPrefix: true }
-        );
+        percentCol.appendChild(tpGroup);
 
-        // Toggle which target input is visible
-        function syncTargetMode() {
-            const m = String(modeHidden.value || '').trim().toLowerCase();
-            const isStock = m === 'stock' || m === 'stock_price' || m === 'underlying' || m === 'share_price';
-            tpGroup.style.display = isStock ? 'none' : '';
-            stockGroup.style.display = isStock ? '' : 'none';
-            updateTpSlPrices();
-            updatePreview();
-        }
-        syncTargetMode();
+        // Stock price target column (shown when Target Type = Stock price ($))
+        const stockCol = document.createElement('div');
+        stockCol.dataset.tpStockCol = '1';
+        stockCol.style.display = 'none';
+        const stockLabel = document.createElement('label');
+        stockLabel.textContent = 'Stock price ($)';
+        stockLabel.setAttribute('for', `id_tp${level}_stock_price`);
+        const stockInput = document.createElement('input');
+        stockInput.type = 'number';
+        stockInput.step = '0.01';
+        stockInput.min = '0';
+        stockInput.className = 'form-input';
+        stockInput.id = `id_tp${level}_stock_price`;
+        stockInput.name = `tp${level}_stock_price`;
+        stockInput.placeholder = '0.00';
+        stockInput.value = String(defaultStockPrice ?? '').trim();
+        stockInput.dataset.ignoreDynamic = '1';
+        // Mark as auto-filled when empty so updateDefaultTpStockTargets can set correct stock price targets
+        if (!String(defaultStockPrice ?? '').trim()) stockInput.dataset.autoFilled = '1';
+        stockCol.appendChild(stockLabel);
+        stockCol.appendChild(stockInput);
+        stockInput.addEventListener('input', () => { updateTpSlPrices(); updatePreview(); });
+        stockInput.addEventListener('change', () => { updateTpSlPrices(); updatePreview(); });
 
-        // Expose helpers for the global Target Type selector
-        rowWrap._tpModeHidden = modeHidden;
-        rowWrap._tpSyncTargetMode = syncTargetMode;
-
-        targetCol.appendChild(tpGroup);
-        targetCol.appendChild(stockGroup);
+        targetCol.appendChild(percentCol);
+        targetCol.appendChild(stockCol);
 
         // Right column: takeoff % (capital removed when TP hits)
         const takeoffDefaults = { 1: 50, 2: 50, 3: 100 };
@@ -3641,10 +3761,14 @@ function createDynamicFields(signalTypeId) {
         let isSyncing = false;
 
         function getOptionBasePrice() {
+            const isShares = (findFieldByName('is_shares') && findFieldByName('is_shares').checked) || false;
+            const currentPriceEl = findFieldByName('current_price');
             const optionPriceEl = findFieldByName('option_price');
             const entryPriceEl = findFieldByName('entry_price');
             const priceEl = findFieldByName('price');
-            const baseRaw = (optionPriceEl && optionPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '';
+            const baseRaw = isShares
+                ? ((currentPriceEl && currentPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '')
+                : ((optionPriceEl && optionPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '');
             const base = Number(String(baseRaw).trim());
             return Number.isFinite(base) ? base : NaN;
         }
@@ -3786,12 +3910,10 @@ function createDynamicFields(signalTypeId) {
         
         const inputType = getInputType(variable.type);
         
-        // Handle select type (dropdown)
+        // Handle select type (dropdown) — option_type label/options updated by toggleOptionFields when is_shares toggles
         if (variable.type === 'select' && variable.options) {
             input = document.createElement('select');
             input.className = 'form-select';
-            
-            // Add options directly (no default placeholder)
             variable.options.forEach(option => {
                 const optionElement = document.createElement('option');
                 optionElement.value = option;
@@ -3949,7 +4071,8 @@ function createDynamicFields(signalTypeId) {
             globalModeLabel.style.whiteSpace = 'nowrap';
 
             const globalModeSelect = document.createElement('select');
-            globalModeSelect.className = 'form-select';
+            globalModeSelect.className = 'form-select tp-target-type-select';
+            globalModeSelect.dataset.tpTargetTypeSelect = '1';
             globalModeSelect.style.width = 'auto';
             globalModeSelect.style.minWidth = '170px';
             globalModeSelect.style.padding = '8px 10px';
@@ -4001,13 +4124,29 @@ function createDynamicFields(signalTypeId) {
                 const rows = Array.from(tpRows.querySelectorAll('[data-tp-row="1"]'));
                 return rows.map((r) => {
                     const lvl = Number(r.dataset.tpLevel || '');
-                    const mode = findFieldByName(`tp${lvl}_mode`)?.value ?? 'percent';
                     const per = findFieldByName(`tp${lvl}_per`)?.value ?? '';
-                    const stockPrice = findFieldByName(`tp${lvl}_stock_price`)?.value ?? '';
                     const takeoff = findFieldByName(`tp${lvl}_takeoff_per`)?.value ?? '';
-                    return { mode: String(mode), per: String(per), stock_price: String(stockPrice), takeoff: String(takeoff) };
+                    const stock_price = findFieldByName(`tp${lvl}_stock_price`)?.value ?? '';
+                    return { per: String(per), takeoff: String(takeoff), stock_price: String(stock_price).trim() };
                 });
             };
+
+            function applyGlobalTpModeToRows() {
+                globalTpMode = (globalModeSelect.value === 'stock' || globalModeSelect.value === 'stock_price') ? 'stock' : 'percent';
+                globalModeSelect.value = globalTpMode;
+                const rows = Array.from(tpRows.querySelectorAll('[data-tp-row="1"]'));
+                rows.forEach((r) => {
+                    const modeEl = r.querySelector('input[name^="tp"][name$="_mode"]');
+                    if (modeEl) modeEl.value = globalTpMode;
+                    const percentCol = r.querySelector('[data-tp-percent-col]');
+                    const stockCol = r.querySelector('[data-tp-stock-col]');
+                    if (percentCol) percentCol.style.display = globalTpMode === 'percent' ? '' : 'none';
+                    if (stockCol) stockCol.style.display = globalTpMode === 'stock' ? '' : 'none';
+                });
+                updateDefaultTpStockTargets();
+                updateTpSlPrices();
+                updatePreview();
+            }
 
             const renderTpRows = (state) => {
                 tpRows.innerHTML = '';
@@ -4038,19 +4177,12 @@ function createDynamicFields(signalTypeId) {
                     tpRows.appendChild(rowEl);
                 });
                 refreshTpRemoveButtons();
-                updateTpSlPrices();
-                updatePreview();
+                applyGlobalTpModeToRows();
             };
 
-            function applyGlobalTpModeToRows() {
-                const rows = Array.from(tpRows.querySelectorAll('[data-tp-row="1"]'));
-                rows.forEach((r) => {
-                    const input = r._tpModeHidden;
-                    if (!input) return;
-                    input.value = globalTpMode;
-                    if (typeof r._tpSyncTargetMode === 'function') r._tpSyncTargetMode();
-                });
-            }
+            globalModeSelect.addEventListener('change', () => {
+                applyGlobalTpModeToRows();
+            });
 
             const refreshTpRemoveButtons = () => {
                 const rows = Array.from(tpRows.querySelectorAll('[data-tp-row="1"]'));
@@ -4072,8 +4204,7 @@ function createDynamicFields(signalTypeId) {
                 // Leave takeoff empty so defaults apply; last TP will be 100%.
                 state.push({ per: String(next * 10), takeoff: '' });
                 renderTpRows(state);
-                applyGlobalTpModeToRows();
-                updateDefaultTpStockTargets();
+                updateTpSlPrices();
             });
 
             // Prefill from selected preset if present; otherwise defaults.
@@ -4085,44 +4216,11 @@ function createDynamicFields(signalTypeId) {
             const initialSlNum = Number(String(initialPlan?.sl_per ?? '').trim());
             const initialSl = Number.isFinite(initialSlNum) && initialSlNum > 0 ? initialSlNum : defaultSl;
 
-            // Initial global mode: prefer saved tp_mode; fallback to infer from levels
-            try {
-                const raw = String(initialPlan?.tp_mode ?? '').trim().toLowerCase();
-                if (raw === 'stock') {
-                    globalTpMode = 'stock';
-                } else if (raw === 'percent') {
-                    globalTpMode = 'percent';
-                } else {
-                    const hasStock = Array.isArray(initialTp) && initialTp.some((it) => {
-                        const m = String(it?.mode ?? '').trim().toLowerCase();
-                        const sp = String(it?.stock_price ?? it?.stockPrice ?? '').trim();
-                        return (
-                            m === 'stock' || m === 'stock_price' || m === 'underlying' || m === 'share_price' ||
-                            !!sp
-                        );
-                    });
-                    globalTpMode = hasStock ? 'stock' : 'percent';
-                }
-            } catch (_) {
-                globalTpMode = 'percent';
-            }
-            globalModeSelect.value = globalTpMode;
-
             // Initial TP rows (from saved plan or defaults)
             renderTpRows(initialTp);
-            applyGlobalTpModeToRows();
-            updateDefaultTpStockTargets();
+            updateTpSlPrices();
 
             const slGroup = createSyntheticPercentField('sl_per', initialSl, 'Stop Loss', { showPercentSuffix: true });
-
-            globalModeSelect.addEventListener('change', () => {
-                const v = String(globalModeSelect.value || '').trim().toLowerCase();
-                globalTpMode = (v === 'stock') ? 'stock' : 'percent';
-                applyGlobalTpModeToRows();
-                updateTpSlPrices();
-                updateDefaultTpStockTargets();
-                updatePreview();
-            });
 
             // Action buttons row (goes at the end of the Trade Plan panel)
             const presetActionsBar = document.createElement('div');
@@ -4203,35 +4301,19 @@ function createDynamicFields(signalTypeId) {
                 if (!p) return;
                 selectedPresetName = String(p.name || '');
                 const plan = (p.plan && typeof p.plan === 'object') ? p.plan : {};
-                // Restore global target type from saved plan (fallback to infer from levels)
-                try {
-                    const raw = String(plan.tp_mode ?? '').trim().toLowerCase();
-                    if (raw === 'stock') {
-                        globalTpMode = 'stock';
-                    } else if (raw === 'percent') {
-                        globalTpMode = 'percent';
-                    } else {
-                        const levels = Array.isArray(plan.tp_levels) ? plan.tp_levels : [];
-                        const hasStock = levels.some((it) => {
-                            const m = String(it?.mode ?? '').trim().toLowerCase();
-                            const sp = String(it?.stock_price ?? it?.stockPrice ?? '').trim();
-                            return (
-                                m === 'stock' || m === 'stock_price' || m === 'underlying' || m === 'share_price' ||
-                                !!sp
-                            );
-                        });
-                        globalTpMode = hasStock ? 'stock' : 'percent';
-                    }
-                    globalModeSelect.value = globalTpMode;
-                    // Ensure any listeners run and UI updates consistently
-                    globalModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
-                } catch (_) {}
                 const tp = Array.isArray(plan.tp_levels) && plan.tp_levels.length ? plan.tp_levels : defaultTp;
                 const slNum = Number(String(plan.sl_per ?? '').trim());
                 const slVal = Number.isFinite(slNum) && slNum > 0 ? slNum : defaultSl;
+                const planMode = String(plan.tp_mode ?? '').trim().toLowerCase();
+                if (planMode === 'stock' || planMode === 'stock_price') {
+                    globalTpMode = 'stock';
+                    globalModeSelect.value = 'stock';
+                } else {
+                    globalTpMode = 'percent';
+                    globalModeSelect.value = 'percent';
+                }
                 renderTpRows(tp);
-                applyGlobalTpModeToRows();
-                updateDefaultTpStockTargets();
+                updateTpSlPrices();
                 const slEl = findFieldByName('sl_per');
                 if (slEl) {
                     slEl.value = String(slVal);
@@ -4742,8 +4824,9 @@ function createDynamicFields(signalTypeId) {
             });
         }
 
-        // When option/entry price changes, recalculate all TP level Price values from Level %
-        if (variable.name === 'option_price' || variable.name === 'entry_price' || variable.name === 'price') {
+        // When option/entry/current price changes, recalculate all TP level Price values from Level %
+        // (current_price when is_shares on = stock base; option_price when is_shares off = option base)
+        if (variable.name === 'option_price' || variable.name === 'entry_price' || variable.name === 'price' || variable.name === 'current_price') {
             input.addEventListener('input', () => {
                 updateTpSlPrices();
                 updatePreview();
@@ -4784,6 +4867,7 @@ function createDynamicFields(signalTypeId) {
                 // Even if there is no explicit price/company_name input in the template,
                 // we still want the live preview to re-render using tickerMetaCache.
                 updateDefaultTpStockTargets();
+                updateTpSlPrices(); // When is_shares on, TP Price column updates from stock price
                 updatePreview();
 
                 // If option side/trade type are selected, auto-pick the best option now.
@@ -4793,21 +4877,69 @@ function createDynamicFields(signalTypeId) {
             });
         }
 
-        // Auto-select best option when user selects PUT/CALL (option_type)
+        // When BUY/SELL (option_type) changes: update all Trade Plan target price values and preview
         if (variable.name === 'option_type') {
-            input.addEventListener('change', async () => {
-                updateDefaultTpStockTargets();
-                await maybeAutoPickBestOption();
+            input.dataset.optionTypeChangeWired = '1';
+            const onOptionTypeChange = async () => {
+                const isSharesCheckbox = document.getElementById('id_is_shares');
+                if (isSharesCheckbox && isSharesCheckbox.checked) {
+                    applyTpLevelDirectionForShares(true);
+                    updateTpSlPrices();
+                    updatePreview();
+                } else {
+                    updateDefaultTpStockTargets();
+                    await maybeAutoPickBestOption();
+                    updateTpSlPrices();
+                    updatePreview();
+                }
+            };
+            input.addEventListener('change', onOptionTypeChange);
+            input.addEventListener('input', () => {
+                const isSharesCheckbox = document.getElementById('id_is_shares');
+                if (isSharesCheckbox && isSharesCheckbox.checked) onOptionTypeChange();
             });
         }
     });
-    
+
+    // Ensure option_type (Buy/Sell) has change/input handler; (re-)attach when is_shares changes in case DOM was updated.
+    function ensureOptionTypeChangeHandler() {
+        const optEl = findFieldByName('option_type');
+        if (!optEl || optEl.dataset.optionTypeChangeWired === '1') return;
+        optEl.dataset.optionTypeChangeWired = '1';
+        const onOptionTypeChange = async () => {
+            const isSharesCheckbox = document.getElementById('id_is_shares');
+            if (isSharesCheckbox && isSharesCheckbox.checked) {
+                applyTpLevelDirectionForShares(true);
+                updateTpSlPrices();
+                updatePreview();
+            } else {
+                updateDefaultTpStockTargets();
+                if (typeof maybeAutoPickBestOption === 'function') await maybeAutoPickBestOption();
+                updateTpSlPrices();
+                updatePreview();
+            }
+        };
+        optEl.addEventListener('change', onOptionTypeChange);
+        optEl.addEventListener('input', () => {
+            const isSharesCheckbox = document.getElementById('id_is_shares');
+            if (isSharesCheckbox && isSharesCheckbox.checked) onOptionTypeChange();
+        });
+    }
+
     // Set up is_shares checkbox handler
     const isSharesCheckbox = document.getElementById('id_is_shares');
     if (isSharesCheckbox) {
         isSharesCheckbox.addEventListener('change', function() {
             toggleOptionFields(this.checked);
             updateVariableVisibility(); // Update variable visibility when is_shares changes
+            // Re-attach option_type change handler (in case field was recreated or listener was lost)
+            ensureOptionTypeChangeHandler();
+            if (this.checked) {
+                // When is_shares on: set TP level direction from Buy/Sell, then update Price from stock base
+                applyTpLevelDirectionForShares();
+                // Recompute default Stock price ($) targets from stock base when in Stock price mode
+                updateDefaultTpStockTargets();
+            }
             // If switching back to options mode, reset option-related inputs to defaults.
             if (!this.checked) {
                 const sym = getCurrentTickerSymbol();
@@ -4841,6 +4973,8 @@ function createDynamicFields(signalTypeId) {
 
                 // Default option_price to 0.00; it will be overwritten by /api/best-option/ once inputs are valid.
                 forceSet(optionPriceEl, '0.00');
+                // Recompute Take Profit Price column from option price (is_shares off = option-based)
+                updateTpSlPrices();
             }
             updatePreview();
             if (!this.checked) {
@@ -4850,8 +4984,12 @@ function createDynamicFields(signalTypeId) {
         });
         // Initialize on page load
         toggleOptionFields(isSharesCheckbox.checked);
+        ensureOptionTypeChangeHandler();
+        if (isSharesCheckbox.checked) {
+            applyTpLevelDirectionForShares();
+        }
     }
-    
+
     // Create optional fields checkboxes
     createOptionalFieldsCheckboxes(signalTypeId);
     
@@ -4889,6 +5027,7 @@ function createDynamicFields(signalTypeId) {
 
     // Upgrade any <select> controls inside dynamic fields to match ticker dropdown styling
     document.querySelectorAll('#dynamicFields select, #optionalFieldsVariablesContainer select').forEach((sel) => {
+        if (sel.dataset.tpTargetTypeSelect === '1') return;
         upgradeSelectToTickerDropdown(sel);
     });
     
@@ -4896,18 +5035,82 @@ function createDynamicFields(signalTypeId) {
     updatePreview();
 }
 
+// Update option_type field label and option display text: "Option Type" + CALL/PUT when is_shares off, "Buy or Sell" + Buy/Sell when on
+function updateOptionTypeLabelAndOptions(isShares) {
+    const containers = [document.getElementById('dynamicFields'), document.getElementById('optionalFieldsVariablesContainer')];
+    containers.forEach((root) => {
+        if (!root) return;
+        const optionTypeGroup = root.querySelector('[data-variable-name="option_type"]');
+        if (!optionTypeGroup) return;
+        const labelEl = optionTypeGroup.querySelector('label');
+        const selectEl = optionTypeGroup.querySelector('select');
+        if (labelEl) {
+            labelEl.textContent = isShares ? 'Buy or Sell' : 'Option Type';
+        }
+        if (selectEl) {
+            const optLabels = isShares ? { 'CALL': 'BUY', 'PUT': 'SELL' } : { 'CALL': 'CALL', 'PUT': 'PUT' };
+            Array.from(selectEl.options).forEach((opt) => {
+                const v = (opt.value || '').toUpperCase();
+                opt.textContent = optLabels[v] || opt.value || opt.textContent;
+            });
+            // Refresh custom dropdown if option_type was upgraded (so it shows Buy/Sell instead of CALL/PUT)
+            if (typeof selectEl._refreshDropdownOptions === 'function') {
+                selectEl._refreshDropdownOptions();
+            }
+        }
+    });
+}
+
 // Toggle visibility of option-related fields based on is_shares checkbox
 function toggleOptionFields(isShares) {
+    // When is_shares on: hide only strike and expiration; show option_type as "Buy or Sell" (Buy/Sell). Trade Plan stays visible.
+    // When is_shares off: show strike, expiration, option_type as "Option Type" (CALL/PUT).
+    const strikeGroups = document.querySelectorAll('[data-variable-name="strike"]');
+    const expirationGroups = document.querySelectorAll('[data-variable-name="expiration"]');
+    const optionTypeGroups = document.querySelectorAll('[data-variable-name="option_type"]');
+
+    strikeGroups.forEach((field) => {
+        if (field.closest('.trade-plan-group')) return;
+        field.style.display = isShares ? 'none' : 'block';
+        const input = field.querySelector('input, select');
+        if (input && isShares) {
+            input.removeAttribute('required');
+            input.value = '';
+        } else if (input && !isShares && input.hasAttribute('data-originally-required')) {
+            input.setAttribute('required', true);
+        }
+    });
+    expirationGroups.forEach((field) => {
+        if (field.closest('.trade-plan-group')) return;
+        field.style.display = isShares ? 'none' : 'block';
+        const input = field.querySelector('input, select');
+        if (input && isShares) {
+            input.removeAttribute('required');
+            input.value = '';
+        } else if (input && !isShares && input.hasAttribute('data-originally-required')) {
+            input.setAttribute('required', true);
+        }
+    });
+    optionTypeGroups.forEach((field) => {
+        if (field.closest('.trade-plan-group')) return;
+        field.style.display = 'block';
+    });
+    updateOptionTypeLabelAndOptions(isShares);
+
+    // Other [data-requires-options] that are not strike/expiration/option_type (e.g. inside Trade Plan): hide only when is_shares and outside Trade Plan
     const optionFields = document.querySelectorAll('[data-requires-options="true"]');
-    optionFields.forEach(field => {
-        if (isShares) {
+    optionFields.forEach((field) => {
+        const name = field.getAttribute('data-variable-name');
+        if (name === 'strike' || name === 'expiration' || name === 'option_type') return; // already handled
+        const insideTradePlan = field.closest('.trade-plan-group');
+        if (isShares && !insideTradePlan) {
             field.style.display = 'none';
             const input = field.querySelector('input, select');
             if (input) {
                 input.removeAttribute('required');
                 input.value = '';
             }
-        } else {
+        } else if (!isShares) {
             field.style.display = 'block';
             const input = field.querySelector('input, select');
             if (input && input.hasAttribute('data-originally-required')) {
@@ -4916,9 +5119,9 @@ function toggleOptionFields(isShares) {
         }
     });
 
-    // Also toggle the Trade Plan group wrapper (otherwise it can show as an empty card)
+    // Keep Trade Plan visible when options are disabled (shares mode)
     document.querySelectorAll('.trade-plan-group').forEach((g) => {
-        g.style.display = isShares ? 'none' : 'block';
+        g.style.display = 'block';
     });
 }
 
@@ -4943,6 +5146,8 @@ function updateVariableVisibility() {
         'strike', 'expiration', 'option_type',
         'tp1_per', 'tp2_per', 'tp3_per', 'tp4_per', 'tp5_per', 'tp6_per',
         'tp1_takeoff_per', 'tp2_takeoff_per', 'tp3_takeoff_per', 'tp4_takeoff_per', 'tp5_takeoff_per', 'tp6_takeoff_per',
+        'tp1_mode', 'tp2_mode', 'tp3_mode', 'tp4_mode', 'tp5_mode', 'tp6_mode',
+        'tp1_stock_price', 'tp2_stock_price', 'tp3_stock_price', 'tp4_stock_price', 'tp5_stock_price', 'tp6_stock_price',
         'sl_per',
     ]);
     const forceShowOptionFields = hasTickerTypeControl && !isShares;
@@ -4953,7 +5158,10 @@ function updateVariableVisibility() {
         const variableName = formGroup.getAttribute('data-variable-name');
         // is_shares is a special control variable that should always be visible
         const isSpecialControl = variableName === 'is_shares';
-        const isUsed = usedVariables.has(variableName) || isSpecialControl || (forceShowOptionFields && optionFieldNames.has(variableName));
+        // When is_shares is on: show option_type as "Buy or Sell", and show Trade Plan inputs (tp1_per, sl_per, etc.) but not strike/expiration
+        const showOptionTypeAsBuyOrSell = isShares && variableName === 'option_type';
+        const showTradePlanWhenShares = isShares && optionFieldNames.has(variableName) && variableName !== 'strike' && variableName !== 'expiration';
+        const isUsed = usedVariables.has(variableName) || isSpecialControl || (forceShowOptionFields && optionFieldNames.has(variableName)) || showOptionTypeAsBuyOrSell || showTradePlanWhenShares;
         const isOptionalOnly = optionalOnlyVariables.has(variableName);
         const currentParent = formGroup.parentElement;
         const isInOptionalContainer = currentParent === optionalFieldsVariablesContainer;
@@ -5074,6 +5282,12 @@ function updateVariableVisibility() {
         } else {
             optionalFieldsVariablesContainer.style.display = 'none';
         }
+    }
+
+    // When is_shares is on, show Buy or Sell instead of Option Type (keep in sync after any visibility update)
+    const isSharesCheckboxForLabel = document.getElementById('id_is_shares');
+    if (isSharesCheckboxForLabel) {
+        updateOptionTypeLabelAndOptions(isSharesCheckboxForLabel.checked);
     }
 }
 

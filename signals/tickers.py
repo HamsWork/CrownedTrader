@@ -19,6 +19,9 @@ FALLBACK_TICKERS = [
     {"symbol": "TSLA", "name": "Tesla, Inc."},
     {"symbol": "SPY", "name": "SPDR S&P 500 ETF Trust"},
     {"symbol": "QQQ", "name": "Invesco QQQ Trust"},
+    {"symbol": "IWM", "name": "iShares Russell 2000 ETF"},
+    {"symbol": "DIA", "name": "SPDR Dow Jones Industrial Average ETF"},
+    {"symbol": "VOO", "name": "Vanguard S&P 500 ETF"},
 ]
 
 

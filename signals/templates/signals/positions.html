@@ -525,6 +525,8 @@
             <span class="pm-sym">{{ p.symbol|default:"-" }}</span>
             {% if p.instrument == "options" %}
               <span class="pm-sub">{{ p.option_type }} {{ p.strike }} · {{ p.expiration }}</span>
+            {% elif p.instrument == "shares" %}
+              <span class="pm-sub">Shares</span>
             {% endif %}
           </td>
           <td>{{ p.display_qty }}</td>
@@ -597,6 +599,8 @@
             <span class="pm-sym">{{ p.symbol|default:"-" }}</span>
             {% if p.instrument == "options" %}
               <span class="pm-sub">{{ p.option_type }} {{ p.strike }} · {{ p.expiration }}</span>
+            {% elif p.instrument == "shares" %}
+              <span class="pm-sub">Shares</span>
             {% endif %}
           </td>
           <td>{{ p.display_qty }}</td>

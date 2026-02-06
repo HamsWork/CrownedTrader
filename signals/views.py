@@ -75,12 +75,15 @@ def _search_tickers_tradingview(q: str, *, limit: int, include_etfs: bool) -> li
         return []
 
     # TradingView returns mixed asset classes; filter down to stock/etf on US exchanges.
+    # Include "fund" so ETFs like SPY, QQQ come up (TradingView sometimes uses type "fund" for ETFs).
     allowed_types = {"stock"}
     if include_etfs:
         allowed_types.add("etf")
+        allowed_types.add("fund")
 
+    # Send uppercase so lowercase user input (e.g. "aapl") still finds symbols (e.g. AAPL)
     params = {
-        "text": q,
+        "text": q.upper(),
         # Disable HTML highlight markup (otherwise descriptions may contain <em> tags)
         "hl": "0",
         "lang": "en",
@@ -632,7 +635,15 @@ def get_signal_template(signal):
         return s in ("1", "true", "yes", "y", "on")
 
     is_shares = _is_truthy(data_copy.get("is_shares", False))
-    if not is_shares and isinstance(fields, list):
+    # When is_shares is on: remove Expiration, Strike, and Option Price fields from the Discord embed.
+    if is_shares and isinstance(fields, list):
+        def _is_option_only_field(f):
+            n = str((f or {}).get("name") or "").strip().lower()
+            return "expiration" in n or "strike" in n or "option price" in n
+        fields = [f for f in fields if not _is_option_only_field(f)]
+
+    # Inject Trade Plan for both options and shares so sent Discord message matches preview.
+    if isinstance(fields, list):
         # Avoid duplicates if the template already includes a plan section
         def _has_plan(existing_fields: list) -> bool:
             for f in existing_fields:
@@ -1376,19 +1387,44 @@ def dashboard(request):
                     is_shares = _truthy(signal_data.get('is_shares', False))
                     symbol = (str(signal_data.get('ticker') or signal_data.get('symbol') or '').strip().upper() or '')[:20]
                     instrument = Position.INSTRUMENT_SHARES if is_shares else Position.INSTRUMENT_OPTIONS
-                    entry_raw = signal_data.get('option_price') or signal_data.get('entry_price') or signal_data.get('price') or ''
+                    # When is_shares: entry must be stock price only (never option_price). When options: use option_price.
+                    if instrument == Position.INSTRUMENT_SHARES:
+                        entry_raw = (
+                            signal_data.get('current_price')
+                            or signal_data.get('entry_price')
+                            or signal_data.get('price')
+                            or signal_data.get('stock_price')
+                            or ''
+                        )
+                    else:
+                        entry_raw = (
+                            signal_data.get('option_price')
+                            or signal_data.get('entry_price')
+                            or signal_data.get('price')
+                            or ''
+                        )
                     try:
                         entry_price = Decimal(str(entry_raw).strip()) if entry_raw else None
                     except (InvalidOperation, TypeError):
                         entry_price = None
-                    quantity = 1
-                    try:
-                        q = signal_data.get('quantity')
-                        if q is not None and str(q).strip() != '':
-                            quantity = int(Decimal(str(q)))
-                    except (ValueError, InvalidOperation, TypeError):
-                        quantity = 1
-                    multiplier = 1 if is_shares else 100
+                    # For shares: if form didn't include a price, fetch current stock price so position entry is not empty
+                    if instrument == Position.INSTRUMENT_SHARES and (entry_price is None or entry_price <= 0) and symbol:
+                        stock_price = _get_stock_price(symbol)
+                        if stock_price is not None and stock_price > 0:
+                            entry_price = Decimal(str(round(stock_price, 2)))
+                    # Shares: QTY = number of shares (1), multiplier 1 → display_qty 1. Options: quantity = contracts, multiplier 100 → display_qty = quantity*100.
+                    if instrument == Position.INSTRUMENT_SHARES:
+                        position_quantity = 100
+                        position_multiplier = 1
+                    else:
+                        position_multiplier = 100
+                        position_quantity = 1
+                        try:
+                            q = signal_data.get('quantity')
+                            if q is not None and str(q).strip() != '':
+                                position_quantity = max(1, int(Decimal(str(q))))
+                        except (ValueError, InvalidOperation, TypeError):
+                            pass
                     position_mode = (request.POST.get("position_mode") or "").strip().lower()
                     mode = Position.MODE_AUTO if position_mode == "auto" else Position.MODE_MANUAL
                     Position.objects.create(
@@ -1402,9 +1438,9 @@ def dashboard(request):
                         option_type=str(signal_data.get('option_type') or '').strip().upper()[:10],
                         strike=str(signal_data.get('strike') or '')[:32],
                         expiration=str(signal_data.get('expiration') or '')[:32],
-                    quantity=max(1, quantity),
-                    multiplier=multiplier,
-                    entry_price=entry_price,
+                        quantity=position_quantity,
+                        multiplier=position_multiplier,
+                        entry_price=entry_price,
                     )
                     # Set mode from form: "auto" = automatic tracking (system checks TP/SL and posts exit)
                     position_mode = (request.POST.get("position_mode") or "").strip().lower()
@@ -1779,35 +1815,45 @@ def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=Non
     except Exception:
         company = ""
     company_part = f" ({company})" if company else ""
-    expiration = str(data.get("expiration") or pos.expiration or "").strip()
-    strike = str(data.get("strike") or pos.strike or "").strip()
-    opt_type = str(data.get("option_type") or pos.option_type or "").strip().upper()
-    strike_line = " ".join([p for p in [strike, opt_type] if p]).strip()
-    entry_raw = data.get("entry_price") or data.get("option_price") or ""
-    entry = _to_float(entry_raw if entry_raw != "" else pos.entry_price)
+    is_shares = getattr(pos, "instrument", None) == Position.INSTRUMENT_SHARES
+    if is_shares:
+        entry_raw = data.get("current_price") or data.get("entry_price") or data.get("price") or ""
+    else:
+        expiration = str(data.get("expiration") or pos.expiration or "").strip()
+        strike = str(data.get("strike") or pos.strike or "").strip()
+        opt_type = str(data.get("option_type") or pos.option_type or "").strip().upper()
+        strike_line = " ".join([p for p in [strike, opt_type] if p]).strip()
+        entry_raw = data.get("entry_price") or data.get("option_price") or data.get("price") or ""
+    entry = _to_float(entry_raw if (entry_raw != "" and entry_raw is not None) else pos.entry_price)
     now = timezone.localtime(timezone.now())
     date_str = now.strftime("%a %b %d")
     color = 0x10B981 if kind == "tp" else 0xEF4444
     embed = {"color": color}
-    exp_str = _exp_display(expiration) if expiration else "-"
-    strike_str = strike_line or "-"
-    price_str = _fmt_money(entry) if entry > 0 else "-"
-    embed["fields"] = [
-        {"name": "❌ Expiration", "value": exp_str, "inline": True},
-        {"name": "✍️ Strike", "value": strike_str, "inline": True},
-        {"name": "💵 Price", "value": price_str, "inline": True},
-    ]
+    if is_shares:
+        price_str = _fmt_money(entry) if entry > 0 else "-"
+        embed["fields"] = [{"name": "💵 Entry (Stock)", "value": price_str, "inline": True}]
+    else:
+        exp_str = _exp_display(expiration) if expiration else "-"
+        strike_str = strike_line or "-"
+        price_str = _fmt_money(entry) if entry > 0 else "-"
+        embed["fields"] = [
+            {"name": "❌ Expiration", "value": exp_str, "inline": True},
+            {"name": "✍️ Strike", "value": strike_str, "inline": True},
+            {"name": "💵 Price", "value": price_str, "inline": True},
+        ]
     try:
         override_f = float(override_price) if override_price is not None else None
     except (TypeError, ValueError):
         override_f = None
     if kind == "tp" and tp_level and tp_level > 0:
-        tp_price = _to_float(data.get(f"tp{tp_level}_price"))
+        _tp_raw = (data.get(f"tp{tp_level}_stock_price") or data.get(f"tp{tp_level}_price")) if is_shares else data.get(f"tp{tp_level}_price")
+        tp_price = _to_float(_tp_raw)
         if override_f is not None and override_f > 0:
             tp_price = override_f
         tp_per = _to_float(data.get(f"tp{tp_level}_per"))
         takeoff = _to_float(data.get(f"tp{tp_level}_takeoff_per")) or 50.0
-        next_price = _to_float(data.get(f"tp{tp_level + 1}_price"))
+        _next_raw = (data.get(f"tp{tp_level + 1}_stock_price") or data.get(f"tp{tp_level + 1}_price")) if is_shares else data.get(f"tp{tp_level + 1}_price")
+        next_price = _to_float(_next_raw)
         next_line = f"Let remaining {int(round(100 - takeoff))}% ride to TP{tp_level + 1} (${_fmt_money(next_price)})" if next_price > 0 else ""
         entry_str = f"${_fmt_money(entry)}" if entry > 0 else "-"
         tp_hit_str = f"${_fmt_money(tp_price)}" if tp_price > 0 else "-"
@@ -1835,7 +1881,8 @@ def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=Non
             desc_after += "\n\n🔍 Strategy Executed:\n" + strategy_text
         embed["description_after"] = desc_after
     else:
-        sl_price = _to_float(data.get("sl_price"))
+        _sl_raw = (data.get("sl_stock_price") or data.get("sl_price")) if is_shares else data.get("sl_price")
+        sl_price = _to_float(_sl_raw)
         if override_f is not None and override_f > 0:
             sl_price = override_f
         sl_per = _to_float(data.get("sl_per"))
@@ -2331,8 +2378,21 @@ def us_tickers(request):
             tickers = []
             # Continue into cache flow below.
 
-    # Cache flow (fallback or explicit)
+    # Cache flow (fallback or explicit): ensure popular ETFs (SPY, QQQ, etc.) are always in the list
+    POPULAR_ETFS = [
+        {"symbol": "SPY", "name": "SPDR S&P 500 ETF Trust"},
+        {"symbol": "QQQ", "name": "Invesco QQQ Trust"},
+        {"symbol": "IWM", "name": "iShares Russell 2000 ETF"},
+        {"symbol": "DIA", "name": "SPDR Dow Jones Industrial Average ETF"},
+        {"symbol": "VOO", "name": "Vanguard S&P 500 ETF"},
+    ]
     tickers_all = list(get_us_tickers() or [])
+    seen = {str(t.get("symbol") or "").strip().upper() for t in tickers_all if isinstance(t, dict)}
+    for etf in POPULAR_ETFS:
+        sym = str(etf.get("symbol") or "").strip().upper()
+        if sym and sym not in seen:
+            tickers_all.append(etf)
+            seen.add(sym)
     tickers = tickers_all
 
     if q:
