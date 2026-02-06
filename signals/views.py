@@ -749,7 +749,6 @@ def get_signal_template(signal):
                 s2 = str(s or "").strip()
                 return s2 if s2.endswith(".") else f"{s2}."
 
-            last_idx = len(tp_steps) - 1
             for idx, step in enumerate(tp_steps):
                 at_str = str(step.get("at_str") or "").strip()
                 level = int(step.get("level") or (idx + 1))
@@ -759,13 +758,26 @@ def get_signal_template(signal):
                 else:
                     take_str = ""
 
+                # Raise stop loss suffix from signal data
                 suffix = ""
-                if len(tp_steps) == 1:
-                    suffix = " and tighten up stop loss to slightly above break even"
-                elif idx == 0:
-                    suffix = " and tighten up stop loss to slightly above break even"
-                elif idx == last_idx:
-                    suffix = ""
+                raise_sl_to = str(data_copy.get(f"tp{level}_raise_sl_to") or "").strip().lower()
+                if raise_sl_to == "entry":
+                    suffix = " and raise stop loss to break even"
+                elif raise_sl_to == "custom":
+                    mode = str(data_copy.get(f"tp{level}_mode") or "").strip().lower()
+                    is_stock = mode in ("stock", "stock_price", "underlying", "share_price")
+                    custom_stock = str(data_copy.get(f"tp{level}_raise_sl_custom_stock") or "").strip()
+                    custom_per = str(data_copy.get(f"tp{level}_raise_sl_custom_per") or "").strip()
+                    custom_price = str(data_copy.get(f"tp{level}_raise_sl_custom") or "").strip()
+                    if is_stock and custom_stock:
+                        try:
+                            suffix = f" and raise the stop loss to ${float(custom_stock):.2f} above the entry price"
+                        except (TypeError, ValueError):
+                            suffix = " and raise the stop loss to custom level"
+                    elif custom_per:
+                        suffix = f" and raise the stop loss to {custom_per}% above the entry price"
+                    else:
+                        suffix = " and raise the stop loss to entry level"
 
                 tps.append(_ensure_period(f"Take Profit ({level}): At {at_str}{take_str}{suffix}"))
 
@@ -1104,7 +1116,30 @@ def saved_trade_plans(request):
             take_str = f" take off {takeoff_fmt} of position" if takeoff_fmt else ""
             if i > 0 and take_str:
                 take_str = take_str.replace(" of position", " of remaining position")
-            tp_plan_lines.append(f"Take Profit ({i + 1}): At {at_str}{take_str}.")
+            raise_sl_suffix = ""
+            raise_sl_to = str(lev.get("raise_sl_to") or "").strip().lower()
+            lev_num = i + 1
+            if raise_sl_to == "entry":
+                raise_sl_suffix = " and raise stop loss to break even (entry)" if lev_num == 1 else f" and raise stop loss to TP{lev_num - 1}"
+            elif raise_sl_to == "custom":
+                custom_stock = str(lev.get("raise_sl_custom_stock") or "").strip()
+                custom_per = str(lev.get("raise_sl_custom_per") or "").strip()
+                custom_price = str(lev.get("raise_sl_custom") or "").strip()
+                if sp and custom_stock:
+                    try:
+                        v = float(custom_stock)
+                        raise_sl_suffix = f" and raise the stop loss to ${v:.2f} above the entry price" if v else ""
+                    except (TypeError, ValueError):
+                        raise_sl_suffix = ""
+                elif custom_per:
+                    try:
+                        v = float(str(custom_per).replace("%", "").strip())
+                        raise_sl_suffix = f" and raise the stop loss to {custom_per}% above the entry price" if v else ""
+                    except (TypeError, ValueError):
+                        raise_sl_suffix = ""
+                else:
+                    raise_sl_suffix = " and raise the stop loss to entry price" if v else ""
+            tp_plan_lines.append(f"Take Profit ({i + 1}): At {at_str}{take_str}{raise_sl_suffix}.")
         sl_display = f"{sl_per}%" if sl_per and not str(sl_per).endswith("%") else (sl_per or "")
         embed_fields = []
         if targets_parts:
@@ -1536,7 +1571,24 @@ def trade_plan_api(request):
             per = str(item.get("per") or "").strip()
             stock_price = str(item.get("stock_price") or item.get("stockPrice") or "").strip()
             takeoff = str(item.get("takeoff") or "").strip()
-            cleaned_levels.append({"mode": mode or "percent", "per": per, "stock_price": stock_price, "takeoff": takeoff})
+            raise_sl_to = str(item.get("raise_sl_to") or "").strip().lower()
+            if raise_sl_to not in ("", "off", "entry", "break_even", "custom"):
+                raise_sl_to = ""
+            if raise_sl_to == "off":
+                raise_sl_to = ""
+            raise_sl_custom = str(item.get("raise_sl_custom") or "").strip()
+            raise_sl_custom_per = str(item.get("raise_sl_custom_per") or "").strip()
+            raise_sl_custom_stock = str(item.get("raise_sl_custom_stock") or "").strip()
+            level_dict = {"mode": mode or "percent", "per": per, "stock_price": stock_price, "takeoff": takeoff}
+            if raise_sl_to:
+                level_dict["raise_sl_to"] = raise_sl_to
+            if raise_sl_custom:
+                level_dict["raise_sl_custom"] = raise_sl_custom
+            if raise_sl_custom_per:
+                level_dict["raise_sl_custom_per"] = raise_sl_custom_per
+            if raise_sl_custom_stock:
+                level_dict["raise_sl_custom_stock"] = raise_sl_custom_stock
+            cleaned_levels.append(level_dict)
         # Normalize takeoff: last TP = 100%, others = 50%.
         if cleaned_levels:
             for i in range(len(cleaned_levels) - 1):

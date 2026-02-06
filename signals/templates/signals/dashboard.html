@@ -688,6 +688,27 @@
         fill: currentColor;
     }
 
+    .tp-actions-panel {
+        margin-top: 10px;
+        padding: 12px;
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(42, 55, 95, 0.6);
+        border-radius: 10px;
+        display: block;
+    }
+    .tp-actions-panel label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 600;
+        font-size: 0.88em;
+        color: #9ca3af;
+    }
+    .tp-actions-panel select,
+    .tp-actions-panel input[type="number"] {
+        margin-right: 8px;
+        margin-bottom: 8px;
+    }
+
     .tp-level-row-body .form-group {
         margin-bottom: 0;
         min-width: 0;
@@ -2164,6 +2185,28 @@ function updateTpSlPrices() {
         const slPrice = isSell ? base * (1 + slPer / 100) : base * (1 - slPer / 100);
         setValueIfAllowed(slPriceEl, formatFloat3(slPrice));
     }
+
+    updateRaiseSlPricesFromPercent(base, isSell);
+}
+
+function updateRaiseSlPricesFromPercent(base, isSell) {
+    if (!Number.isFinite(base) || base <= 0) return;
+    const rows = document.querySelectorAll('.tp-level-row[data-tp-row="1"]');
+    rows.forEach(function(r) {
+        const raiseSlSelect = r.querySelector('[data-tp-raise-sl-to]');
+        if (!raiseSlSelect || raiseSlSelect.value !== 'custom') return;
+        const percentWrap = r.querySelector('[data-tp-raise-sl-percent-wrap]');
+        if (!percentWrap || percentWrap.style.display === 'none') return;
+        const perInput = r.querySelector('[data-tp-raise-sl-custom-per]');
+        const priceInput = r.querySelector('[data-tp-raise-sl-custom]');
+        if (!perInput || !priceInput) return;
+        const perStr = String(perInput.value || '').trim().replace('%', '');
+        const per = Number(perStr);
+        if (!Number.isFinite(per)) return;
+        const p = base * (1 + (isSell ? -Math.abs(per) : per) / 100);
+        priceInput.value = String(typeof formatFloat3 === 'function' ? formatFloat3(p) : p.toFixed(2));
+        priceInput.dataset.autoFilled = '1';
+    });
 }
 
 // When Target Type = Stock price ($), default TP stock targets to +10/20/30/40/50/60%
@@ -3018,25 +3061,40 @@ function updatePreview() {
                     const per = formatPct1(formData[`tp${i}_per`]);
                     return per || `${(i * 10).toFixed(1)}%`;
                 })();
-                tpSteps.push({ level: i, atStr, takePct });
+
+                // Raise stop loss suffix from row's selection (match selection labels: entry for TP1, TPn-1 for TP2+)
+                let raiseSlSuffix = '';
+                const raiseSlSelect = rowEl.querySelector('[data-tp-raise-sl-to]');
+                const raiseSlTo = raiseSlSelect ? String(raiseSlSelect.value || '').trim().toLowerCase() : '';
+                if (raiseSlTo === 'entry') {
+                    raiseSlSuffix = i === 1 ? ' and raise stop loss to break even (entry)' : ` and raise stop loss to TP${i - 1}`;
+                } else if (raiseSlTo === 'custom') {
+                    const customPer = rowEl.querySelector('[data-tp-raise-sl-custom-per]');
+                    const customPrice = rowEl.querySelector('[data-tp-raise-sl-custom]');
+                    const customStock = rowEl.querySelector('[data-tp-raise-sl-custom-stock]');
+                    const perVal = customPer ? String(customPer.value || '').trim() : '';
+                    const priceVal = customPrice ? String(customPrice.value || '').trim() : '';
+                    const stockVal = customStock ? String(customStock.value || '').trim() : '';
+                    const hasCustomStock = mode === 'stock' && stockVal && Number(stockVal) !== 0;
+                    const hasCustomPercent = mode === 'percent' && ( (priceVal && Number(priceVal) !== 0) || (perVal && Number(perVal) !== 0) );
+                    if (hasCustomStock) {
+                        raiseSlSuffix = ` and raise the stop loss to $${Number(stockVal).toFixed(2)} above the entry price`;
+                    } else if (hasCustomPercent) {
+                        if (priceVal && Number(priceVal) !== 0) raiseSlSuffix = ` and raise the stop loss to $${Number(priceVal).toFixed(2)} above the entry price`;
+                        else if (perVal && Number(perVal) !== 0) raiseSlSuffix = ` and raise the stop loss to ${perVal}% above the entry price`;
+                    }
+                    // When custom is selected but value is empty/zero: no suffix (omit "raise the stop loss to custom level")
+                }
+
+                tpSteps.push({ level: i, atStr, takePct, raiseSlSuffix });
             }
 
             const ensurePeriod = (s) => (String(s || '').trim().endsWith('.') ? String(s || '').trim() : `${String(s || '').trim()}.`);
-            const lastIdx = tpSteps.length - 1;
             tpSteps.forEach((step, idx) => {
                 const takeStr = step.takePct
                     ? (idx === 0 ? ` take off ${step.takePct} of position` : ` take off ${step.takePct} of remaining position`)
                     : '';
-
-                let suffix = '';
-                if (tpSteps.length === 1) {
-                    suffix = ' and tighten up stop loss to slightly above break even';
-                } else if (idx === 0) {
-                    suffix = ' and tighten up stop loss to slightly above break even';
-                } else if (idx === lastIdx) {
-                    suffix = '';
-                }
-
+                const suffix = step.raiseSlSuffix || '';
                 const line = ensurePeriod(`Take Profit (${step.level}): At ${step.atStr}${takeStr}${suffix}`);
                 tps.push(line);
             });
@@ -3521,7 +3579,7 @@ function createDynamicFields(signalTypeId) {
         return formGroup;
     }
 
-    function createTakeProfitRow(level, defaultPer, defaultTakeoffPer, { defaultMode = 'percent', defaultStockPrice = '' } = {}) {
+    function createTakeProfitRow(level, defaultPer, defaultTakeoffPer, { defaultMode = 'percent', defaultStockPrice = '', defaultRaiseSlTo = '', defaultRaiseSlCustom = '', defaultRaiseSlCustomPer = '', defaultRaiseSlCustomStock = '', isLastLevel = false } = {}) {
         const rowWrap = document.createElement('div');
         rowWrap.className = 'tp-level-row';
         rowWrap.dataset.tpRow = '1';
@@ -3754,6 +3812,173 @@ function createDynamicFields(signalTypeId) {
         body.appendChild(targetCol);
         body.appendChild(takeoffGroup);
         rowWrap.appendChild(body);
+
+        if (!isLastLevel) {
+        // Raise stop loss: visible on all TP levels except the last (last is always off)
+        const actionsPanel = document.createElement('div');
+        actionsPanel.className = 'tp-actions-panel';
+        actionsPanel.dataset.tpActionsPanel = '1';
+        const actionsLabel = document.createElement('label');
+        actionsLabel.textContent = 'Raise stop loss to:';
+        const raiseSlSelect = document.createElement('select');
+        raiseSlSelect.className = 'form-input';
+        raiseSlSelect.dataset.tpRaiseSlTo = '1';
+        raiseSlSelect.dataset.tpLevel = String(level);
+        const optOff = document.createElement('option');
+        optOff.value = 'off';
+        optOff.textContent = 'Off';
+        raiseSlSelect.appendChild(optOff);
+        const optEntry = document.createElement('option');
+        optEntry.value = 'entry';
+        optEntry.textContent = level === 1 ? 'Break even (entry)' : `Break even (TP${level - 1})`;
+        raiseSlSelect.appendChild(optEntry);
+        const optCustom = document.createElement('option');
+        optCustom.value = 'custom';
+        optCustom.textContent = 'Custom level';
+        raiseSlSelect.appendChild(optCustom);
+        const customWrap = document.createElement('div');
+        customWrap.style.display = 'none';
+        customWrap.dataset.tpRaiseSlCustomWrap = '1';
+        const currentTpMode = () => (typeof globalModeSelect !== 'undefined' && globalModeSelect && (globalModeSelect.value === 'stock' || globalModeSelect.value === 'stock_price')) ? 'stock' : 'percent';
+        const showPercentCustom = () => currentTpMode() === 'percent';
+        const showStockCustom = () => currentTpMode() === 'stock';
+
+        // Percent mode: Level % + Price inputs on the same line (synced like TP row)
+        const customPercentWrap = document.createElement('div');
+        customPercentWrap.dataset.tpRaiseSlPercentWrap = '1';
+        customPercentWrap.style.display = showPercentCustom() ? 'flex' : 'none';
+        customPercentWrap.style.gap = '14px';
+        customPercentWrap.style.flexWrap = 'nowrap';
+        customPercentWrap.style.marginTop = '8px';
+        customPercentWrap.style.alignItems = 'flex-end';
+        const perLabel = document.createElement('label');
+        perLabel.textContent = 'Level %';
+        const perInputCustom = document.createElement('input');
+        perInputCustom.type = 'text';
+        perInputCustom.className = 'form-input';
+        perInputCustom.placeholder = '0';
+        perInputCustom.dataset.tpRaiseSlCustomPer = '1';
+        perInputCustom.dataset.tpLevel = String(level);
+        const priceLabelCustom = document.createElement('label');
+        priceLabelCustom.textContent = 'Price';
+        const customPriceInput = document.createElement('input');
+        customPriceInput.type = 'number';
+        customPriceInput.step = '0.01';
+        customPriceInput.min = '0';
+        customPriceInput.className = 'form-input';
+        customPriceInput.placeholder = '0.00';
+        customPriceInput.dataset.tpRaiseSlCustom = '1';
+        customPriceInput.dataset.tpLevel = String(level);
+        const perBlock = document.createElement('div');
+        perBlock.style.display = 'flex';
+        perBlock.style.flexDirection = 'column';
+        perBlock.style.gap = '4px';
+        perBlock.style.minWidth = '80px';
+        perBlock.appendChild(perLabel);
+        perBlock.appendChild(perInputCustom);
+        const priceBlock = document.createElement('div');
+        priceBlock.style.display = 'flex';
+        priceBlock.style.flexDirection = 'column';
+        priceBlock.style.gap = '4px';
+        priceBlock.style.minWidth = '100px';
+        priceBlock.appendChild(priceLabelCustom);
+        priceBlock.appendChild(customPriceInput);
+        customPercentWrap.appendChild(perBlock);
+        customPercentWrap.appendChild(priceBlock);
+        function getRaiseSlBasePrice() {
+            const isShares = (findFieldByName('is_shares') && findFieldByName('is_shares').checked) || false;
+            const currentPriceEl = findFieldByName('current_price');
+            const optionPriceEl = findFieldByName('option_price');
+            const entryPriceEl = findFieldByName('entry_price');
+            const priceEl = findFieldByName('price');
+            const baseRaw = isShares
+                ? ((currentPriceEl && currentPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '')
+                : ((optionPriceEl && optionPriceEl.value) || (entryPriceEl && entryPriceEl.value) || (priceEl && priceEl.value) || '');
+            const base = Number(String(baseRaw).trim());
+            return Number.isFinite(base) ? base : NaN;
+        }
+        function parsePct(val) {
+            const s = String(val || '').trim().replace('%', '');
+            const n = Number(s);
+            return Number.isFinite(n) ? n : NaN;
+        }
+        function applyRaiseSlPriceFromPercent() {
+            const base = getRaiseSlBasePrice();
+            if (Number.isFinite(base) && base > 0) {
+                const per = parsePct(perInputCustom.value);
+                if (Number.isFinite(per)) {
+                    const p = base * (1 + per / 100);
+                    customPriceInput.value = String(typeof formatFloat3 === 'function' ? formatFloat3(p) : p.toFixed(2));
+                }
+            }
+            if (typeof updatePreview === 'function') updatePreview();
+        }
+        function applyRaiseSlPercentFromPrice() {
+            const base = getRaiseSlBasePrice();
+            if (Number.isFinite(base) && base > 0) {
+                const price = Number(String(customPriceInput.value || '').trim());
+                if (Number.isFinite(price) && price > 0) {
+                    const per = (price / base - 1) * 100;
+                    perInputCustom.value = String(Number(per.toFixed(1)));
+                }
+            }
+            if (typeof updatePreview === 'function') updatePreview();
+        }
+        perInputCustom.addEventListener('input', applyRaiseSlPriceFromPercent);
+        perInputCustom.addEventListener('change', () => { applyRaiseSlPriceFromPercent(); });
+        customPriceInput.addEventListener('input', applyRaiseSlPercentFromPrice);
+        customPriceInput.addEventListener('change', () => { applyRaiseSlPercentFromPrice(); });
+
+        // Stock mode: Stock price ($) input
+        const customStockWrap = document.createElement('div');
+        customStockWrap.dataset.tpRaiseSlStockWrap = '1';
+        customStockWrap.style.display = showStockCustom() ? 'block' : 'none';
+        customStockWrap.style.marginTop = '8px';
+        const stockLabelCustom = document.createElement('label');
+        stockLabelCustom.textContent = 'Stock price ($)';
+        const customStockInput = document.createElement('input');
+        customStockInput.type = 'number';
+        customStockInput.step = '0.01';
+        customStockInput.min = '0';
+        customStockInput.className = 'form-input';
+        customStockInput.placeholder = '0.00';
+        customStockInput.dataset.tpRaiseSlCustomStock = '1';
+        customStockInput.dataset.tpLevel = String(level);
+        customStockWrap.appendChild(stockLabelCustom);
+        customStockWrap.appendChild(customStockInput);
+        customStockInput.addEventListener('input', () => { if (typeof updatePreview === 'function') updatePreview(); });
+        customStockInput.addEventListener('change', () => { if (typeof updatePreview === 'function') updatePreview(); });
+
+        perInputCustom.value = defaultRaiseSlCustomPer ? String(defaultRaiseSlCustomPer).trim() : '5';
+        if (defaultRaiseSlCustom) customPriceInput.value = String(defaultRaiseSlCustom).trim();
+        if (defaultRaiseSlCustomStock) customStockInput.value = String(defaultRaiseSlCustomStock).trim();
+
+        customWrap.appendChild(customPercentWrap);
+        customWrap.appendChild(customStockWrap);
+
+        const setRaiseSlValue = (v) => {
+            const norm = String(v || '').trim().toLowerCase();
+            const allowed = ['off', 'entry', 'break_even', 'custom'];
+            const value = (norm === 'break_even' ? 'entry' : (allowed.includes(norm) ? norm : 'off'));
+            if (value === '' || value === 'off') raiseSlSelect.value = 'off';
+            else raiseSlSelect.value = value;
+            if (raiseSlSelect.value === 'custom') customWrap.style.display = 'block';
+            else customWrap.style.display = 'none';
+        };
+        setRaiseSlValue(defaultRaiseSlTo || '');
+        raiseSlSelect.addEventListener('change', () => {
+            customWrap.style.display = raiseSlSelect.value === 'custom' ? 'block' : 'none';
+            if (raiseSlSelect.value === 'custom') applyRaiseSlPriceFromPercent();
+            if (typeof updatePreview === 'function') updatePreview();
+        });
+        raiseSlSelect.addEventListener('input', () => {
+            if (typeof updatePreview === 'function') updatePreview();
+        });
+        actionsPanel.appendChild(actionsLabel);
+        actionsPanel.appendChild(raiseSlSelect);
+        actionsPanel.appendChild(customWrap);
+        rowWrap.appendChild(actionsPanel);
+        }
 
         // --- Percent <-> Price sync (Option price targets) ---
         const tpPerInput = tpGroup.querySelector('input');
@@ -4127,7 +4352,15 @@ function createDynamicFields(signalTypeId) {
                     const per = findFieldByName(`tp${lvl}_per`)?.value ?? '';
                     const takeoff = findFieldByName(`tp${lvl}_takeoff_per`)?.value ?? '';
                     const stock_price = findFieldByName(`tp${lvl}_stock_price`)?.value ?? '';
-                    return { per: String(per), takeoff: String(takeoff), stock_price: String(stock_price).trim() };
+                    const raiseSlSelect = r.querySelector('[data-tp-raise-sl-to]');
+                    const raiseSlCustomPer = r.querySelector('[data-tp-raise-sl-custom-per]');
+                    const raiseSlCustom = r.querySelector('[data-tp-raise-sl-custom]');
+                    const raiseSlCustomStock = r.querySelector('[data-tp-raise-sl-custom-stock]');
+                    const raise_sl_to = raiseSlSelect ? String(raiseSlSelect.value || '').trim() : '';
+                    const raise_sl_custom_per = raiseSlCustomPer ? String(raiseSlCustomPer.value || '').trim() : '';
+                    const raise_sl_custom = raiseSlCustom ? String(raiseSlCustom.value || '').trim() : '';
+                    const raise_sl_custom_stock = raiseSlCustomStock ? String(raiseSlCustomStock.value || '').trim() : '';
+                    return { per: String(per), takeoff: String(takeoff), stock_price: String(stock_price).trim(), raise_sl_to, raise_sl_custom, raise_sl_custom_per, raise_sl_custom_stock };
                 });
             };
 
@@ -4142,6 +4375,10 @@ function createDynamicFields(signalTypeId) {
                     const stockCol = r.querySelector('[data-tp-stock-col]');
                     if (percentCol) percentCol.style.display = globalTpMode === 'percent' ? '' : 'none';
                     if (stockCol) stockCol.style.display = globalTpMode === 'stock' ? '' : 'none';
+                    const percentWrap = r.querySelector('[data-tp-raise-sl-percent-wrap]');
+                    const stockWrap = r.querySelector('[data-tp-raise-sl-stock-wrap]');
+                    if (percentWrap) percentWrap.style.display = globalTpMode === 'percent' ? 'block' : 'none';
+                    if (stockWrap) stockWrap.style.display = globalTpMode === 'stock' ? 'block' : 'none';
                 });
                 updateDefaultTpStockTargets();
                 updateTpSlPrices();
@@ -4161,7 +4398,13 @@ function createDynamicFields(signalTypeId) {
                     const perVal = Number.isFinite(perNum) ? perNum : (lvl * 10);
                     const takeoffVal = normalizedTakeoffFor(lvl, s.length);
                     const stockPriceRaw = String(it?.stock_price ?? it?.stockPrice ?? '').trim();
-                    const rowEl = createTakeProfitRow(lvl, perVal, takeoffVal, { defaultMode: globalTpMode, defaultStockPrice: stockPriceRaw });
+                    let raiseSlTo = String(it?.raise_sl_to ?? '').trim();
+                    if (!raiseSlTo) raiseSlTo = (lvl === 1) ? 'entry' : 'off';
+                    const raiseSlCustom = String(it?.raise_sl_custom ?? '').trim();
+                    const raiseSlCustomPer = String(it?.raise_sl_custom_per ?? '').trim();
+                    const raiseSlCustomStock = String(it?.raise_sl_custom_stock ?? '').trim();
+                    const isLastLevel = (lvl === s.length);
+                    const rowEl = createTakeProfitRow(lvl, perVal, takeoffVal, { defaultMode: globalTpMode, defaultStockPrice: stockPriceRaw, defaultRaiseSlTo: raiseSlTo, defaultRaiseSlCustom: raiseSlCustom, defaultRaiseSlCustomPer: raiseSlCustomPer, defaultRaiseSlCustomStock: raiseSlCustomStock, isLastLevel });
                     // Wire remove: allowed for TP2+; removing reindexes rows so tp1/tp2/... stay stable.
                     const btn = rowEl.querySelector('.tp-level-row-header .tp-remove-btn');
                     if (btn) {
@@ -5533,13 +5776,12 @@ document.addEventListener('DOMContentLoaded', function() {
             forceSet(el, value);
         };
 
-        // Defaults requested for the New Trade Plan builder:
-        // - underlying stock price = $200
-        // - option price base = $5
-        ensureHidden('current_price', '200.00');
-        ensureHidden('option_price', '5.00');
-        ensureHidden('entry_price', '5.00');
-        ensureHidden('price', '5.00');
+        // Defaults for the Trade Plan edit page: stock price = 200, option price = 5
+        ensureHidden('current_price', '200');
+        ensureHidden('stock_price', '200');
+        ensureHidden('option_price', '5');
+        ensureHidden('entry_price', '5');
+        ensureHidden('price', '5');
 
         // Hide everything else in the left column; keep only the Trade Plan panel.
         Array.from(dynamicFieldsContainer.children).forEach((ch) => {
@@ -5768,6 +6010,21 @@ document.addEventListener('DOMContentLoaded', function() {
             if (showDescriptionCheckbox) {
                 signalData['_show_description'] = showDescriptionCheckbox.checked;
             }
+
+            // Include Raise Stop Loss selections from Trade Plan rows (not regular named inputs)
+            const tpRowsForData = document.querySelectorAll('.tp-level-row[data-tp-row="1"]');
+            tpRowsForData.forEach((r) => {
+                const lvl = r.dataset.tpLevel || '';
+                if (!lvl) return;
+                const raiseSlSelect = r.querySelector('[data-tp-raise-sl-to]');
+                const raiseSlCustomPer = r.querySelector('[data-tp-raise-sl-custom-per]');
+                const raiseSlCustom = r.querySelector('[data-tp-raise-sl-custom]');
+                const raiseSlCustomStock = r.querySelector('[data-tp-raise-sl-custom-stock]');
+                if (raiseSlSelect) signalData[`tp${lvl}_raise_sl_to`] = String(raiseSlSelect.value || '').trim();
+                if (raiseSlCustomPer) signalData[`tp${lvl}_raise_sl_custom_per`] = String(raiseSlCustomPer.value || '').trim();
+                if (raiseSlCustom) signalData[`tp${lvl}_raise_sl_custom`] = String(raiseSlCustom.value || '').trim();
+                if (raiseSlCustomStock) signalData[`tp${lvl}_raise_sl_custom_stock`] = String(raiseSlCustomStock.value || '').trim();
+            });
             
             // Set the data field value
             const dataInput = form.querySelector('input[name="data"]');
