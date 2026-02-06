@@ -3080,8 +3080,8 @@ function updatePreview() {
                     if (hasCustomStock) {
                         raiseSlSuffix = ` and raise the stop loss to $${Number(stockVal).toFixed(2)} above the entry price`;
                     } else if (hasCustomPercent) {
-                        if (priceVal && Number(priceVal) !== 0) raiseSlSuffix = ` and raise the stop loss to $${Number(priceVal).toFixed(2)} above the entry price`;
-                        else if (perVal && Number(perVal) !== 0) raiseSlSuffix = ` and raise the stop loss to ${perVal}% above the entry price`;
+                        if (perVal && Number(perVal) !== 0) raiseSlSuffix = ` and raise the stop loss to ${perVal}% above the entry price`;
+                        else if (priceVal && Number(priceVal) !== 0) raiseSlSuffix = ` and raise the stop loss to $${Number(priceVal).toFixed(2)} above the entry price`;
                     }
                     // When custom is selected but value is empty/zero: no suffix (omit "raise the stop loss to custom level")
                 }

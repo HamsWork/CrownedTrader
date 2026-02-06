@@ -775,9 +775,19 @@ def get_signal_template(signal):
                         except (TypeError, ValueError):
                             suffix = " and raise the stop loss to custom level"
                     elif custom_per:
-                        suffix = f" and raise the stop loss to {custom_per}% above the entry price"
+                        try:
+                            v = float(str(custom_per).replace("%", "").strip())
+                            suffix = f" and raise the stop loss to {custom_per}% above the entry price" if v else ""
+                        except (TypeError, ValueError):
+                            suffix = ""
+                    elif custom_price:
+                        try:
+                            v = float(custom_price)
+                            suffix = f" and raise the stop loss to ${v:.2f} above the entry price" if v else ""
+                        except (TypeError, ValueError):
+                            suffix = ""
                     else:
-                        suffix = " and raise the stop loss to entry level"
+                        suffix = ""
 
                 tps.append(_ensure_period(f"Take Profit ({level}): At {at_str}{take_str}{suffix}"))
 
