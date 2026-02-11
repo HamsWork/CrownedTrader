@@ -1673,6 +1673,69 @@ function getTodayISODate() {
     return `${y}-${m}-${day}`;
 }
 
+/** Return YYYY-MM-DD for a date + N days */
+function addDaysISODate(isoDate, days) {
+    const d = new Date(isoDate + 'T12:00:00');
+    d.setDate(d.getDate() + days);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+/** Return YYYY-MM-DD for a date + N months */
+function addMonthsISODate(isoDate, months) {
+    const d = new Date(isoDate + 'T12:00:00');
+    d.setMonth(d.getMonth() + months);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+/** Normalize to YYYY-MM-DD (accepts YYYY-MM-DD or MM/DD/YYYY or similar) */
+function normalizeToISODate(val) {
+    const s = String(val || '').trim();
+    if (!s) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/) || s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    if (m) {
+        if (m[1].length === 4) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+        return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+    }
+    return s;
+}
+
+/** Default Time Horizon date: options = expiration date; stock + Leap = 6 months; stock + Swing = 1 week */
+function getDefaultTimeHorizonDate() {
+    const isSharesCheckbox = document.getElementById('id_is_shares');
+    const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+    const tradeType = getSelectedTradeType();
+    const today = getTodayISODate();
+    if (!isShares) {
+        const expEl = findFieldByName('expiration');
+        const expRaw = expEl ? String(expEl.value || '').trim() : '';
+        const expIso = normalizeToISODate(expRaw);
+        return expIso || today;
+    }
+    if (tradeType === 'leap') return addMonthsISODate(today, 6);
+    if (tradeType === 'swing') return addDaysISODate(today, 7);
+    return today;
+}
+
+/** Set Time Horizon input to default (expiration for options; 1 week for Swing, 6 months for Leap for stock) */
+function setTimeHorizonDefault() {
+    const el = document.getElementById('id_time_horizon');
+    if (!el || el.type !== 'date') return;
+    const defaultDate = getDefaultTimeHorizonDate();
+    if (defaultDate) {
+        el.value = defaultDate;
+        const min = getTodayISODate();
+        if (el.min !== min) el.min = min;
+        if (typeof updatePreview === 'function') updatePreview();
+    }
+}
+
 function autoResizeTextarea(textarea) {
     if (!textarea) return;
     // Grow/shrink based on content; prevent inner scrollbars. Don't shrink below ~3 lines (show full hint).
@@ -2351,13 +2414,14 @@ function getSelectedTradeType() {
     return String(el ? el.value : '').trim().toLowerCase() || 'swing';
 }
 
-/** Show Time Horizon field only for Swing and Leap; hide for Scalp */
+/** Show Time Horizon field only for Swing and Leap; hide for Scalp. When showing, set default date. */
 function updateTimeHorizonVisibility() {
     const tradeType = getSelectedTradeType();
     const show = tradeType === 'swing' || tradeType === 'leap';
     document.querySelectorAll('[data-show-for-trade-type="swing,leap"]').forEach(function (el) {
         el.style.display = show ? '' : 'none';
     });
+    if (show && typeof setTimeHorizonDefault === 'function') setTimeHorizonDefault();
 }
 
 async function fetchBestOption(symbol, { tradeType, side } = {}) {
@@ -2409,6 +2473,7 @@ async function maybeAutoPickBestOption() {
     setValueIfAllowed(priceEl, formatFloat3(best.option_price));
     setValueIfAllowed(contractEl, best.contract);
 
+    if (typeof setTimeHorizonDefault === 'function') setTimeHorizonDefault();
     updateTpSlPrices();
     updatePreview();
 }
@@ -3608,6 +3673,12 @@ function createDynamicFields(signalTypeId) {
             const today = getTodayISODate();
             input.min = today;
             if (!input.value) input.value = today;
+            input.addEventListener('change', function() {
+                if (typeof setTimeHorizonDefault === 'function') setTimeHorizonDefault();
+            });
+            input.addEventListener('input', function() {
+                if (typeof setTimeHorizonDefault === 'function') setTimeHorizonDefault();
+            });
         } else if (name === 'option_type') {
             input = document.createElement('select');
             input.className = 'form-select';
@@ -4701,7 +4772,7 @@ function createDynamicFields(signalTypeId) {
             slLevelsInput.addEventListener('input', updatePreview);
             slLevelsInput.addEventListener('change', updatePreview);
             
-            // Add Time Horizon field (for leaps/swings only; shown under Stop Loss in Trade Plan)
+            // Add Time Horizon field (for leaps/swings only; date selection, under Stop Loss in Trade Plan)
             const timeHorizonGroup = document.createElement('div');
             timeHorizonGroup.className = 'form-group';
             timeHorizonGroup.setAttribute('data-variable-name', 'time_horizon');
@@ -4710,16 +4781,18 @@ function createDynamicFields(signalTypeId) {
             timeHorizonLabel.textContent = 'Time Horizon';
             timeHorizonLabel.setAttribute('for', 'id_time_horizon');
             const timeHorizonInput = document.createElement('input');
-            timeHorizonInput.type = 'text';
+            timeHorizonInput.type = 'date';
             timeHorizonInput.className = 'form-input';
             timeHorizonInput.id = 'id_time_horizon';
             timeHorizonInput.name = 'time_horizon';
-            timeHorizonInput.placeholder = 'e.g., 3-6 months, 1-2 weeks';
-            timeHorizonInput.title = 'How long you expect for this trade to play out (Leaps/Swings)';
+            timeHorizonInput.min = getTodayISODate();
+            timeHorizonInput.title = 'How long you expect for this trade to play out. Options: expiration date. Stock + Leap: 6 months. Stock + Swing: 1 week.';
             timeHorizonGroup.appendChild(timeHorizonLabel);
             timeHorizonGroup.appendChild(timeHorizonInput);
             timeHorizonInput.addEventListener('input', updatePreview);
             timeHorizonInput.addEventListener('change', updatePreview);
+            // Set default when field is first created (Swing/Leap visible): option = expiration, stock Leap = 6mo, stock Swing = 1wk
+            setTimeHorizonDefault();
 
             // Action buttons row (goes at the end of the Trade Plan panel)
             const presetActionsBar = document.createElement('div');
@@ -5135,7 +5208,6 @@ function createDynamicFields(signalTypeId) {
                 presetActionsBar,
                 createSyntheticHiddenField('sl_price', '0.00'),
                 createSyntheticHiddenField('sl_levels', ''),
-                createSyntheticHiddenField('time_horizon', ''),
             ];
             formGroup._afterSyntheticGroups.push(createSyntheticTradePlanGroup(tradePlanChildren));
             // Ensure option_price is present in submitted JSON even if not defined in variables.
@@ -5436,6 +5508,7 @@ function createDynamicFields(signalTypeId) {
         isSharesCheckbox.addEventListener('change', function() {
             toggleOptionFields(this.checked);
             updateVariableVisibility(); // Update variable visibility when is_shares changes
+            if (typeof setTimeHorizonDefault === 'function') setTimeHorizonDefault(); // Options: expiration; Stock: 1wk/6mo
             // Re-attach option_type change handler (in case field was recreated or listener was lost)
             ensureOptionTypeChangeHandler();
             if (this.checked) {
