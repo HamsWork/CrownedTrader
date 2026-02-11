@@ -1,7 +1,41 @@
 import logging
+import threading
+import time
 from typing import Any, Dict, Optional
 
 import requests
+
+# In-memory TTL cache for quotes to reduce Polygon API call count (rate limits).
+_quote_cache: Dict[str, tuple] = {}
+_quote_cache_lock = threading.Lock()
+_DEFAULT_CACHE_TTL_SEC = 30
+
+
+def _quote_cache_ttl_sec() -> int:
+    try:
+        from django.conf import settings
+        return int(getattr(settings, "POLYGON_QUOTE_CACHE_SECONDS", _DEFAULT_CACHE_TTL_SEC))
+    except Exception:
+        return _DEFAULT_CACHE_TTL_SEC
+
+
+def _cache_get(key: str) -> Optional[Any]:
+    with _quote_cache_lock:
+        entry = _quote_cache.get(key)
+        if entry is None:
+            return None
+        expiry, val = entry
+        if time.time() > expiry:
+            del _quote_cache[key]
+            return None
+        return val
+
+
+def _cache_set(key: str, value: Any, ttl_sec: Optional[int] = None) -> None:
+    if ttl_sec is None:
+        ttl_sec = _quote_cache_ttl_sec()
+    with _quote_cache_lock:
+        _quote_cache[key] = (time.time() + ttl_sec, value)
 
 
 class PolygonClient:
@@ -70,18 +104,28 @@ class PolygonClient:
         results = data.get("results") or []
         return results[0] if results else None
 
-    def get_latest_quote(self, ticker: str) -> Optional[Dict[str, Any]]:
+    def get_latest_quote(self, ticker: str, bypass_cache: bool = False) -> Optional[Dict[str, Any]]:
         """
         Get latest quote data for a ticker via /v2/last/nbbo/{ticker}.
+        Results are cached for POLYGON_QUOTE_CACHE_SECONDS to reduce API calls.
 
         Returns dict with:
           - p: mid price (preferred), else ask, else bid
           - bid, ask
           - source
+        
+        Args:
+            bypass_cache: If True, bypasses cache to get fresh data (for live updates)
         """
         ticker = (ticker or "").strip().upper()
         if not ticker:
             return None
+
+        cache_key = f"stock:{ticker}"
+        if not bypass_cache:
+            cached = _cache_get(cache_key)
+            if cached is not None:
+                return cached
 
         # Try NBBO first for bid/ask
         data = self._get(f"/v2/last/nbbo/{ticker}", timeout=6)
@@ -98,11 +142,20 @@ class PolygonClient:
                 ask_f = 0.0
 
             if bid_f > 0 and ask_f > 0:
-                return {"p": (bid_f + ask_f) / 2.0, "bid": bid_f, "ask": ask_f, "source": "nbbo_mid"}
+                out = {"p": (bid_f + ask_f) / 2.0, "bid": bid_f, "ask": ask_f, "source": "nbbo_mid"}
+                if not bypass_cache:
+                    _cache_set(cache_key, out)
+                return out
             if ask_f > 0:
-                return {"p": ask_f, "bid": bid_f, "ask": ask_f, "source": "nbbo_ask"}
+                out = {"p": ask_f, "bid": bid_f, "ask": ask_f, "source": "nbbo_ask"}
+                if not bypass_cache:
+                    _cache_set(cache_key, out)
+                return out
             if bid_f > 0:
-                return {"p": bid_f, "bid": bid_f, "ask": ask_f, "source": "nbbo_bid"}
+                out = {"p": bid_f, "bid": bid_f, "ask": ask_f, "source": "nbbo_bid"}
+                if not bypass_cache:
+                    _cache_set(cache_key, out)
+                return out
 
         # Fallback: snapshot (often available even when NBBO isn't entitled)
         snap = self._get(f"/v2/snapshot/locale/us/markets/stocks/tickers/{ticker}", timeout=6)
@@ -121,7 +174,10 @@ class PolygonClient:
             except Exception:
                 price_f = 0.0
             if price_f > 0:
-                return {"p": price_f, "source": "snapshot"}
+                out = {"p": price_f, "source": "snapshot"}
+                if not bypass_cache:
+                    _cache_set(cache_key, out)
+                return out
 
         # Fallback: previous close
         prev = self.get_previous_close(ticker)
@@ -132,13 +188,20 @@ class PolygonClient:
             except Exception:
                 close_f = 0.0
             if close_f > 0:
-                return {"p": close_f, "source": "previous_close"}
+                out = {"p": close_f, "source": "previous_close"}
+                if not bypass_cache:
+                    _cache_set(cache_key, out)
+                return out
 
         return None
 
-    def get_share_current_price(self, ticker: str) -> Optional[float]:
-        """Convenience: return best-effort current stock price."""
-        q = self.get_latest_quote(ticker)
+    def get_share_current_price(self, ticker: str, bypass_cache: bool = False) -> Optional[float]:
+        """Convenience: return best-effort current stock price.
+        
+        Args:
+            bypass_cache: If True, bypasses cache to get fresh data (for live updates)
+        """
+        q = self.get_latest_quote(ticker, bypass_cache=bypass_cache)
         if q and q.get("p") is not None:
             try:
                 return float(q["p"])
@@ -146,24 +209,45 @@ class PolygonClient:
                 return None
         return None
 
-    def get_last_trade(self, ticker: str) -> Optional[Dict[str, Any]]:
-        """Get last trade for a ticker (stocks or options) via /v2/last/trade/{ticker}."""
+    def get_last_trade(self, ticker: str, bypass_cache: bool = False) -> Optional[Dict[str, Any]]:
+        """Get last trade for a ticker (stocks or options) via /v2/last/trade/{ticker}. Cached to reduce API calls.
+        
+        Args:
+            bypass_cache: If True, bypasses cache to get fresh data (for live updates)
+        """
         t = (ticker or "").strip()
         if not t:
             return None
+        cache_key = f"trade:{t}"
+        if not bypass_cache:
+            cached = _cache_get(cache_key)
+            if cached is not None:
+                return cached
         data = self._get(f"/v2/last/trade/{t}", timeout=8)
         if not data or data.get("status") != "OK" or not data.get("results"):
             return None
-        return data.get("results") or None
+        result = data.get("results") or None
+        if result is not None and not bypass_cache:
+            _cache_set(cache_key, result)
+        return result
 
-    def get_option_quote(self, contract_ticker: str) -> Optional[Dict[str, Any]]:
+    def get_option_quote(self, contract_ticker: str, bypass_cache: bool = False) -> Optional[Dict[str, Any]]:
         """
         Get current option quote for a Polygon options contract ticker (e.g. O:AAPL260119C00150000)
-        via /v2/last/nbbo/{ticker}, with trade fallback.
+        via /v2/last/nbbo/{ticker}, with trade fallback. Results cached to reduce API calls.
+        
+        Args:
+            bypass_cache: If True, bypasses cache to get fresh data (for live updates)
         """
         ct = (contract_ticker or "").strip()
         if not ct:
             return None
+
+        cache_key = f"option:{ct}"
+        if not bypass_cache:
+            cached = _cache_get(cache_key)
+            if cached is not None:
+                return cached
 
         data = self._get(f"/v2/last/nbbo/{ct}", timeout=8)
         if data and data.get("status") == "OK" and data.get("results"):
@@ -182,7 +266,7 @@ class PolygonClient:
             if bid_f > 0 and ask_f > 0:
                 mid = (bid_f + ask_f) / 2.0
             price = mid if mid is not None else (ask_f if ask_f > 0 else (bid_f if bid_f > 0 else None))
-            return {
+            out = {
                 "contract": ct,
                 "bid": bid_f if bid_f > 0 else None,
                 "ask": ask_f if ask_f > 0 else None,
@@ -191,15 +275,21 @@ class PolygonClient:
                 "timestamp": ts,
                 "source": "nbbo",
             }
+            if not bypass_cache:
+                _cache_set(cache_key, out)
+            return out
 
-        trade = self.get_last_trade(ct)
+        trade = self.get_last_trade(ct, bypass_cache=bypass_cache)
         if trade and trade.get("p") is not None:
             try:
                 p = float(trade.get("p"))
             except Exception:
                 p = None
             if p is not None:
-                return {"contract": ct, "price": p, "timestamp": trade.get("t"), "source": "trade"}
+                out = {"contract": ct, "price": p, "timestamp": trade.get("t"), "source": "trade"}
+                if not bypass_cache:
+                    _cache_set(cache_key, out)
+                return out
 
         return None
 
@@ -471,13 +561,19 @@ class PolygonClient:
             s_side = "call"
         prefer_call = s_side == "call"
 
-        # Scalp: delta 0.35-0.60, OI>=500, spread<0.10, closest to 0.50; increasing DTE.
+        # Scalp: Find best option by increasing DTE until one matches criteria:
+        # Delta between 0.35 and 0.60, Open interest >= 500, Spread < $0.10, Closest to 0.50 delta
+        # CALL for BUY signals, PUT for SELL signals
         if tt == "scalp":
             by_exp: Dict[str, list] = {}
             for r in rows:
                 exp = r["expiration"]
                 by_exp.setdefault(exp, []).append(r)
-            for exp in sorted(by_exp.keys()):
+            
+            # Sort expirations by DTE (ascending) to try increasing DTE
+            exp_list = sorted(by_exp.keys(), key=lambda e: (_dt.date.fromisoformat(e) - _dt.date.today()).days)
+            
+            for exp in exp_list:
                 candidates = []
                 for r in by_exp[exp]:
                     d = r.get("delta")
@@ -485,53 +581,129 @@ class PolygonClient:
                     spr = r.get("spread")
                     if d is None:
                         continue
-                    if not (0.35 <= abs(d) <= 0.60):
+                    # Delta between 0.35 and 0.60
+                    abs_delta = abs(d)
+                    if not (0.35 <= abs_delta <= 0.60):
                         continue
+                    # Open interest >= 500
                     if oi < 500:
                         continue
+                    # Spread < $0.10
                     if spr is None or spr >= 0.10:
                         continue
                     candidates.append(r)
-                if not candidates:
-                    continue
-                # closest to 0.50 delta, then tighter spread, then higher OI
-                candidates.sort(key=lambda r: (abs(abs(r.get("delta") or 0) - 0.50), (r.get("spread") or 9e9), -(r.get("open_interest") or 0)))
-                return candidates[0]
+                
+                if candidates:
+                    # Sort by: closest to 0.50 delta, then tighter spread, then higher OI
+                    candidates.sort(key=lambda r: (
+                        abs(abs(r.get("delta") or 0) - 0.50),
+                        (r.get("spread") or 9e9),
+                        -(r.get("open_interest") or 0)
+                    ))
+                    return candidates[0]
 
-            # fallback: pick closest-to-0.50 delta ignoring OI/spread
-            rows2 = [r for r in rows if r.get("delta") is not None]
+            # Fallback: pick closest-to-0.50 delta ignoring OI/spread
+            rows2 = [r for r in rows if r.get("delta") is not None and 0.35 <= abs(r.get("delta")) <= 0.60]
             if not rows2:
                 return None
             rows2.sort(key=lambda r: (abs(abs(r.get("delta") or 0) - 0.50), (r.get("spread") or 9e9)))
             return rows2[0]
 
-        # Swing/Leap: pick DTE window preference, then best strike near +/-2% OTM, with spread/OI tiebreakers.
+        # Swing: Select strike within ±2% (ATM), prefer slightly OTM
+        # Delta between 0.40 and 0.60
+        # Expiration: 6–45 days out, prefer 13–25 DTE for weekly setups or 6–15 DTE for single timeframe
+        # Open interest >= 1,000, Spread < $0.05
         if tt == "swing":
-            primary = (13, 25)
-            secondary = (6, 15)
-            outer = (6, 45)
-        else:  # leap
-            primary = (60, 90)
-            secondary = (60, 90)
-            outer = (55, 100)
-
-        def in_window(r, lo, hi):
-            dte = r.get("dte")
-            return dte is not None and lo <= dte <= hi
-
-        window_rows = [r for r in rows if in_window(r, primary[0], primary[1])]
-        if not window_rows:
-            window_rows = [r for r in rows if in_window(r, secondary[0], secondary[1])]
-        if not window_rows:
-            window_rows = [r for r in rows if in_window(r, outer[0], outer[1])]
-        if not window_rows:
-            window_rows = rows
-
-        window_rows.sort(
-            key=lambda r: (
-                moneyness_score(r["strike"], is_call=prefer_call),
-                (r.get("spread") or 9e9),
-                -(r.get("open_interest") or 0),
+            def in_window(r, lo, hi):
+                dte = r.get("dte")
+                return dte is not None and lo <= dte <= hi
+            
+            # Filter by delta, OI, and spread first
+            filtered = []
+            for r in rows:
+                d = r.get("delta")
+                oi = r.get("open_interest") or 0
+                spr = r.get("spread")
+                if d is None:
+                    continue
+                abs_delta = abs(d)
+                # Delta between 0.40 and 0.60
+                if not (0.40 <= abs_delta <= 0.60):
+                    continue
+                # Open interest >= 1,000
+                if oi < 1000:
+                    continue
+                # Spread < $0.05
+                if spr is None or spr >= 0.05:
+                    continue
+                filtered.append(r)
+            
+            if not filtered:
+                return None
+            
+            # Prefer DTE windows: 13-25 (weekly) or 6-15 (single timeframe), then 6-45
+            window_rows = [r for r in filtered if in_window(r, 13, 25)]
+            if not window_rows:
+                window_rows = [r for r in filtered if in_window(r, 6, 15)]
+            if not window_rows:
+                window_rows = [r for r in filtered if in_window(r, 6, 45)]
+            if not window_rows:
+                window_rows = filtered
+            
+            # Sort by: moneyness (prefer ±2% ATM, slightly OTM), then tighter spread, then higher OI
+            window_rows.sort(
+                key=lambda r: (
+                    moneyness_score(r["strike"], is_call=prefer_call),
+                    (r.get("spread") or 9e9),
+                    -(r.get("open_interest") or 0),
+                )
             )
-        )
-        return window_rows[0]
+            return window_rows[0]
+
+        # LEAP: Select strike within ±2% (ATM), prefer slightly OTM
+        # Delta between 0.50 and 0.80 (higher delta for LEAPs)
+        # Expiration: 330–395 days out (~1 year), target closest to 365 DTE
+        # Open interest >= 500, Spread < $0.05
+        if tt == "leap":
+            def in_window(r, lo, hi):
+                dte = r.get("dte")
+                return dte is not None and lo <= dte <= hi
+            
+            # Filter by delta, OI, and spread first
+            filtered = []
+            for r in rows:
+                d = r.get("delta")
+                oi = r.get("open_interest") or 0
+                spr = r.get("spread")
+                if d is None:
+                    continue
+                abs_delta = abs(d)
+                # Delta between 0.50 and 0.80
+                if not (0.50 <= abs_delta <= 0.80):
+                    continue
+                # Open interest >= 500
+                if oi < 500:
+                    continue
+                # Spread < $0.05
+                if spr is None or spr >= 0.05:
+                    continue
+                filtered.append(r)
+            
+            if not filtered:
+                return None
+            
+            # Prefer 330-395 DTE window, target closest to 365 DTE
+            window_rows = [r for r in filtered if in_window(r, 330, 395)]
+            if not window_rows:
+                window_rows = filtered
+            
+            # Sort by: closest to 365 DTE, then moneyness, then tighter spread, then higher OI
+            window_rows.sort(
+                key=lambda r: (
+                    abs((r.get("dte") or 0) - 365),  # Closest to 365 DTE
+                    moneyness_score(r["strike"], is_call=prefer_call),
+                    (r.get("spread") or 9e9),
+                    -(r.get("open_interest") or 0),
+                )
+            )
+            return window_rows[0]

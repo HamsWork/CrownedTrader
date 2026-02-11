@@ -13,6 +13,7 @@ urlpatterns = [
     path('positions/<int:position_id>/close/', views.close_position, name='close_position'),
     path('positions/<int:position_id>/mode/', views.set_position_mode, name='set_position_mode'),
     path('positions/<int:position_id>/update/', views.post_position_update, name='post_position_update'),
+    path('positions/<int:position_id>/preview/', views.position_preview, name='position_preview'),
     path('history/', views.signals_history, name='signals_history'),
     path('api/signal-type-variables/', views.get_signal_type_variables, name='get_signal_type_variables'),
     path('api/trade-plan/', views.trade_plan_api, name='trade_plan_api'),

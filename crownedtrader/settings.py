@@ -135,6 +135,8 @@ DISCORD_CHANNEL_ID = os.environ.get('DISCORD_CHANNEL_ID', '')
 
 # Market data (Polygon)
 POLYGON_API_KEY = os.environ.get('POLYGON_API_KEY', '')
+# Cache quote responses for this many seconds to reduce API call count (rate limits)
+POLYGON_QUOTE_CACHE_SECONDS = int(os.environ.get('POLYGON_QUOTE_CACHE_SECONDS', '30'))
 
 # Automatic position tracking: background thread checks open auto positions every N seconds
 # (0 = disabled; rely on cron + manage.py check_auto_positions instead)

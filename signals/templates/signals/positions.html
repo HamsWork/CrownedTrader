@@ -178,6 +178,32 @@
     color: rgba(232, 236, 255, 0.70);
   }
 
+  .pm-pagination {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-top: 1px solid rgba(42, 55, 95, 0.55);
+    background: rgba(10, 16, 35, 0.55);
+    flex-wrap: wrap;
+  }
+  .pm-pagination-link {
+    color: rgba(var(--accent-rgb), 0.95);
+    text-decoration: none;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(42, 55, 95, 0.55);
+  }
+  .pm-pagination-link:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(var(--accent-rgb), 0.5);
+  }
+  .pm-pagination-info {
+    color: rgba(232, 236, 255, 0.72);
+    font-size: 14px;
+  }
+
   .pm-modal-backdrop {
     position: fixed;
     inset: 0;
@@ -477,6 +503,119 @@
     background: rgba(10, 16, 35, 0.35);
   }
 
+  .pm-param-form .pm-param-group {
+    margin-bottom: 20px;
+  }
+  .pm-param-form .pm-param-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    color: rgba(232, 236, 255, 0.9);
+    margin-bottom: 8px;
+    letter-spacing: 0.02em;
+  }
+  .pm-param-form .pm-param-input,
+  .pm-param-form .pm-param-select {
+    width: 100%;
+    box-sizing: border-box;
+    height: 40px;
+    padding: 0 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(42, 55, 95, 0.65);
+    background: rgba(255, 255, 255, 0.05);
+    color: #e8ecff;
+    font-size: 14px;
+    font-weight: 600;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .pm-param-form .pm-param-input::placeholder {
+    color: rgba(232, 236, 255, 0.4);
+  }
+  .pm-param-form .pm-param-input:focus {
+    outline: none;
+    border-color: rgba(var(--accent-rgb), 0.6);
+    background: rgba(255, 255, 255, 0.07);
+  }
+  /* Dropdown style to match Post a trade (dashboard .form-select) */
+  .pm-param-form .pm-param-select {
+    cursor: pointer;
+    appearance: none;
+    padding: 12px 15px;
+    padding-right: 40px;
+    height: auto;
+    min-height: 44px;
+    background: rgba(10, 16, 35, 0.72);
+    color: #e0e0e0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    font-size: 1em;
+    transition: all 0.3s;
+  }
+  .pm-param-form .pm-param-select:focus {
+    outline: none;
+    border-color: rgba(var(--accent-rgb), 0.6);
+    background-color: rgba(10, 16, 35, 0.85);
+  }
+  .pm-param-form .pm-param-select:hover {
+    border-color: rgba(42, 55, 95, 0.9);
+  }
+  .pm-param-form .pm-param-select option {
+    background: #050816;
+    color: #e0e0e0;
+  }
+  .pm-param-form .pm-param-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .pm-param-form .pm-param-row .pm-param-input {
+    flex: 1;
+    min-width: 0;
+  }
+  .pm-param-form .pm-param-row .pm-param-value {
+    font-size: 13px;
+    color: rgba(232, 236, 255, 0.65);
+  }
+  .pm-param-form .pm-param-custom {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(42, 55, 95, 0.25);
+    border: 1px solid rgba(42, 55, 95, 0.4);
+  }
+  .pm-param-form .pm-param-custom .pm-param-label {
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: rgba(232, 236, 255, 0.75);
+  }
+  .pm-param-form .pm-param-custom .pm-param-input {
+    margin-bottom: 8px;
+  }
+  .pm-param-form .pm-param-custom .pm-param-input:last-of-type {
+    margin-bottom: 0;
+  }
+  /* Percent input with % suffix */
+  .pm-param-form .pm-param-percent-wrapper {
+    position: relative;
+    width: 100%;
+  }
+  .pm-param-form .pm-param-percent-wrapper .pm-param-input {
+    padding-right: 40px;
+  }
+  .pm-param-form .pm-param-percent-suffix {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgba(232, 236, 255, 0.7);
+    font-size: 14px;
+    font-weight: 600;
+    pointer-events: none;
+    user-select: none;
+  }
+
   .pm-hidden {
     display: none;
   }
@@ -495,8 +634,8 @@
       <p>Track open and closed positions with a clean, exchange-style P/L view.</p>
     </div>
     <div class="pm-tabs" role="tablist">
-      <button class="pm-tab active" type="button" data-tab="open">Open ({{ open_positions|length }})</button>
-      <button class="pm-tab" type="button" data-tab="closed">Closed ({{ closed_positions|length }})</button>
+      <button class="pm-tab active" type="button" data-tab="open">Open ({{ open_page.paginator.count }})</button>
+      <button class="pm-tab" type="button" data-tab="closed">Closed ({{ closed_page.paginator.count }})</button>
     </div>
   </div>
 
@@ -565,7 +704,7 @@
             <textarea class="pm-hidden" data-preview-tp-for="{{ p.id }}">{{ p.preview_tp_embed }}</textarea>
             <textarea class="pm-hidden" data-preview-tp-partial-for="{{ p.id }}">{{ p.preview_tp_partial_embed }}</textarea>
             <textarea class="pm-hidden" data-preview-sl-for="{{ p.id }}">{{ p.preview_sl_embed }}</textarea>
-            <button class="pm-action" type="button" data-partial-exit="{{ p.id }}" data-partial-symbol="{{ p.symbol|default:'' }}" data-partial-entry="{{ p.entry_str|default:'' }}" data-partial-qty="{{ p.display_qty|default:'' }}">Partial Exit</button>
+            <button class="pm-action" type="button" data-partial-exit="{{ p.id }}" data-partial-symbol="{{ p.symbol|default:'' }}" data-partial-entry="{{ p.entry_str|default:'' }}" data-partial-qty="{{ p.display_qty|default:'' }}" data-partial-mark="{{ p.mark_str|default:'' }}" data-takeoff-percent="{{ p.current_takeoff_percent|default:'' }}" data-next-target-percent="{{ p.next_target_percent|default:'' }}" data-next-target-value="{{ p.next_target_value|default:'' }}" data-raise-sl-to="{{ p.current_raise_sl_to|default:'off' }}" data-raise-sl-custom-per="{{ p.current_raise_sl_custom_per|default:'' }}" data-raise-sl-custom-price="{{ p.current_raise_sl_custom_price|default:'' }}" data-raise-sl-custom-stock="{{ p.current_raise_sl_custom_stock|default:'' }}">Partial Exit</button>
             <button class="pm-action" type="button" data-post-exit="{{ p.id }}" data-exit-symbol="{{ p.symbol|default:'' }}" data-exit-entry="{{ p.entry_str|default:'' }}">Full Exit</button>
             {% endif %}
           </td>
@@ -573,6 +712,19 @@
         {% endfor %}
       </tbody>
     </table>
+    {% if open_page.has_other_pages %}
+    <div class="pm-pagination">
+      {% if open_page.has_previous %}
+        <a class="pm-pagination-link" href="?page=1{% if closed_page.number > 1 %}&closed_page={{ closed_page.number }}{% endif %}">First</a>
+        <a class="pm-pagination-link" href="?page={{ open_page.previous_page_number }}{% if closed_page.number > 1 %}&closed_page={{ closed_page.number }}{% endif %}">Previous</a>
+      {% endif %}
+      <span class="pm-pagination-info">Page {{ open_page.number }} of {{ open_page.paginator.num_pages }}</span>
+      {% if open_page.has_next %}
+        <a class="pm-pagination-link" href="?page={{ open_page.next_page_number }}{% if closed_page.number > 1 %}&closed_page={{ closed_page.number }}{% endif %}">Next</a>
+        <a class="pm-pagination-link" href="?page={{ open_page.paginator.num_pages }}{% if closed_page.number > 1 %}&closed_page={{ closed_page.number }}{% endif %}">Last</a>
+      {% endif %}
+    </div>
+    {% endif %}
     {% else %}
       <div class="pm-empty">No open positions yet.</div>
     {% endif %}
@@ -617,6 +769,19 @@
         {% endfor %}
       </tbody>
     </table>
+    {% if closed_page.has_other_pages %}
+    <div class="pm-pagination">
+      {% if closed_page.has_previous %}
+        <a class="pm-pagination-link" href="?closed_page=1{% if open_page.number > 1 %}&page={{ open_page.number }}{% endif %}">First</a>
+        <a class="pm-pagination-link" href="?closed_page={{ closed_page.previous_page_number }}{% if open_page.number > 1 %}&page={{ open_page.number }}{% endif %}">Previous</a>
+      {% endif %}
+      <span class="pm-pagination-info">Page {{ closed_page.number }} of {{ closed_page.paginator.num_pages }}</span>
+      {% if closed_page.has_next %}
+        <a class="pm-pagination-link" href="?closed_page={{ closed_page.next_page_number }}{% if open_page.number > 1 %}&page={{ open_page.number }}{% endif %}">Next</a>
+        <a class="pm-pagination-link" href="?closed_page={{ closed_page.paginator.num_pages }}{% if open_page.number > 1 %}&page={{ open_page.number }}{% endif %}">Last</a>
+      {% endif %}
+    </div>
+    {% endif %}
     {% else %}
       <div class="pm-empty">No closed positions yet.</div>
     {% endif %}
@@ -701,8 +866,29 @@
       </div>
     </div>
     <div class="pm-modal-foot">
-      <button class="pm-action" type="button" data-partial-exit-cancel>Cancel</button>
-      <button class="pm-action" type="button" id="pmPartialExitConfirm">Partial Exit</button>
+      <button class="pm-action" type="button" id="pmPartialExitParameterBtn">Edit Parameter</button>
+      <div style="margin-left: auto; display: flex; gap: 10px;">
+        <button class="pm-action" type="button" data-partial-exit-cancel>Cancel</button>
+        <button class="pm-action" type="button" id="pmPartialExitConfirm">Partial Exit</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="pm-modal-backdrop" id="pmExitParameterBackdrop" aria-hidden="true">
+  <div class="pm-modal" role="dialog" aria-modal="true" aria-label="Edit Parameters">
+    <div class="pm-modal-head">
+      <div class="pm-modal-title">Edit Parameters</div>
+      <button class="pm-modal-close" type="button" data-exit-parameter-close>✕</button>
+    </div>
+    <div class="pm-modal-body">
+      <div id="pmExitParameterContent">
+        <!-- Content will be populated based on exit type (full/partial) -->
+      </div>
+    </div>
+    <div class="pm-modal-foot">
+      <button class="pm-action" type="button" data-exit-parameter-cancel>Cancel</button>
+      <button class="pm-action" type="button" id="pmExitParameterSave">Save</button>
     </div>
   </div>
 </div>
@@ -737,6 +923,25 @@
   const partialExitConfirmBtn = document.getElementById('pmPartialExitConfirm');
   let activePartialExitPositionId = null;
   let activePartialExitEntry = '';
+  
+  // Exit Parameter modal elements
+  const exitParameterBackdrop = document.getElementById('pmExitParameterBackdrop');
+  const exitParameterContent = document.getElementById('pmExitParameterContent');
+  const exitParameterSaveBtn = document.getElementById('pmExitParameterSave');
+  const exitParameterBtn = document.getElementById('pmExitParameterBtn');
+  const partialExitParameterBtn = document.getElementById('pmPartialExitParameterBtn');
+  
+  // Exit parameter state
+  let exitParameters = {
+    reduce_percent: '',
+    next_level: '',
+    next_target_percent: '',
+    next_target_value: '',
+    raise_sl_to: 'off',
+    raise_sl_custom_per: '',
+    raise_sl_custom_price: '',
+    raise_sl_custom_stock: ''
+  };
   let partialLivePriceInterval = null;
   function setTab(name) {
     tabs.forEach((t) => t.classList.toggle('active', t.getAttribute('data-tab') === name));
@@ -985,7 +1190,7 @@
     if (previewColorBar) previewColorBar.style.background = intToHexColor(color);
   }
 
-  async function openExitModal(id, symbol, entry) {
+  function openExitModal(id, symbol, entry) {
     activeExitPositionId = id;
     activeExitSymbol = (symbol || '').trim();
     activeExitEntry = (entry || '').trim();
@@ -994,12 +1199,24 @@
     if (currentPriceInput) currentPriceInput.value = '';
     syncCurrentPriceInputEditable();
     clearExitLivePriceInterval();
-    startExitLivePriceInterval();
-    renderExitPreview();
+    // Reset exit parameters
+    exitParameters = {
+      reduce_percent: '',
+      next_level: '',
+      next_target_percent: '',
+      next_target_value: '',
+      raise_sl_to: 'off',
+      raise_sl_custom_per: '',
+      raise_sl_custom_price: '',
+      raise_sl_custom_stock: ''
+    };
+    // Open modal first, then update current price in background
     if (exitBackdrop) {
       exitBackdrop.style.display = 'flex';
       exitBackdrop.setAttribute('aria-hidden', 'false');
     }
+    renderExitPreview();
+    startExitLivePriceInterval();
   }
 
   function closeExitModal() {
@@ -1141,19 +1358,44 @@
     if (partialPreviewColorBar) partialPreviewColorBar.style.background = intToHexColor(color);
   }
 
-  async function openPartialExitModal(id, symbol, entry, qty) {
+  function openPartialExitModal(id, symbol, entry, qty, markStr) {
     activePartialExitPositionId = id;
     activePartialExitEntry = (entry || '').trim();
     if (partialUseManualPriceSwitch) partialUseManualPriceSwitch.checked = false;
-    if (partialCurrentPriceInput) partialCurrentPriceInput.value = '';
+    // Set current price from mark if available (so it's not zero when opening)
+    if (partialCurrentPriceInput) {
+      const mark = String(markStr || '').trim();
+      if (mark && mark !== '-') {
+        const price = parseFloat(mark.replace(/[$,]/g, ''));
+        if (!isNaN(price) && price > 0) {
+          partialCurrentPriceInput.value = price.toFixed(2);
+        } else {
+          partialCurrentPriceInput.value = '';
+        }
+      } else {
+        partialCurrentPriceInput.value = '';
+      }
+    }
     syncPartialCurrentPriceEditable();
     clearPartialLivePriceInterval();
-    startPartialLivePriceInterval();
-    renderPartialExitPreview();
+    // Reset exit parameters
+    exitParameters = {
+      reduce_percent: '',
+      next_level: '',
+      next_target_percent: '',
+      next_target_value: '',
+      raise_sl_to: 'off',
+      raise_sl_custom_per: '',
+      raise_sl_custom_price: '',
+      raise_sl_custom_stock: ''
+    };
+    // Open modal first, then update current price in background
     if (partialExitBackdrop) {
       partialExitBackdrop.style.display = 'flex';
       partialExitBackdrop.setAttribute('aria-hidden', 'false');
     }
+    renderPartialExitPreview();
+    startPartialLivePriceInterval();
   }
 
   function closePartialExitModal() {
@@ -1165,9 +1407,401 @@
     }
   }
 
+  async function openExitParameterModal(isPartial, positionId) {
+    if (!exitParameterContent) return;
+    activeEditParameterPositionId = positionId || null;
+    // Ensure activePartialExitPositionId is set when opening Edit Parameters from Partial Exit modal
+    if (isPartial && positionId) {
+      activePartialExitPositionId = positionId;
+    }
+    
+    if (isPartial && positionId) {
+      // Fetch fresh values from backend to get latest saved values
+      let rp = '', ntp = '', ntv = '', rsl = 'off', rslCustomPer = '', rslCustomPrice = '', rslCustomStock = '', tpMode = 'percent';
+      try {
+        const previewRes = await fetch('/positions/' + positionId + '/preview/?partial=1&include_params=1', { credentials: 'same-origin' });
+        if (previewRes.ok) {
+          const embed = await previewRes.json().catch(() => null);
+          if (embed && embed._params) {
+            rp = embed._params.reduce_percent || '';
+            ntp = embed._params.next_target_percent || '';
+            ntv = embed._params.next_target_value || '';
+            rsl = embed._params.raise_sl_to || 'off';
+            tpMode = embed._params.tp_mode || 'percent';
+            rslCustomPer = embed._params.raise_sl_custom_per || '';
+            rslCustomPrice = embed._params.raise_sl_custom_price || '';
+            rslCustomStock = embed._params.raise_sl_custom_stock || '';
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to fetch parameters for Edit Parameters:', e);
+      }
+      // Fallback to button data attributes if fetch failed or no params returned
+      if (!rp && !ntp && !ntv) {
+        const btn = document.querySelector(`[data-partial-exit="${positionId}"]`);
+        rp = btn ? (btn.getAttribute('data-takeoff-percent') || '') : (exitParameters.reduce_percent || '');
+        ntp = btn ? (btn.getAttribute('data-next-target-percent') || '') : (exitParameters.next_target_percent || '');
+        ntv = btn ? (btn.getAttribute('data-next-target-value') || '') : (exitParameters.next_target_value || '');
+        rsl = btn ? (btn.getAttribute('data-raise-sl-to') || 'off') : (exitParameters.raise_sl_to || 'off');
+        rslCustomPer = btn ? (btn.getAttribute('data-raise-sl-custom-per') || '') : (exitParameters.raise_sl_custom_per || '');
+        rslCustomPrice = btn ? (btn.getAttribute('data-raise-sl-custom-price') || '') : (exitParameters.raise_sl_custom_price || '');
+        rslCustomStock = btn ? (btn.getAttribute('data-raise-sl-custom-stock') || '') : (exitParameters.raise_sl_custom_stock || '');
+      }
+      // Get entry price from activePartialExitEntry or from button's data attribute
+      let entryPrice = parseFloat(activePartialExitEntry || '0') || 0;
+      if (!entryPrice || entryPrice <= 0) {
+        const btn = document.querySelector(`[data-partial-exit="${positionId}"]`);
+        const entryStr = btn ? (btn.getAttribute('data-partial-entry') || '') : '';
+        if (entryStr) {
+          const parsed = parseFloat(entryStr.replace(/[$,]/g, ''));
+          if (!isNaN(parsed) && parsed > 0) entryPrice = parsed;
+        }
+      }
+      exitParameterContent.innerHTML = `
+        <form class="pm-param-form" id="pmExitParamForm">
+          <div class="pm-param-group">
+            <label class="pm-param-label" for="pmReducePercent">Reduce Position Percent (%)</label>
+            <div class="pm-param-percent-wrapper">
+              <input type="number" id="pmReducePercent" class="pm-param-input" step="0.01" min="0" max="100" placeholder="e.g. 50" value="${rp}" />
+              <span class="pm-param-percent-suffix">%</span>
+            </div>
+          </div>
+          <div class="pm-param-group">
+            <label class="pm-param-label">Next Target Percent and Price</label>
+            <div class="pm-param-row">
+              <div class="pm-param-percent-wrapper" style="flex: 1; min-width: 0;">
+                <input type="number" id="pmNextTargetPercent" class="pm-param-input" step="0.01" placeholder="Target %" value="${ntp}" title="Next target percent from trade plan" />
+                <span class="pm-param-percent-suffix">%</span>
+              </div>
+              <input type="number" id="pmNextTargetValue" class="pm-param-input" step="0.01" min="0" placeholder="Price ($)" value="${ntv}" title="Next target price" style="flex: 1; min-width: 0;" />
+            </div>
+          </div>
+          <div class="pm-param-group" style="display: none;">
+            <label class="pm-param-label" for="pmRaiseSlTo">Raising Stop loss to</label>
+            <select id="pmRaiseSlTo" class="pm-param-select">
+              <option value="off" ${rsl === 'off' ? 'selected' : ''}>Off</option>
+              <option value="entry" ${rsl === 'entry' ? 'selected' : ''}>Break Even</option>
+              <option value="custom" ${rsl === 'custom' ? 'selected' : ''}>Custom</option>
+            </select>
+            <div id="pmRaiseSlCustom" class="pm-param-custom" style="display: ${rsl === 'custom' ? 'block' : 'none'};">
+              <label class="pm-param-label">Custom raise</label>
+              ${tpMode === 'stock' ? `
+                <input type="number" id="pmRaiseSlCustomStock" class="pm-param-input" step="0.01" placeholder="Stock Price ($)" value="${rslCustomStock || ''}" />
+              ` : `
+                <div class="pm-param-percent-wrapper">
+                  <input type="number" id="pmRaiseSlCustomPer" class="pm-param-input" step="0.01" placeholder="Percent (%)" value="${rslCustomPer || ''}" />
+                  <span class="pm-param-percent-suffix">%</span>
+                </div>
+                <input type="number" id="pmRaiseSlCustomPrice" class="pm-param-input" step="0.01" placeholder="Price ($)" value="${rslCustomPrice || ''}" />
+              `}
+            </div>
+          </div>
+        </form>
+      `;
+      
+      const raiseSlSelect = document.getElementById('pmRaiseSlTo');
+      const customDiv = document.getElementById('pmRaiseSlCustom');
+      if (raiseSlSelect && customDiv) {
+        raiseSlSelect.addEventListener('change', async () => {
+          customDiv.style.display = raiseSlSelect.value === 'custom' ? 'block' : 'none';
+          // Save raise_sl_to immediately and update Discord preview when it changes
+          const posId = activeEditParameterPositionId || activePartialExitPositionId;
+          if (!posId) {
+            console.warn('No position ID available for saving raise_sl_to');
+            return;
+          }
+          exitParameters.raise_sl_to = raiseSlSelect.value;
+          const raiseSlCustomPerEl = document.getElementById('pmRaiseSlCustomPer');
+          const raiseSlCustomPriceEl = document.getElementById('pmRaiseSlCustomPrice');
+          const raiseSlCustomStockEl = document.getElementById('pmRaiseSlCustomStock');
+          const raiseSlCustomPer = raiseSlCustomPerEl ? String(raiseSlCustomPerEl.value || '').trim() : '';
+          const raiseSlCustomPrice = raiseSlCustomPriceEl ? String(raiseSlCustomPriceEl.value || '').trim() : '';
+          const raiseSlCustomStock = raiseSlCustomStockEl ? String(raiseSlCustomStockEl.value || '').trim() : '';
+          exitParameters.raise_sl_custom_per = raiseSlCustomPer;
+          exitParameters.raise_sl_custom_price = raiseSlCustomPrice;
+          exitParameters.raise_sl_custom_stock = raiseSlCustomStock;
+          
+          try {
+            const body = {
+              update_parameters: true,
+              raise_sl_to: raiseSlSelect.value,
+            };
+            if (raiseSlSelect.value === 'custom') {
+              if (raiseSlCustomPer) body.raise_sl_custom_per = raiseSlCustomPer;
+              if (raiseSlCustomPrice) body.raise_sl_custom_price = raiseSlCustomPrice;
+              if (raiseSlCustomStock) body.raise_sl_custom_stock = raiseSlCustomStock;
+            }
+            const res = await fetch(`/positions/${posId}/update/`, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken'),
+              },
+              body: JSON.stringify(body),
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(payload && payload.error ? payload.error : 'Failed to save raise_sl_to');
+            
+            // Fetch updated preview - ensure we're using partial exit preview if this is from Partial Exit modal
+            var currentPriceParam = '';
+            if (partialCurrentPriceInput) {
+              const raw = String(partialCurrentPriceInput.value || '').trim();
+              const n = parseFloat(raw);
+              if (!isNaN(n) && n > 0) currentPriceParam = '&current_price=' + encodeURIComponent(n);
+            }
+            // Ensure activePartialExitPositionId is set if we're in Partial Exit context
+            if (!activePartialExitPositionId && posId) {
+              activePartialExitPositionId = posId;
+            }
+            const previewRes = await fetch('/positions/' + posId + '/preview/?partial=1' + currentPriceParam, { credentials: 'same-origin' });
+            if (previewRes.ok) {
+              const embed = await previewRes.json().catch(() => null);
+              if (embed && typeof embed === 'object') {
+                var textarea = document.querySelector('[data-preview-tp-partial-for="' + posId + '"]');
+                if (textarea) {
+                  textarea.value = JSON.stringify(embed);
+                  renderPartialExitPreview();
+                } else {
+                  console.warn('Could not find preview textarea for position', posId);
+                }
+              }
+            } else {
+              console.warn('Failed to fetch preview after raise_sl_to change');
+            }
+          } catch (e) {
+            console.error('Failed to save/update preview after raise_sl_to change:', e);
+          }
+        });
+      }
+      
+      // Auto-calculation between Next Target Percent and Price, and save/update preview
+      const nextTargetPercentEl = document.getElementById('pmNextTargetPercent');
+      const nextTargetValueEl = document.getElementById('pmNextTargetValue');
+      if (nextTargetPercentEl && nextTargetValueEl && entryPrice > 0) {
+        let updatingFromPercent = false;
+        let updatingFromPrice = false;
+        let saveTimeout = null;
+        
+        const saveNextTargetAndUpdatePreview = async () => {
+          if (!activeEditParameterPositionId || !activePartialExitPositionId) return;
+          const nextTargetPercent = String(nextTargetPercentEl.value || '').trim();
+          const nextTargetValue = String(nextTargetValueEl.value || '').trim();
+          exitParameters.next_target_percent = nextTargetPercent;
+          exitParameters.next_target_value = nextTargetValue;
+          
+          try {
+            const body = {
+              update_parameters: true,
+            };
+            if (nextTargetPercent) body.next_target_percent = nextTargetPercent;
+            if (nextTargetValue) body.next_target_value = nextTargetValue;
+            const res = await fetch(`/positions/${activeEditParameterPositionId}/update/`, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken'),
+              },
+              body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error('Failed to save next target');
+            
+            var currentPriceParam = '';
+            if (partialCurrentPriceInput) {
+              const raw = String(partialCurrentPriceInput.value || '').trim();
+              const n = parseFloat(raw);
+              if (!isNaN(n) && n > 0) currentPriceParam = '&current_price=' + encodeURIComponent(n);
+            }
+            const previewRes = await fetch('/positions/' + activePartialExitPositionId + '/preview/?partial=1' + currentPriceParam, { credentials: 'same-origin' });
+            if (previewRes.ok) {
+              const embed = await previewRes.json().catch(() => null);
+              if (embed && typeof embed === 'object') {
+                var textarea = document.querySelector('[data-preview-tp-partial-for="' + activePartialExitPositionId + '"]');
+                if (textarea) textarea.value = JSON.stringify(embed);
+                renderPartialExitPreview();
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to save/update preview after next target change:', e);
+          }
+        };
+        
+        nextTargetPercentEl.addEventListener('input', () => {
+          if (updatingFromPrice) return;
+          const percent = parseFloat(nextTargetPercentEl.value);
+          if (!isNaN(percent) && percent !== 0 && entryPrice > 0) {
+            updatingFromPercent = true;
+            const price = entryPrice * (1 + percent / 100);
+            nextTargetValueEl.value = price.toFixed(2);
+            updatingFromPercent = false;
+          }
+          // Debounce save/update preview
+          if (saveTimeout) clearTimeout(saveTimeout);
+          saveTimeout = setTimeout(saveNextTargetAndUpdatePreview, 500);
+        });
+        
+        nextTargetValueEl.addEventListener('input', () => {
+          if (updatingFromPercent) return;
+          const price = parseFloat(nextTargetValueEl.value);
+          if (!isNaN(price) && price > 0 && entryPrice > 0) {
+            updatingFromPrice = true;
+            const percent = ((price - entryPrice) / entryPrice) * 100;
+            nextTargetPercentEl.value = percent.toFixed(2);
+            updatingFromPrice = false;
+          }
+          // Debounce save/update preview
+          if (saveTimeout) clearTimeout(saveTimeout);
+          saveTimeout = setTimeout(saveNextTargetAndUpdatePreview, 500);
+        });
+      }
+    } else {
+      // Full Exit parameters (can be empty for now or add fields later)
+      exitParameterContent.innerHTML = `
+        <div class="pm-modal-row">
+          <p style="color: rgba(232, 236, 255, 0.65);">No additional parameters for Full Exit.</p>
+        </div>
+      `;
+    }
+    
+    if (exitParameterBackdrop) {
+      exitParameterBackdrop.style.display = 'flex';
+      exitParameterBackdrop.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  function closeExitParameterModal() {
+    if (exitParameterBackdrop) {
+      exitParameterBackdrop.style.display = 'none';
+      exitParameterBackdrop.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  async function saveExitParameters(isPartial) {
+    if (isPartial) {
+      const reducePercentEl = document.getElementById('pmReducePercent');
+      const nextTargetPercentEl = document.getElementById('pmNextTargetPercent');
+      const nextTargetValueEl = document.getElementById('pmNextTargetValue');
+      const raiseSlToEl = document.getElementById('pmRaiseSlTo');
+      const raiseSlCustomPerEl = document.getElementById('pmRaiseSlCustomPer');
+      const raiseSlCustomPriceEl = document.getElementById('pmRaiseSlCustomPrice');
+      const raiseSlCustomStockEl = document.getElementById('pmRaiseSlCustomStock');
+      
+      const reducePercent = reducePercentEl ? String(reducePercentEl.value || '').trim() : '';
+      const nextTargetPercent = nextTargetPercentEl ? String(nextTargetPercentEl.value || '').trim() : '';
+      const nextTargetValue = nextTargetValueEl ? String(nextTargetValueEl.value || '').trim() : '';
+      const raiseSlTo = raiseSlToEl ? String(raiseSlToEl.value || 'off').trim() : 'off';
+      const raiseSlCustomPer = raiseSlCustomPerEl ? String(raiseSlCustomPerEl.value || '').trim() : '';
+      const raiseSlCustomPrice = raiseSlCustomPriceEl ? String(raiseSlCustomPriceEl.value || '').trim() : '';
+      const raiseSlCustomStock = raiseSlCustomStockEl ? String(raiseSlCustomStockEl.value || '').trim() : '';
+      
+      exitParameters.reduce_percent = reducePercent;
+      exitParameters.next_target_percent = nextTargetPercent;
+      exitParameters.next_target_value = nextTargetValue;
+      exitParameters.raise_sl_to = raiseSlTo;
+      exitParameters.raise_sl_custom_per = raiseSlCustomPer;
+      exitParameters.raise_sl_custom_price = raiseSlCustomPrice;
+      exitParameters.raise_sl_custom_stock = raiseSlCustomStock;
+      
+      if (activeEditParameterPositionId) {
+        try {
+          const body = {
+            update_parameters: true,
+            reduce_percent: reducePercent,
+            next_target_percent: nextTargetPercent,
+            next_target_value: nextTargetValue,
+            raise_sl_to: raiseSlTo,
+          };
+          if (raiseSlTo === 'custom') {
+            if (raiseSlCustomPer) body.raise_sl_custom_per = raiseSlCustomPer;
+            if (raiseSlCustomPrice) body.raise_sl_custom_price = raiseSlCustomPrice;
+            if (raiseSlCustomStock) body.raise_sl_custom_stock = raiseSlCustomStock;
+          }
+          const res = await fetch(`/positions/${activeEditParameterPositionId}/update/`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': getCookie('csrftoken'),
+            },
+            body: JSON.stringify(body),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(payload && payload.error ? payload.error : 'Failed to save parameters');
+          
+          var currentPriceParam = '';
+          if (partialCurrentPriceInput) {
+            const raw = String(partialCurrentPriceInput.value || '').trim();
+            const n = parseFloat(raw);
+            if (!isNaN(n) && n > 0) currentPriceParam = '&current_price=' + encodeURIComponent(n);
+          }
+          const previewRes = await fetch('/positions/' + activeEditParameterPositionId + '/preview/?partial=1' + currentPriceParam, { credentials: 'same-origin' });
+          if (previewRes.ok) {
+            const embed = await previewRes.json().catch(() => null);
+            if (embed && typeof embed === 'object') {
+              var textarea = document.querySelector('[data-preview-tp-partial-for="' + activeEditParameterPositionId + '"]');
+              if (textarea) textarea.value = JSON.stringify(embed);
+              // Update button data attributes with saved values so reopening modal shows them
+              const btn = document.querySelector('[data-partial-exit="' + activeEditParameterPositionId + '"]');
+              if (btn) {
+                if (reducePercent) btn.setAttribute('data-takeoff-percent', reducePercent);
+                if (nextTargetPercent) btn.setAttribute('data-next-target-percent', nextTargetPercent);
+                if (nextTargetValue) btn.setAttribute('data-next-target-value', nextTargetValue);
+                if (raiseSlTo) btn.setAttribute('data-raise-sl-to', raiseSlTo);
+                if (raiseSlTo === 'custom') {
+                  if (raiseSlCustomPer) btn.setAttribute('data-raise-sl-custom-per', raiseSlCustomPer);
+                  if (raiseSlCustomPrice) btn.setAttribute('data-raise-sl-custom-price', raiseSlCustomPrice);
+                  if (raiseSlCustomStock) btn.setAttribute('data-raise-sl-custom-stock', raiseSlCustomStock);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Save exit parameters failed:', e);
+          alert(String(e && e.message ? e.message : 'Failed to save parameters'));
+          return;
+        }
+      }
+    }
+    closeExitParameterModal();
+    if (isPartial && activePartialExitPositionId) {
+      renderPartialExitPreview();
+    } else if (!isPartial && activeExitPositionId) {
+      renderExitPreview();
+    }
+  }
+
   async function postPartialExitUpdate(id, currentPrice) {
+    // Always set partial_exit to true for partial exit
     const body = { kind: 'tp', partial_exit: true };
     if (currentPrice != null && currentPrice > 0) body.current_price = currentPrice;
+    
+    // Get latest exit parameters from button data attributes (most up-to-date) or exitParameters state
+    const btn = document.querySelector(`[data-partial-exit="${id}"]`);
+    const reducePercent = btn ? (btn.getAttribute('data-takeoff-percent') || '') : (exitParameters.reduce_percent || '');
+    const nextTargetPercent = btn ? (btn.getAttribute('data-next-target-percent') || '') : (exitParameters.next_target_percent || '');
+    const nextTargetValue = btn ? (btn.getAttribute('data-next-target-value') || '') : (exitParameters.next_target_value || '');
+    const raiseSlTo = btn ? (btn.getAttribute('data-raise-sl-to') || 'off') : (exitParameters.raise_sl_to || 'off');
+    const raiseSlCustomPer = btn ? (btn.getAttribute('data-raise-sl-custom-per') || '') : (exitParameters.raise_sl_custom_per || '');
+    const raiseSlCustomPrice = btn ? (btn.getAttribute('data-raise-sl-custom-price') || '') : (exitParameters.raise_sl_custom_price || '');
+    const raiseSlCustomStock = btn ? (btn.getAttribute('data-raise-sl-custom-stock') || '') : (exitParameters.raise_sl_custom_stock || '');
+    
+    // Add exit parameters to body
+    if (reducePercent) body.reduce_percent = reducePercent;
+    if (nextTargetPercent) body.next_target_percent = nextTargetPercent;
+    if (nextTargetValue) body.next_target_value = nextTargetValue;
+    if (raiseSlTo && raiseSlTo !== 'off') {
+      body.raise_sl_to = raiseSlTo;
+      if (raiseSlTo === 'custom') {
+        if (raiseSlCustomPer) body.raise_sl_custom_per = raiseSlCustomPer;
+        if (raiseSlCustomPrice) body.raise_sl_custom_price = raiseSlCustomPrice;
+        if (raiseSlCustomStock) body.raise_sl_custom_stock = raiseSlCustomStock;
+      }
+    }
+    
+    // Ensure partial_exit is always true for partial exit
+    body.partial_exit = true;
+    
     const res = await fetch(`/positions/${id}/update/`, {
       method: 'POST',
       credentials: 'same-origin',
@@ -1206,7 +1840,17 @@
       const symbol = btn.getAttribute('data-partial-symbol') || '';
       const entry = btn.getAttribute('data-partial-entry') || '';
       const qty = btn.getAttribute('data-partial-qty') || '';
-      openPartialExitModal(id, symbol, entry, qty);
+      // Use live-updated mark from row if available, else fallback to data attribute
+      let mark = '';
+      const row = btn.closest('tr');
+      if (row) {
+        const markCell = row.querySelector('td.pm-live-mark');
+        if (markCell && markCell.textContent && markCell.textContent.trim() !== '-') {
+          mark = markCell.textContent.trim().replace(/^\$/, '');
+        }
+      }
+      if (!mark) mark = btn.getAttribute('data-partial-mark') || '';
+      openPartialExitModal(id, symbol, entry, qty, mark);
     });
   });
 
@@ -1271,9 +1915,32 @@
     });
   }
 
+  // Exit Parameter modal event listeners
+  if (exitParameterBtn) {
+    exitParameterBtn.addEventListener('click', () => openExitParameterModal(false, activeExitPositionId));
+  }
+  if (partialExitParameterBtn) {
+    partialExitParameterBtn.addEventListener('click', () => openExitParameterModal(true, activePartialExitPositionId));
+  }
+  if (exitParameterSaveBtn) {
+    exitParameterSaveBtn.addEventListener('click', () => {
+      const isPartial = activePartialExitPositionId !== null;
+      saveExitParameters(isPartial);
+    });
+  }
+  document.querySelectorAll('[data-exit-parameter-close], [data-exit-parameter-cancel]').forEach((btn) => {
+    btn.addEventListener('click', closeExitParameterModal);
+  });
+  if (exitParameterBackdrop) {
+    exitParameterBackdrop.addEventListener('click', (e) => {
+      if (e.target === exitParameterBackdrop) closeExitParameterModal();
+    });
+  }
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (partialExitBackdrop && partialExitBackdrop.style.display === 'flex') closePartialExitModal();
+      if (exitParameterBackdrop && exitParameterBackdrop.style.display === 'flex') closeExitParameterModal();
+      else if (partialExitBackdrop && partialExitBackdrop.style.display === 'flex') closePartialExitModal();
       else closeExitModal();
     }
   });
@@ -1282,10 +1949,9 @@
     partialExitConfirmBtn.addEventListener('click', async () => {
       if (!activePartialExitPositionId) return;
       const currentPrice = getPartialCurrentPriceOverride();
-      const riskManagement = getPartialRiskManagement();
       partialExitConfirmBtn.disabled = true;
       try {
-        await postPartialExitUpdate(activePartialExitPositionId, currentPrice, riskManagement);
+        await postPartialExitUpdate(activePartialExitPositionId, currentPrice);
       } catch (e) {
         console.warn('Partial exit failed:', e);
         partialExitConfirmBtn.disabled = false;
@@ -1341,25 +2007,41 @@
     });
   });
 
-  // Real-time update of current price (Mark) and P/L for open positions
-  const LIVE_POLL_INTERVAL_MS = 5000;
+  // Real-time update of current price (Mark) and P/L for open positions (reduced frequency to limit API calls)
+  const LIVE_POLL_INTERVAL_MS = 15000;
   function updateLivePositions() {
     const openTab = document.getElementById('tab-open');
     if (!openTab || openTab.style.display === 'none') return;
     const rows = document.querySelectorAll('#tab-open tr[data-position-id]');
     if (!rows.length) return;
     fetch('/positions/api/live/', { credentials: 'same-origin' })
-      .then((res) => res.ok ? res.json() : null)
+      .then((res) => {
+        if (!res.ok) {
+          console.warn('Position live update failed:', res.status, res.statusText);
+          return null;
+        }
+        return res.json();
+      })
       .then((data) => {
-        if (!data || !Array.isArray(data.positions)) return;
+        if (!data || !Array.isArray(data.positions)) {
+          if (data) console.warn('Position live update: invalid response format', data);
+          return;
+        }
         const byId = {};
         data.positions.forEach((p) => { byId[String(p.id)] = p; });
+        let updatedCount = 0;
         rows.forEach((row) => {
           const id = row.getAttribute('data-position-id');
           const pos = id ? byId[id] : null;
           if (!pos) return;
           const markCell = row.querySelector('td.pm-live-mark');
-          if (markCell) markCell.textContent = pos.mark_str === '-' ? '-' : '$' + pos.mark_str;
+          if (markCell) {
+            const newMark = pos.mark_str === '-' ? '-' : '$' + pos.mark_str;
+            if (markCell.textContent !== newMark) {
+              markCell.textContent = newMark;
+              updatedCount++;
+            }
+          }
           const pnlSpan = row.querySelector('span.pm-live-pnl');
           if (pnlSpan) {
             pnlSpan.textContent = pos.pnl_pct_str;
@@ -1371,8 +2053,13 @@
             realizedSpan.className = 'pm-pill pm-live-realized-pnl ' + (pos.realized_kind || '');
           }
         });
+        if (updatedCount > 0) {
+          console.debug('Position live update: updated', updatedCount, 'mark prices');
+        }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn('Position live update error:', err);
+      });
   }
   updateLivePositions();
   setInterval(updateLivePositions, LIVE_POLL_INTERVAL_MS);

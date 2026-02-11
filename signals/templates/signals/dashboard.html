@@ -2184,6 +2184,11 @@ function updateTpSlPrices() {
     if (Number.isFinite(slPer)) {
         const slPrice = isSell ? base * (1 + slPer / 100) : base * (1 - slPer / 100);
         setValueIfAllowed(slPriceEl, formatFloat3(slPrice));
+        // Also update visible price field if it exists
+        const slPriceVisibleEl = findFieldByName('sl_price_visible');
+        if (slPriceVisibleEl && (!slPriceVisibleEl.dataset.userTouched)) {
+            slPriceVisibleEl.value = formatFloat3(slPrice);
+        }
     }
 
     updateRaiseSlPricesFromPercent(base, isSell);
@@ -2344,6 +2349,15 @@ async function fetchOptionQuote(symbol, { strike, expiration, side } = {}) {
 function getSelectedTradeType() {
     const el = document.getElementById('trade_type');
     return String(el ? el.value : '').trim().toLowerCase() || 'swing';
+}
+
+/** Show Time Horizon field only for Swing and Leap; hide for Scalp */
+function updateTimeHorizonVisibility() {
+    const tradeType = getSelectedTradeType();
+    const show = tradeType === 'swing' || tradeType === 'leap';
+    document.querySelectorAll('[data-show-for-trade-type="swing,leap"]').forEach(function (el) {
+        el.style.display = show ? '' : 'none';
+    });
 }
 
 async function fetchBestOption(symbol, { tradeType, side } = {}) {
@@ -3099,11 +3113,146 @@ function updatePreview() {
                 tps.push(line);
             });
             const slPerRaw = String(formData['sl_per'] ?? '').trim();
-            const slPriceRaw = String(formData['sl_price'] ?? '0.00').trim() || '0.00';
+            const slPriceRaw = String(formData['sl_price'] ?? formData['sl_price_visible'] ?? '0.00').trim() || '0.00';
+            const slLevelsRaw = String(formData['sl_levels'] ?? '').trim();
+            const timeHorizonRaw = String(formData['time_horizon'] ?? '').trim();
             const slPerStr = slPerRaw ? (slPerRaw.endsWith('%') ? slPerRaw : `${slPerRaw}%`) : '';
+            
+            // Collect stop loss levels from "raise stop loss to" settings in TP plan
+            const stopLossLevelsFromTp = [];
+            const entryPrice = parseFloat(String(formData['entry_price'] ?? formData['current_price'] ?? formData['price'] ?? '0').replace(/[$,]/g, '')) || 0;
+            // Compute initial stop loss price from percentage when price is zero or missing
+            const slPerNum = slPerRaw ? parseFloat(String(slPerRaw).replace(/[%,]/g, '')) : NaN;
+            const initialSlPriceFromPer = (entryPrice > 0 && !isNaN(slPerNum)) ? entryPrice * (1 + slPerNum / 100) : null;
+            const basePrice = isShares ? parseFloat(String(formData['current_price'] ?? formData['stock_price'] ?? '0').replace(/[$,]/g, '')) || entryPrice : parseFloat(String(formData['option_price'] ?? formData['price'] ?? '0').replace(/[$,]/g, '')) || entryPrice;
+            
+            // Get TP prices for calculating stop loss levels
+            const tpPrices = {};
+            // Get base price for calculations
+            const basePriceForTp = isShares 
+                ? (parseFloat(String(formData['current_price'] ?? formData['stock_price'] ?? '0').replace(/[$,]/g, '')) || entryPrice)
+                : (parseFloat(String(formData['option_price'] ?? formData['price'] ?? '0').replace(/[$,]/g, '')) || entryPrice);
+            
+            for (let i = 1; i <= MAX_TP_LEVELS; i++) {
+                const tpPriceRaw = String(formData[`tp${i}_price`] ?? '').trim();
+                const tpStockPriceRaw = String(formData[`tp${i}_stock_price`] ?? '').trim();
+                const tpModeRaw = String(formData[`tp${i}_mode`] ?? '').trim().toLowerCase();
+                const isStockMode = tpModeRaw === 'stock' || tpModeRaw === 'stock_price' || tpModeRaw === 'underlying' || tpModeRaw === 'share_price';
+                
+                if (isStockMode && tpStockPriceRaw) {
+                    const tpPrice = parseFloat(tpStockPriceRaw.replace(/[$,]/g, ''));
+                    if (!isNaN(tpPrice) && tpPrice > 0) tpPrices[i] = tpPrice;
+                } else if (tpPriceRaw) {
+                    const tpPrice = parseFloat(tpPriceRaw.replace(/[$,]/g, ''));
+                    if (!isNaN(tpPrice) && tpPrice > 0) tpPrices[i] = tpPrice;
+                } else {
+                    // Calculate TP price from percentage if not stored
+                    const tpPerRaw = String(formData[`tp${i}_per`] ?? '').trim();
+                    if (tpPerRaw && basePriceForTp > 0) {
+                        const tpPer = parseFloat(tpPerRaw.replace(/[%,]/g, ''));
+                        if (!isNaN(tpPer) && tpPer !== 0) {
+                            // Calculate TP price: base * (1 + percentage/100)
+                            const tpPrice = basePriceForTp * (1 + tpPer / 100);
+                            if (tpPrice > 0) tpPrices[i] = tpPrice;
+                        }
+                    }
+                }
+            }
+            
+            // Collect stop loss levels from raise stop loss to settings
+            for (let i = 1; i <= MAX_TP_LEVELS; i++) {
+                const rowEl = document.querySelector(`.tp-level-row[data-tp-row="1"][data-tp-level="${i}"]`);
+                if (!rowEl) break;
+                
+                const raiseSlSelect = rowEl.querySelector('[data-tp-raise-sl-to]');
+                const raiseSlTo = raiseSlSelect ? String(raiseSlSelect.value || '').trim().toLowerCase() : '';
+                
+                // Skip if raise_sl_to is not set (empty, "off", etc.)
+                if (!raiseSlTo || raiseSlTo === 'off') {
+                    continue;
+                }
+                
+                if (raiseSlTo === 'entry') {
+                    if (i === 1 && entryPrice > 0) {
+                        // TP1: raise to entry price
+                        stopLossLevelsFromTp.push(entryPrice);
+                    } else if (i > 1 && tpPrices[i - 1]) {
+                        // TP2+: raise to previous TP price
+                        stopLossLevelsFromTp.push(tpPrices[i - 1]);
+                    }
+                } else if (raiseSlTo === 'custom') {
+                    const modeRaw = String(formData[`tp${i}_mode`] ?? '').trim().toLowerCase();
+                    const mode = (modeRaw === 'stock' || modeRaw === 'stock_price' || modeRaw === 'underlying' || modeRaw === 'share_price') ? 'stock' : 'percent';
+                    
+                    const customPer = rowEl.querySelector('[data-tp-raise-sl-custom-per]');
+                    const customPrice = rowEl.querySelector('[data-tp-raise-sl-custom]');
+                    const customStock = rowEl.querySelector('[data-tp-raise-sl-custom-stock]');
+                    const perVal = customPer ? parseFloat(String(customPer.value || '').trim().replace('%', '')) : NaN;
+                    const priceVal = customPrice ? parseFloat(String(customPrice.value || '').trim().replace(/[$,]/g, '')) : NaN;
+                    const stockVal = customStock ? parseFloat(String(customStock.value || '').trim().replace(/[$,]/g, '')) : NaN;
+                    
+                    if (mode === 'stock' && !isNaN(stockVal) && stockVal > 0 && entryPrice > 0) {
+                        stopLossLevelsFromTp.push(entryPrice + stockVal);
+                    } else if (!isNaN(priceVal) && priceVal > 0 && entryPrice > 0) {
+                        stopLossLevelsFromTp.push(entryPrice + priceVal);
+                    } else if (!isNaN(perVal) && perVal > 0 && entryPrice > 0) {
+                        stopLossLevelsFromTp.push(entryPrice * (1 + perVal / 100));
+                    }
+                }
+            }
+            
+            // Combine manual sl_levels with calculated levels from TP plan
+            let allStopLossLevels = [];
+            // Add initial stop loss price: use explicit price if set, else compute from percentage when price is zero
+            const initialSlPrice = (function() {
+                if (slPriceRaw && slPriceRaw !== '0.00') {
+                    const n = parseFloat(slPriceRaw.replace(/[$,]/g, ''));
+                    if (!isNaN(n)) return n;
+                }
+                return initialSlPriceFromPer;
+            })();
+            if (initialSlPrice != null && !isNaN(initialSlPrice)) {
+                if (!allStopLossLevels.some(l => Math.abs(l - initialSlPrice) < 0.01)) {
+                    allStopLossLevels.push(initialSlPrice);
+                }
+            }
+            // Add manual sl_levels if provided
+            if (slLevelsRaw) {
+                const manualLevels = slLevelsRaw.split(';').map(s => {
+                    const num = parseFloat(s.trim().replace(/[$,]/g, ''));
+                    return !isNaN(num) && num > 0 ? num : null;
+                }).filter(l => l !== null);
+                manualLevels.forEach(level => {
+                    if (!allStopLossLevels.some(l => Math.abs(l - level) < 0.01)) {
+                        allStopLossLevels.push(level);
+                    }
+                });
+            }
+            // Add calculated levels from TP plan (avoid duplicates)
+            stopLossLevelsFromTp.forEach(level => {
+                if (level > 0 && !allStopLossLevels.some(l => Math.abs(l - level) < 0.01)) {
+                    allStopLossLevels.push(level);
+                }
+            });
+            // Sort levels (highest to lowest for stop losses)
+            allStopLossLevels.sort((a, b) => b - a);
+            // Format each stop loss level with price and percentage relative to entry price
+            const allStopLossLevelsFormatted = allStopLossLevels.length > 0 
+                ? allStopLossLevels.map(l => {
+                    const priceStr = l.toFixed(2);
+                    let percentStr = '';
+                    if (entryPrice > 0) {
+                        const percent = ((l - entryPrice) / entryPrice) * 100;
+                        percentStr = `${percent >= 0 ? '+' : ''}${percent.toFixed(1)}%`;
+                    } else {
+                        percentStr = '0%';
+                    }
+                    return `${priceStr}(${percentStr})`;
+                }).join(', ')
+                : '';
 
             // Show Trade Plan even before option price is computed (defaults: 0.00)
-            if (targets.length || tps.length || slPerRaw || slPriceRaw) {
+            if (targets.length || tps.length || slPerRaw || slPriceRaw || slLevelsRaw || allStopLossLevelsFormatted || timeHorizonRaw) {
                 // Find insertion index: after last option-related field (Expiration/Strike/Option/Price)
                 let insertAt = -1;
                 fieldsToRenderFinal.forEach((it, idx) => {
@@ -3145,12 +3294,53 @@ function updatePreview() {
                         fieldValue: '',
                     });
                 }
-                if (slPriceRaw) {
-                    tpBlock.stopLossLine = `🛑 Stop Loss: ${slPriceRaw}${slPerStr ? `(${slPerStr})` : ''}`;
+                // Stop Loss: show multiple levels if provided (from manual input or calculated from TP plan), otherwise single price or percentage
+                if (allStopLossLevelsFormatted) {
+                    tpBlock.stopLossLine = `🛑 Stop Loss: ${allStopLossLevelsFormatted}`;
                     injected.push({
                         field: { inline: false },
                         index: -1003,
-                        fieldName: `🛑 Stop Loss: ${slPriceRaw}${slPerStr ? `(${slPerStr})` : ''}`,
+                        fieldName: `🛑 Stop Loss: ${allStopLossLevelsFormatted}`,
+                        fieldValue: '',
+                    });
+                } else {
+                    // Single stop loss: use explicit price or compute from percentage when price is zero
+                    const slPrice = initialSlPrice != null && !isNaN(initialSlPrice)
+                        ? initialSlPrice
+                        : (slPriceRaw && slPriceRaw !== '0.00' ? parseFloat(slPriceRaw.replace(/[$,]/g, '')) : NaN);
+                    const slPriceStr = (!isNaN(slPrice) && slPrice !== null) ? slPrice.toFixed(2) : slPriceRaw;
+                    let percentStr = '';
+                    if (entryPrice > 0 && !isNaN(slPrice)) {
+                        const percent = ((slPrice - entryPrice) / entryPrice) * 100;
+                        percentStr = `(${percent >= 0 ? '+' : ''}${percent.toFixed(1)}%)`;
+                    } else if (slPerStr) {
+                        percentStr = `(${slPerStr})`;
+                    }
+                    if (slPriceStr !== '0.00' || percentStr || slPerStr) {
+                        tpBlock.stopLossLine = `🛑 Stop Loss: ${slPriceStr}${percentStr}`;
+                        injected.push({
+                            field: { inline: false },
+                            index: -1003,
+                            fieldName: `🛑 Stop Loss: ${slPriceStr}${percentStr}`,
+                            fieldValue: '',
+                        });
+                    } else if (slPerStr) {
+                        tpBlock.stopLossLine = `🛑 Stop Loss: ${slPerStr}`;
+                        injected.push({
+                            field: { inline: false },
+                            index: -1003,
+                            fieldName: `🛑 Stop Loss: ${slPerStr}`,
+                            fieldValue: '',
+                        });
+                    }
+                }
+                // Time Horizon (for leaps/swings only; show in preview when trade type is Swing or Leap)
+                const tradeTypeForPreview = String(formData['trade_type'] ?? '').trim().toLowerCase();
+                if (timeHorizonRaw && (tradeTypeForPreview === 'swing' || tradeTypeForPreview === 'leap')) {
+                    injected.push({
+                        field: { inline: false },
+                        index: -1004,
+                        fieldName: `⏱️ Time Horizon: ${timeHorizonRaw}`,
                         fieldValue: '',
                     });
                 }
@@ -3503,7 +3693,8 @@ function createDynamicFields(signalTypeId) {
 
         const input = document.createElement('input');
         input.type = 'number';
-        input.step = '0.1';
+        // Allow more precision for stop loss percentage (was 0.1, now 0.01 for better precision)
+        input.step = name === 'sl_per' ? '0.01' : '0.1';
         input.min = allowNegative ? '-100' : '0';
         input.className = 'form-input';
         input.id = `id_${name}`;
@@ -4113,7 +4304,9 @@ function createDynamicFields(signalTypeId) {
     variables.forEach(variable => {
         // Check if this variable is used
         // is_shares is a special control variable that should always be visible
-        const isSpecialControl = variable.name === 'is_shares' || variable.type === 'ticker_type';
+        // Also treat 'ticker' with type 'string' as ticker_type for Common Trade Alert compatibility
+        const isTickerType = variable.type === 'ticker_type' || (variable.name === 'ticker' && (variable.type === 'string' || variable.type === 'text'));
+        const isSpecialControl = variable.name === 'is_shares' || isTickerType;
         const isUsed = usedVariables.has(variable.name) || isSpecialControl;
         const isOptionalOnly = optionalOnlyVariables.has(variable.name);
         
@@ -4168,8 +4361,9 @@ function createDynamicFields(signalTypeId) {
                 input = control.input;
                 input._tickerSearchWrap = control.wrap;
             }
-        } else if (variable.type === 'ticker_type') {
+        } else if (isTickerType) {
             // Searchable input backed by server-side search (avoid loading full ticker universe)
+            // Handle both ticker_type and ticker (string/text) for Common Trade Alert compatibility
             const control = createTickerSearchControl(variable);
             input = control.input;
             input._tickerSearchWrap = control.wrap;
@@ -4464,6 +4658,68 @@ function createDynamicFields(signalTypeId) {
             updateTpSlPrices();
 
             const slGroup = createSyntheticPercentField('sl_per', initialSl, 'Stop Loss', { showPercentSuffix: true });
+            
+            // Add visible stop loss price input field (for direct price entry with precision)
+            const slPriceGroup = createSyntheticPriceField('sl_price_visible', '', 'Stop Loss Price ($)', { showDollarPrefix: true });
+            const slPriceVisibleInput = slPriceGroup.querySelector('input[name="sl_price_visible"]');
+            if (slPriceVisibleInput) {
+                slPriceVisibleInput.step = '0.01'; // Allow 2 decimal places for precise stops
+                slPriceVisibleInput.placeholder = '0.00';
+                // Sync with hidden sl_price field
+                const slPriceHidden = findFieldByName('sl_price');
+                if (slPriceHidden && slPriceHidden.value && slPriceHidden.value !== '0.00') {
+                    slPriceVisibleInput.value = slPriceHidden.value;
+                }
+                slPriceVisibleInput.addEventListener('input', function() {
+                    const val = this.value;
+                    if (slPriceHidden) slPriceHidden.value = val || '0.00';
+                    updatePreview();
+                });
+                slPriceVisibleInput.addEventListener('change', function() {
+                    const val = this.value;
+                    if (slPriceHidden) slPriceHidden.value = val || '0.00';
+                    updatePreview();
+                });
+            }
+            
+            // Add support for multiple stop loss levels (array)
+            const slLevelsGroup = document.createElement('div');
+            slLevelsGroup.className = 'form-group';
+            slLevelsGroup.setAttribute('data-variable-name', 'sl_levels');
+            const slLevelsLabel = document.createElement('label');
+            slLevelsLabel.textContent = 'Stop Loss Levels ($)';
+            slLevelsLabel.setAttribute('for', 'id_sl_levels');
+            const slLevelsInput = document.createElement('input');
+            slLevelsInput.type = 'text';
+            slLevelsInput.className = 'form-input';
+            slLevelsInput.id = 'id_sl_levels';
+            slLevelsInput.name = 'sl_levels';
+            slLevelsInput.placeholder = 'e.g., 96; 89; 86';
+            slLevelsInput.title = 'Enter multiple stop loss levels separated by semicolons (e.g., $96; $89; $86)';
+            slLevelsGroup.appendChild(slLevelsLabel);
+            slLevelsGroup.appendChild(slLevelsInput);
+            slLevelsInput.addEventListener('input', updatePreview);
+            slLevelsInput.addEventListener('change', updatePreview);
+            
+            // Add Time Horizon field (for leaps/swings only; shown under Stop Loss in Trade Plan)
+            const timeHorizonGroup = document.createElement('div');
+            timeHorizonGroup.className = 'form-group';
+            timeHorizonGroup.setAttribute('data-variable-name', 'time_horizon');
+            timeHorizonGroup.setAttribute('data-show-for-trade-type', 'swing,leap');
+            const timeHorizonLabel = document.createElement('label');
+            timeHorizonLabel.textContent = 'Time Horizon';
+            timeHorizonLabel.setAttribute('for', 'id_time_horizon');
+            const timeHorizonInput = document.createElement('input');
+            timeHorizonInput.type = 'text';
+            timeHorizonInput.className = 'form-input';
+            timeHorizonInput.id = 'id_time_horizon';
+            timeHorizonInput.name = 'time_horizon';
+            timeHorizonInput.placeholder = 'e.g., 3-6 months, 1-2 weeks';
+            timeHorizonInput.title = 'How long you expect for this trade to play out (Leaps/Swings)';
+            timeHorizonGroup.appendChild(timeHorizonLabel);
+            timeHorizonGroup.appendChild(timeHorizonInput);
+            timeHorizonInput.addEventListener('input', updatePreview);
+            timeHorizonInput.addEventListener('change', updatePreview);
 
             // Action buttons row (goes at the end of the Trade Plan panel)
             const presetActionsBar = document.createElement('div');
@@ -4873,8 +5129,13 @@ function createDynamicFields(signalTypeId) {
             const tradePlanChildren = [
                 tpContainer,
                 slGroup,
+                slPriceGroup,
+                slLevelsGroup,
+                timeHorizonGroup,
                 presetActionsBar,
                 createSyntheticHiddenField('sl_price', '0.00'),
+                createSyntheticHiddenField('sl_levels', ''),
+                createSyntheticHiddenField('time_horizon', ''),
             ];
             formGroup._afterSyntheticGroups.push(createSyntheticTradePlanGroup(tradePlanChildren));
             // Ensure option_price is present in submitted JSON even if not defined in variables.
@@ -5012,8 +5273,8 @@ function createDynamicFields(signalTypeId) {
             formGroup.appendChild(label);
             // For ticker search inputs we created an extra wrapper; append it instead of the raw input.
             if (input && input._tickerSearchWrap) {
-                // If this is ticker_type, render a row that can host the is_shares toggle inline.
-                if (variable.type === 'ticker_type') {
+                // If this is ticker_type (or ticker with string/text type), render a row that can host the is_shares toggle inline.
+                if (isTickerType) {
                     const row = document.createElement('div');
                     row.className = 'ticker-type-row';
                     row.appendChild(input._tickerSearchWrap);
@@ -5041,7 +5302,7 @@ function createDynamicFields(signalTypeId) {
         }
 
         // Insert any synthetic option fields (strike/expiration/option_type) right after ticker_type.
-        if (variable.type === 'ticker_type' && Array.isArray(formGroup._afterSyntheticGroups) && formGroup._afterSyntheticGroups.length > 0) {
+        if (isTickerType && Array.isArray(formGroup._afterSyntheticGroups) && formGroup._afterSyntheticGroups.length > 0) {
             formGroup._afterSyntheticGroups.forEach((g) => {
                 dynamicFieldsContainer.appendChild(g);
             });
@@ -5080,8 +5341,8 @@ function createDynamicFields(signalTypeId) {
             });
         }
 
-        // Auto-fetch current price when selecting a ticker_type field.
-        if (variable.type === 'ticker_type') {
+        // Auto-fetch current price when selecting a ticker_type field (or ticker with string/text type).
+        if (isTickerType) {
             input.addEventListener('change', async () => {
                 const sym = String(input.value || '').trim().toUpperCase();
                 if (!sym) return;
@@ -5252,6 +5513,8 @@ function createDynamicFields(signalTypeId) {
     
     // Update variable visibility after fields are created
     updateVariableVisibility();
+    // Time Horizon: show only for Swing/Leap (under Stop Loss in Trade Plan)
+    updateTimeHorizonVisibility();
 
     // If signal type has a file variable (e.g. Chart Analysis), form must use multipart
     const hasFileVariable = (signalType.variables || []).some(v => v && v.type === 'file');
@@ -5811,9 +6074,13 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (signalTypeSelect) {
         // Default to Common Trade Alert; fallback to current value or first type
-        const commonTradeAlertId = Object.keys(signalTypesData).find((id) => (signalTypesData[id].name || '') === 'Common Trade Alert');
+        const commonTradeAlertId = Object.keys(signalTypesData).find((id) => {
+            const st = signalTypesData[id];
+            return st && (st.name || '').trim() === 'Common Trade Alert';
+        });
         const defaultValue = signalTypeSelect.value || commonTradeAlertId || signalTypeSelect.options[signalTypeSelect.selectedIndex]?.value || Object.keys(signalTypesData)[0];
-        console.log('Default value determined:', defaultValue);
+        console.log('Default value determined:', defaultValue, 'Common Trade Alert ID:', commonTradeAlertId);
+        console.log('Available signal types:', Object.keys(signalTypesData).map(id => ({ id, name: signalTypesData[id]?.name })));
         
         if (defaultValue) {
             signalTypeSelect.value = defaultValue;
@@ -5822,6 +6089,14 @@ document.addEventListener('DOMContentLoaded', function() {
             if (isTradePlanOnlyPage) setupTradePlanOnlyLayout();
         } else {
             console.warn('No default value found. signalTypeSelect.value:', signalTypeSelect.value, 'Options:', signalTypeSelect.options.length);
+            // Fallback: try to create fields with first available signal type
+            const firstId = Object.keys(signalTypesData)[0];
+            if (firstId) {
+                console.log('Fallback: using first available signal type:', firstId);
+                signalTypeSelect.value = firstId;
+                createDynamicFields(firstId);
+                if (isTradePlanOnlyPage) setupTradePlanOnlyLayout();
+            }
         }
 
         // Message template wiring happens inside setupTradePlanOnlyLayout()
@@ -6047,6 +6322,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const tradeTypeEl = document.getElementById('trade_type');
     if (tradeTypeEl) {
         tradeTypeEl.addEventListener('change', async () => {
+            updateTimeHorizonVisibility(); // Show Time Horizon only for Swing/Leap
             await maybeAutoPickBestOption();
             updatePreview();
         });
