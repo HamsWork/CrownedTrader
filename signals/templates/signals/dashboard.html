@@ -1306,6 +1306,18 @@
 
                     <!-- Dynamic Form Fields Container -->
                     <div id="dynamicFields"></div>
+                    <!-- Option Contract card: Manual switch + Strike, Expiration, Option Type. Shown only in options mode. -->
+                    <div id="manualOptionContractCard" class="sub-card" style="display: none;">
+                        <div style="color: #e0e0e0; font-size: 1em; margin-bottom: 12px; font-weight: 600;">Option contract</div>
+                        <div class="switch-item">
+                            <label class="mini-switch">
+                                <input type="checkbox" id="manualOptionContractSwitch" />
+                                <span class="mini-slider"></span>
+                            </label>
+                            <label class="switch-text" for="manualOptionContractSwitch">Manual option contract (enter Expiration and Strike manually)</label>
+                        </div>
+                        <div id="optionContractFieldsContainer" style="margin-top: 14px; display: flex; flex-direction: column; gap: 10px;"></div>
+                    </div>
                     <!-- Searchable dropdown source for US ticker symbols -->
                     <datalist id="usTickerList"></datalist>
 
@@ -2409,9 +2421,89 @@ async function fetchOptionQuote(symbol, { strike, expiration, side } = {}) {
     return payload && payload.price != null ? payload : null;
 }
 
+/** When Manual option contract is on: fetch option quote for current strike/expiration/option_type and update option_price, entry_price, price (and option_contract). If contract unavailable, set price to 0 and show Strike/Expiration validation error. */
+function setStrikeExpirationValidationError(strikeEl, expEl, message) {
+    const msg = message || 'Option contract unavailable';
+    [strikeEl, expEl].forEach(function (el) {
+        if (!el) return;
+        el.setCustomValidity(msg);
+        el.style.borderColor = '#dc3545';
+        el.dataset.optionUnavailable = '1';
+        var group = el.closest('.form-group');
+        var errEl = group ? group.querySelector('.option-contract-error') : null;
+        if (group && !errEl) {
+            errEl = document.createElement('div');
+            errEl.className = 'option-contract-error error-message';
+            errEl.style.marginTop = '4px';
+            errEl.style.fontSize = '0.9em';
+            group.appendChild(errEl);
+        }
+        if (errEl) errEl.textContent = msg;
+    });
+}
+function clearStrikeExpirationValidationError(strikeEl, expEl) {
+    [strikeEl, expEl].forEach(function (el) {
+        if (!el) return;
+        el.setCustomValidity('');
+        el.style.borderColor = '';
+        delete el.dataset.optionUnavailable;
+        var group = el.closest('.form-group');
+        var errEl = group ? group.querySelector('.option-contract-error') : null;
+        if (errEl) errEl.textContent = '';
+    });
+}
+async function updateOptionPriceFromManualContract() {
+    const manualSwitch = document.getElementById('manualOptionContractSwitch');
+    if (!manualSwitch || !manualSwitch.checked) return;
+    const sym = getCurrentTickerSymbol();
+    if (!sym) return;
+    const strikeEl = findFieldByName('strike');
+    const expEl = findFieldByName('expiration');
+    const optTypeEl = findFieldByName('option_type');
+    const strike = strikeEl ? String(strikeEl.value || '').trim() : '';
+    const expiration = expEl ? String(expEl.value || '').trim() : '';
+    const optTypeRaw = optTypeEl ? String(optTypeEl.value || '').trim().toLowerCase() : '';
+    const side = optTypeRaw.includes('put') ? 'put' : 'call';
+    if (!strike || !expiration) {
+        clearStrikeExpirationValidationError(strikeEl, expEl);
+        return;
+    }
+    const optQuote = await fetchOptionQuote(sym, { strike: parseFloat(strike) || strike, expiration, side });
+    const optionPriceEl = findFieldByName('option_price');
+    const entryPriceEl = findFieldByName('entry_price');
+    const priceEl = findFieldByName('price');
+    const contractEl = findFieldByName('option_contract');
+    if (!optQuote || optQuote.price == null) {
+        if (optionPriceEl) { optionPriceEl.value = '0.00'; optionPriceEl.dispatchEvent(new Event('input', { bubbles: true })); optionPriceEl.dispatchEvent(new Event('change', { bubbles: true })); }
+        if (entryPriceEl) { entryPriceEl.value = '0.00'; entryPriceEl.dispatchEvent(new Event('input', { bubbles: true })); entryPriceEl.dispatchEvent(new Event('change', { bubbles: true })); }
+        if (priceEl) { priceEl.value = '0.00'; priceEl.dispatchEvent(new Event('input', { bubbles: true })); priceEl.dispatchEvent(new Event('change', { bubbles: true })); }
+        if (contractEl) { contractEl.value = ''; contractEl.dispatchEvent(new Event('input', { bubbles: true })); contractEl.dispatchEvent(new Event('change', { bubbles: true })); }
+        setStrikeExpirationValidationError(strikeEl, expEl, 'Option contract unavailable');
+        if (typeof updateTpSlPrices === 'function') updateTpSlPrices();
+        if (typeof updatePreview === 'function') updatePreview();
+        return;
+    }
+    clearStrikeExpirationValidationError(strikeEl, expEl);
+    if (optionPriceEl) { optionPriceEl.value = formatFloat3(optQuote.price); optionPriceEl.dataset.autoFilled = '1'; optionPriceEl.dispatchEvent(new Event('input', { bubbles: true })); optionPriceEl.dispatchEvent(new Event('change', { bubbles: true })); }
+    if (entryPriceEl) { entryPriceEl.value = formatFloat3(optQuote.price); entryPriceEl.dataset.autoFilled = '1'; entryPriceEl.dispatchEvent(new Event('input', { bubbles: true })); entryPriceEl.dispatchEvent(new Event('change', { bubbles: true })); }
+    if (priceEl) { priceEl.value = formatFloat3(optQuote.price); priceEl.dataset.autoFilled = '1'; priceEl.dispatchEvent(new Event('input', { bubbles: true })); priceEl.dispatchEvent(new Event('change', { bubbles: true })); }
+    if (contractEl && optQuote.contract != null) { contractEl.value = String(optQuote.contract); contractEl.dispatchEvent(new Event('input', { bubbles: true })); contractEl.dispatchEvent(new Event('change', { bubbles: true })); }
+    if (typeof updateTpSlPrices === 'function') updateTpSlPrices();
+    if (typeof updatePreview === 'function') updatePreview();
+}
+
 function getSelectedTradeType() {
     const el = document.getElementById('trade_type');
     return String(el ? el.value : '').trim().toLowerCase() || 'swing';
+}
+
+/** Show Strike and Expiration inputs only when Manual Option Contract is on; hide when off (best-option fills them). */
+function updateManualOptionContractFieldsVisibility() {
+    const manualSwitch = document.getElementById('manualOptionContractSwitch');
+    const show = manualSwitch && manualSwitch.checked;
+    document.querySelectorAll('#optionContractFieldsContainer [data-variable-name="strike"], #optionContractFieldsContainer [data-variable-name="expiration"]').forEach(function (el) {
+        el.style.display = show ? '' : 'none';
+    });
 }
 
 /** Show Time Horizon field only for Swing and Leap; hide for Scalp. When showing, set default date. */
@@ -2447,6 +2539,8 @@ async function maybeAutoPickBestOption() {
     const isSharesCheckbox = document.getElementById('id_is_shares');
     const isShares = isSharesCheckbox && isSharesCheckbox.checked;
     if (isShares) return;
+    const manualSwitch = document.getElementById('manualOptionContractSwitch');
+    if (manualSwitch && manualSwitch.checked) return; // Manual option contract: user enters Expiration and Strike
 
     const sym = getCurrentTickerSymbol();
     if (!sym) return;
@@ -2466,8 +2560,21 @@ async function maybeAutoPickBestOption() {
     const priceEl = findFieldByName('price');
     const contractEl = findFieldByName('option_contract');
 
-    setValueIfAllowed(strikeEl, best.strike);
-    setValueIfAllowed(expEl, best.expiration);
+    // Manual off: always update strike and expiration from best option (inputs are hidden)
+    const strikeVal = best.strike == null ? '' : String(best.strike);
+    const expVal = best.expiration == null ? '' : String(best.expiration);
+    if (strikeEl) {
+        strikeEl.value = strikeVal;
+        strikeEl.dataset.autoFilled = '1';
+        strikeEl.dispatchEvent(new Event('input', { bubbles: true }));
+        strikeEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (expEl) {
+        expEl.value = expVal;
+        expEl.dataset.autoFilled = '1';
+        expEl.dispatchEvent(new Event('input', { bubbles: true }));
+        expEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
     setValueIfAllowed(optionPriceEl, formatFloat3(best.option_price));
     setValueIfAllowed(entryPriceEl, formatFloat3(best.option_price));
     setValueIfAllowed(priceEl, formatFloat3(best.option_price));
@@ -3181,6 +3288,10 @@ function updatePreview() {
             const slPriceRaw = String(formData['sl_price'] ?? formData['sl_price_visible'] ?? '0.00').trim() || '0.00';
             const slLevelsRaw = String(formData['sl_levels'] ?? '').trim();
             const timeHorizonRaw = String(formData['time_horizon'] ?? '').trim();
+            const trailingStopTrigger = String(formData['trailing_stop_trigger'] ?? 'none').trim().toLowerCase();
+            const trailingStopPerRaw = String(formData['trailing_stop_per'] ?? '').trim();
+            const trailingStop = trailingStopTrigger && trailingStopTrigger !== 'none';
+            const trailingStopPerStr = trailingStopPerRaw ? (trailingStopPerRaw.endsWith('%') ? trailingStopPerRaw : trailingStopPerRaw + '%') : '';
             const slPerStr = slPerRaw ? (slPerRaw.endsWith('%') ? slPerRaw : `${slPerRaw}%`) : '';
             
             // Collect stop loss levels from "raise stop loss to" settings in TP plan
@@ -3359,13 +3470,22 @@ function updatePreview() {
                         fieldValue: '',
                     });
                 }
-                // Stop Loss: show multiple levels if provided (from manual input or calculated from TP plan), otherwise single price or percentage
+                // Stop Loss: show multiple levels if provided (from manual input or calculated from TP plan), otherwise single price or percentage. Append trailing stop info when trigger is not None.
+                const trailingLabel = (function() {
+                    if (!trailingStop || !trailingStopTrigger) return '';
+                    const triggerLabels = { entry: 'Entry', custom: 'Custom' };
+                    let triggerLabel = triggerLabels[trailingStopTrigger];
+                    if (!triggerLabel && /^tp\d+$/.test(trailingStopTrigger)) triggerLabel = 'Take Profit ' + trailingStopTrigger.replace('tp', '');
+                    const perPart = trailingStopPerStr ? ' ' + trailingStopPerStr : '';
+                    return (triggerLabel || trailingStopTrigger) ? ' (Trailing' + perPart + ' from ' + (triggerLabel || trailingStopTrigger) + ')' : ' (Trailing)';
+                })();
+                const trailingSuffix = trailingLabel;
                 if (allStopLossLevelsFormatted) {
-                    tpBlock.stopLossLine = `🛑 Stop Loss: ${allStopLossLevelsFormatted}`;
+                    tpBlock.stopLossLine = `🛑 Stop Loss: ${allStopLossLevelsFormatted}${trailingSuffix}`;
                     injected.push({
                         field: { inline: false },
                         index: -1003,
-                        fieldName: `🛑 Stop Loss: ${allStopLossLevelsFormatted}`,
+                        fieldName: `🛑 Stop Loss: ${allStopLossLevelsFormatted}${trailingSuffix}`,
                         fieldValue: '',
                     });
                 } else {
@@ -3382,19 +3502,19 @@ function updatePreview() {
                         percentStr = `(${slPerStr})`;
                     }
                     if (slPriceStr !== '0.00' || percentStr || slPerStr) {
-                        tpBlock.stopLossLine = `🛑 Stop Loss: ${slPriceStr}${percentStr}`;
+                        tpBlock.stopLossLine = `🛑 Stop Loss: ${slPriceStr}${percentStr}${trailingSuffix}`;
                         injected.push({
                             field: { inline: false },
                             index: -1003,
-                            fieldName: `🛑 Stop Loss: ${slPriceStr}${percentStr}`,
+                            fieldName: `🛑 Stop Loss: ${slPriceStr}${percentStr}${trailingSuffix}`,
                             fieldValue: '',
                         });
                     } else if (slPerStr) {
-                        tpBlock.stopLossLine = `🛑 Stop Loss: ${slPerStr}`;
+                        tpBlock.stopLossLine = `🛑 Stop Loss: ${slPerStr}${trailingSuffix}`;
                         injected.push({
                             field: { inline: false },
                             index: -1003,
-                            fieldName: `🛑 Stop Loss: ${slPerStr}`,
+                            fieldName: `🛑 Stop Loss: ${slPerStr}${trailingSuffix}`,
                             fieldValue: '',
                         });
                     }
@@ -3567,6 +3687,11 @@ function createDynamicFields(signalTypeId) {
         console.error('dynamicFields container not found!');
         return;
     }
+    // Preserve Option Contract card before clearing (it will be re-inserted below ticker)
+    const manualOptionContractCard = document.getElementById('manualOptionContractCard');
+    if (manualOptionContractCard && manualOptionContractCard.parentNode === dynamicFieldsContainer) {
+        dynamicFieldsContainer.parentNode.insertBefore(manualOptionContractCard, dynamicFieldsContainer.nextSibling);
+    }
     dynamicFieldsContainer.innerHTML = '';
     
     // Convert to string to match the keys in signalTypesData (which are strings from template)
@@ -3726,6 +3851,15 @@ function createDynamicFields(signalTypeId) {
                 const isSharesCheckbox = document.getElementById('id_is_shares');
                 if (isSharesCheckbox && isSharesCheckbox.checked) onOptionTypeChange();
             });
+        }
+
+        // When Manual option contract is on: updating Strike or Expiration should update Option Price
+        if (name === 'strike' || name === 'expiration') {
+            const onStrikeOrExpirationChange = () => {
+                if (typeof updateOptionPriceFromManualContract === 'function') updateOptionPriceFromManualContract().catch(function() {});
+            };
+            input.addEventListener('input', onStrikeOrExpirationChange);
+            input.addEventListener('change', onStrikeOrExpirationChange);
         }
 
         return formGroup;
@@ -4450,9 +4584,9 @@ function createDynamicFields(signalTypeId) {
 
             // If template didn't define option fields, add them by default (they'll be hidden when is_shares is true).
             formGroup._afterSyntheticGroups = [];
-            // Strike/Expiration are auto-selected; keep them as hidden fields only.
-            if (!hasStrikeVariable) formGroup._afterSyntheticGroups.push(createSyntheticHiddenField('strike', ''));
-            if (!hasExpirationVariable) formGroup._afterSyntheticGroups.push(createSyntheticHiddenField('expiration', ''));
+            // Strike/Expiration: visible so user can enter manually when "Manual option contract" is on; otherwise best-option fills them.
+            if (!hasStrikeVariable) formGroup._afterSyntheticGroups.push(createSyntheticOptionField('strike'));
+            if (!hasExpirationVariable) formGroup._afterSyntheticGroups.push(createSyntheticOptionField('expiration'));
             if (!hasOptionTypeVariable) formGroup._afterSyntheticGroups.push(createSyntheticOptionField('option_type'));
             // Add TP/SL inputs grouped under "Trade Plan" behind Option Type.
             // Prices are auto-calculated from option_price and stored in hidden fields for template use.
@@ -4772,6 +4906,89 @@ function createDynamicFields(signalTypeId) {
             slLevelsInput.addEventListener('input', updatePreview);
             slLevelsInput.addEventListener('change', updatePreview);
             
+            // Trailing Stop panel (behind Stop Loss): trigger condition + trailing stop percent
+            const trailingStopPanel = document.createElement('div');
+            trailingStopPanel.className = 'trailing-stop-panel';
+            trailingStopPanel.setAttribute('data-variable-name', 'trailing_stop_panel');
+            trailingStopPanel.style.marginTop = '16px';
+            const trailingStopPanelTitle = document.createElement('div');
+            trailingStopPanelTitle.className = 'trailing-stop-panel-title';
+            trailingStopPanelTitle.style.fontWeight = '600';
+            trailingStopPanelTitle.style.marginBottom = '10px';
+            trailingStopPanelTitle.textContent = 'Trailing Stop';
+            trailingStopPanel.appendChild(trailingStopPanelTitle);
+
+            const trailingStopTriggerGroup = document.createElement('div');
+            trailingStopTriggerGroup.className = 'form-group';
+            const trailingStopTriggerLabel = document.createElement('label');
+            trailingStopTriggerLabel.setAttribute('for', 'id_trailing_stop_trigger');
+            trailingStopTriggerLabel.textContent = 'Trigger Trailing Stop condition';
+            const trailingStopTriggerSelect = document.createElement('select');
+            trailingStopTriggerSelect.className = 'form-select';
+            trailingStopTriggerSelect.id = 'id_trailing_stop_trigger';
+            trailingStopTriggerSelect.name = 'trailing_stop_trigger';
+            const triggerOptions = [
+                { value: 'none', label: 'None' },
+                { value: 'entry', label: 'Entry' },
+            ];
+            for (let i = 1; i <= MAX_TP_LEVELS; i++) {
+                triggerOptions.push({ value: 'tp' + i, label: 'Take Profit ' + i });
+            }
+            triggerOptions.push({ value: 'custom', label: 'Custom' });
+            triggerOptions.forEach(function (opt) {
+                const o = document.createElement('option');
+                o.value = opt.value;
+                o.textContent = opt.label;
+                trailingStopTriggerSelect.appendChild(o);
+            });
+            trailingStopTriggerGroup.appendChild(trailingStopTriggerLabel);
+            trailingStopTriggerGroup.appendChild(trailingStopTriggerSelect);
+            trailingStopTriggerSelect.addEventListener('input', updatePreview);
+            trailingStopTriggerSelect.addEventListener('change', updatePreview);
+            trailingStopPanel.appendChild(trailingStopTriggerGroup);
+
+            const trailingStopPerGroup = document.createElement('div');
+            trailingStopPerGroup.className = 'form-group';
+            const trailingStopPerLabel = document.createElement('label');
+            trailingStopPerLabel.setAttribute('for', 'id_trailing_stop_per');
+            trailingStopPerLabel.textContent = 'Trailing stop percent';
+            const trailingStopPerInput = document.createElement('input');
+            trailingStopPerInput.type = 'number';
+            trailingStopPerInput.className = 'form-input';
+            trailingStopPerInput.id = 'id_trailing_stop_per';
+            trailingStopPerInput.name = 'trailing_stop_per';
+            trailingStopPerInput.placeholder = 'e.g. 5';
+            trailingStopPerInput.step = '0.01';
+            trailingStopPerInput.min = '0';
+            trailingStopPerInput.title = 'Trailing stop percentage (e.g. 5 for 5%)';
+            trailingStopPerGroup.appendChild(trailingStopPerLabel);
+            trailingStopPerGroup.appendChild(trailingStopPerInput);
+            trailingStopPerInput.addEventListener('input', updatePreview);
+            trailingStopPerInput.addEventListener('change', updatePreview);
+            trailingStopPanel.appendChild(trailingStopPerGroup);
+
+            const initialTrigger = String(initialPlan.trailing_stop_trigger || 'none').toLowerCase();
+            const initialPer = String(initialPlan.trailing_stop_per ?? '').trim();
+            if (initialTrigger) {
+                const opt = trailingStopTriggerSelect.querySelector('option[value="' + initialTrigger + '"]');
+                if (opt) trailingStopTriggerSelect.value = initialTrigger;
+            }
+            if (initialPer) trailingStopPerInput.value = initialPer;
+
+            // Hidden trailing_stop for backward compat: true when trigger is not none
+            const trailingStopHidden = document.createElement('input');
+            trailingStopHidden.type = 'hidden';
+            trailingStopHidden.name = 'trailing_stop';
+            trailingStopHidden.id = 'id_trailing_stop';
+            trailingStopHidden.value = (initialTrigger && initialTrigger !== 'none') ? 'true' : 'false';
+            function syncTrailingStopHidden() {
+                const trigger = String(trailingStopTriggerSelect.value || '').toLowerCase();
+                trailingStopHidden.value = (trigger && trigger !== 'none') ? 'true' : 'false';
+            }
+            trailingStopTriggerSelect.addEventListener('change', syncTrailingStopHidden);
+            trailingStopPanel.appendChild(trailingStopHidden);
+            syncTrailingStopHidden();
+
             // Add Time Horizon field (for leaps/swings only; date selection, under Stop Loss in Trade Plan)
             const timeHorizonGroup = document.createElement('div');
             timeHorizonGroup.className = 'form-group';
@@ -4832,6 +5049,18 @@ function createDynamicFields(signalTypeId) {
                         delete slEl.dataset.userTouched;
                         slEl.dispatchEvent(new Event('input', { bubbles: true }));
                         slEl.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    const trailingTriggerEl = findFieldByName('trailing_stop_trigger');
+                    const trailingPerEl = findFieldByName('trailing_stop_per');
+                    if (trailingTriggerEl) {
+                        trailingTriggerEl.value = 'none';
+                        trailingTriggerEl.dispatchEvent(new Event('input', { bubbles: true }));
+                        trailingTriggerEl.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    if (trailingPerEl) {
+                        trailingPerEl.value = '';
+                        trailingPerEl.dispatchEvent(new Event('input', { bubbles: true }));
+                        trailingPerEl.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                     updateTpSlPrices();
                     updatePreview();
@@ -4894,6 +5123,21 @@ function createDynamicFields(signalTypeId) {
                     slEl.dispatchEvent(new Event('input', { bubbles: true }));
                     slEl.dispatchEvent(new Event('change', { bubbles: true }));
                 }
+                const trailingTriggerEl = findFieldByName('trailing_stop_trigger');
+                const trailingPerEl = findFieldByName('trailing_stop_per');
+                const planTrigger = String(plan.trailing_stop_trigger || 'none').trim().toLowerCase();
+                const planPer = String(plan.trailing_stop_per ?? '').trim();
+                if (trailingTriggerEl) {
+                    const opt = trailingTriggerEl.querySelector('option[value="' + planTrigger + '"]');
+                    trailingTriggerEl.value = opt ? planTrigger : 'none';
+                    trailingTriggerEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    trailingTriggerEl.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                if (trailingPerEl) {
+                    trailingPerEl.value = planPer;
+                    trailingPerEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    trailingPerEl.dispatchEvent(new Event('change', { bubbles: true }));
+                }
                 updateTpSlPrices();
                 updatePreview();
             }
@@ -4927,11 +5171,18 @@ function createDynamicFields(signalTypeId) {
             });
 
             function currentPlanPayload() {
+                const triggerEl = findFieldByName('trailing_stop_trigger');
+                const perEl = findFieldByName('trailing_stop_per');
+                const trigger = triggerEl ? String(triggerEl.value ?? 'none').trim().toLowerCase() : 'none';
+                const trailing_stop = (trigger && trigger !== 'none') ? 'true' : 'false';
                 return {
                     version: 1,
                     tp_mode: globalTpMode,
                     tp_levels: readTpState(),
                     sl_per: String(findFieldByName('sl_per')?.value ?? '').trim(),
+                    trailing_stop: trailing_stop,
+                    trailing_stop_trigger: trigger || 'none',
+                    trailing_stop_per: perEl ? String(perEl.value ?? '').trim() : '',
                 };
             }
 
@@ -5204,6 +5455,7 @@ function createDynamicFields(signalTypeId) {
                 slGroup,
                 slPriceGroup,
                 slLevelsGroup,
+                trailingStopPanel,
                 timeHorizonGroup,
                 presetActionsBar,
                 createSyntheticHiddenField('sl_price', '0.00'),
@@ -5373,13 +5625,27 @@ function createDynamicFields(signalTypeId) {
             dynamicFieldsContainer.appendChild(formGroup);
         }
 
-        // Insert any synthetic option fields (strike/expiration/option_type) right after ticker_type.
-        if (isTickerType && Array.isArray(formGroup._afterSyntheticGroups) && formGroup._afterSyntheticGroups.length > 0) {
-            formGroup._afterSyntheticGroups.forEach((g) => {
-                dynamicFieldsContainer.appendChild(g);
-            });
+        // Place Option Contract card right below the ticker input; put Strike, Expiration, Option Type inside the card.
+        if (isTickerType) {
+            const card = document.getElementById('manualOptionContractCard');
+            if (card) dynamicFieldsContainer.insertBefore(card, formGroup.nextSibling);
         }
-        
+        // Synthetic groups: Strike, Expiration, Option Type -> inside Option Contract card; rest (Trade Plan, etc.) -> below card.
+        if (isTickerType && Array.isArray(formGroup._afterSyntheticGroups) && formGroup._afterSyntheticGroups.length > 0) {
+            const optionContractContainer = document.getElementById('optionContractFieldsContainer');
+            if (optionContractContainer) optionContractContainer.innerHTML = '';
+            const optionFieldNames = new Set(['strike', 'expiration', 'option_type']);
+            formGroup._afterSyntheticGroups.forEach((g) => {
+                const name = g.getAttribute && g.getAttribute('data-variable-name');
+                if (optionContractContainer && name && optionFieldNames.has(name)) {
+                    optionContractContainer.appendChild(g);
+                } else {
+                    dynamicFieldsContainer.appendChild(g);
+                }
+            });
+            if (typeof updateManualOptionContractFieldsVisibility === 'function') updateManualOptionContractFieldsVisibility();
+        }
+
         // Add event listeners for real-time preview
         input.addEventListener('input', updatePreview);
         input.addEventListener('change', updatePreview);
@@ -5411,6 +5677,15 @@ function createDynamicFields(signalTypeId) {
                 updateTpSlPrices();
                 updatePreview();
             });
+        }
+
+        // When Manual option contract is on: updating Strike or Expiration should update Option Price
+        if (variable.name === 'strike' || variable.name === 'expiration') {
+            const onStrikeOrExpirationChange = () => {
+                if (typeof updateOptionPriceFromManualContract === 'function') updateOptionPriceFromManualContract().catch(function() {});
+            };
+            input.addEventListener('input', onStrikeOrExpirationChange);
+            input.addEventListener('change', onStrikeOrExpirationChange);
         }
 
         // Auto-fetch current price when selecting a ticker_type field (or ticker with string/text type).
@@ -5642,8 +5917,33 @@ function updateOptionTypeLabelAndOptions(isShares) {
 
 // Toggle visibility of option-related fields based on is_shares checkbox
 function toggleOptionFields(isShares) {
-    // When is_shares on: hide only strike and expiration; show option_type as "Buy or Sell" (Buy/Sell). Trade Plan stays visible.
-    // When is_shares off: show strike, expiration, option_type as "Option Type" (CALL/PUT).
+    // When is_shares on: hide Option Contract card; show Buy or Sell (option_type) outside the card, below ticker.
+    // When is_shares off: show Option Contract card with Strike, Expiration, Option Type inside it.
+    const manualCard = document.getElementById('manualOptionContractCard');
+    const optionContractContainer = document.getElementById('optionContractFieldsContainer');
+    const dynamicFieldsContainer = document.getElementById('dynamicFields');
+    const optionTypeGroup = document.querySelector('#optionContractFieldsContainer [data-variable-name="option_type"]') || document.querySelector('[data-variable-name="option_type"]');
+
+    if (manualCard) manualCard.style.display = isShares ? 'none' : 'block';
+    if (!isShares && typeof updateManualOptionContractFieldsVisibility === 'function') updateManualOptionContractFieldsVisibility();
+
+    // Move option_type (Buy or Sell / Option Type) in or out of the Option Contract card
+    if (optionTypeGroup && optionContractContainer && dynamicFieldsContainer) {
+        if (isShares) {
+            // Is_shares on: show Buy or Sell outside the card (after the card in DOM so it appears below ticker when card is hidden)
+            if (optionTypeGroup.parentNode === optionContractContainer) {
+                dynamicFieldsContainer.insertBefore(optionTypeGroup, manualCard && manualCard.nextSibling ? manualCard.nextSibling : null);
+            }
+            optionTypeGroup.style.display = 'block';
+        } else {
+            // Is_shares off: put option_type back inside the Option Contract card (after Strike & Expiration)
+            if (optionTypeGroup.parentNode !== optionContractContainer) {
+                optionContractContainer.appendChild(optionTypeGroup);
+            }
+            optionTypeGroup.style.display = 'block';
+        }
+    }
+
     const strikeGroups = document.querySelectorAll('[data-variable-name="strike"]');
     const expirationGroups = document.querySelectorAll('[data-variable-name="expiration"]');
     const optionTypeGroups = document.querySelectorAll('[data-variable-name="option_type"]');
@@ -5675,6 +5975,9 @@ function toggleOptionFields(isShares) {
         field.style.display = 'block';
     });
     updateOptionTypeLabelAndOptions(isShares);
+
+    // When Option Contract card is visible (!isShares), hide Strike/Expiration if Manual Option Contract switch is off
+    if (!isShares && typeof updateManualOptionContractFieldsVisibility === 'function') updateManualOptionContractFieldsVisibility();
 
     // Other [data-requires-options] that are not strike/expiration/option_type (e.g. inside Trade Plan): hide only when is_shares and outside Trade Plan
     const optionFields = document.querySelectorAll('[data-requires-options="true"]');
@@ -6160,6 +6463,9 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Creating dynamic fields for default value:', defaultValue);
             createDynamicFields(defaultValue);
             if (isTradePlanOnlyPage) setupTradePlanOnlyLayout();
+            if (typeof updateManualOptionContractFieldsVisibility === 'function') updateManualOptionContractFieldsVisibility();
+            // If Expiration is hidden (manual off), use best option (e.g. when ticker is already set)
+            if (typeof maybeAutoPickBestOption === 'function') maybeAutoPickBestOption().catch(function() {});
         } else {
             console.warn('No default value found. signalTypeSelect.value:', signalTypeSelect.value, 'Options:', signalTypeSelect.options.length);
             // Fallback: try to create fields with first available signal type
@@ -6169,6 +6475,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 signalTypeSelect.value = firstId;
                 createDynamicFields(firstId);
                 if (isTradePlanOnlyPage) setupTradePlanOnlyLayout();
+                if (typeof updateManualOptionContractFieldsVisibility === 'function') updateManualOptionContractFieldsVisibility();
+                if (typeof maybeAutoPickBestOption === 'function') maybeAutoPickBestOption().catch(function() {});
             }
         }
 
@@ -6180,6 +6488,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (this.value) {
                 createDynamicFields(this.value);
                 if (isTradePlanOnlyPage) setupTradePlanOnlyLayout();
+                if (typeof updateManualOptionContractFieldsVisibility === 'function') updateManualOptionContractFieldsVisibility();
+                if (typeof maybeAutoPickBestOption === 'function') maybeAutoPickBestOption().catch(function() {});
                 // Update preview immediately - createDynamicFields already calls it, but ensure it happens
                 updatePreview();
             }
@@ -6245,6 +6555,18 @@ document.addEventListener('DOMContentLoaded', function() {
             // Check if is_shares is checked
             const isSharesCheckbox = document.getElementById('id_is_shares');
             const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+            const manualOptionOn = document.getElementById('manualOptionContractSwitch') && document.getElementById('manualOptionContractSwitch').checked;
+
+            // Manual option contract on: if Strike/Expiration marked as option unavailable, block submit
+            if (!isShares && manualOptionOn) {
+                const optionUnavailableInput = document.querySelector('#dynamicFields input[data-option-unavailable="1"]');
+                if (optionUnavailableInput) {
+                    errors.push('Strike / Expiration: Option contract unavailable');
+                    dynamicInputs.forEach(function (input) {
+                        if (input.dataset.optionUnavailable === '1') input.style.borderColor = '#dc3545';
+                    });
+                }
+            }
             
             dynamicInputs.forEach(input => {
                 // Skip cosmetic controls (e.g. custom dropdown inputs) or unnamed elements
@@ -6400,6 +6722,41 @@ document.addEventListener('DOMContentLoaded', function() {
             updatePreview();
         });
     }
+
+    // Manual option contract switch: when off, run best-option to fill Expiration and Strike; when on/off, show/hide Strike & Expiration inputs
+    const manualOptionContractSwitch = document.getElementById('manualOptionContractSwitch');
+    if (manualOptionContractSwitch) {
+        manualOptionContractSwitch.addEventListener('change', async () => {
+            if (typeof updateManualOptionContractFieldsVisibility === 'function') updateManualOptionContractFieldsVisibility();
+            if (!manualOptionContractSwitch.checked && typeof maybeAutoPickBestOption === 'function') {
+                await maybeAutoPickBestOption();
+            }
+            if (typeof updatePreview === 'function') updatePreview();
+        });
+    }
+
+    // When Manual option contract is on: updating Strike or Expiration (or Option Type) should update Option Price from API
+    let manualOptionPriceDebounce = null;
+    document.addEventListener('change', function(e) {
+        const el = e.target;
+        if (!el || !el.name) return;
+        const container = document.getElementById('optionContractFieldsContainer');
+        if (!container || !container.contains(el)) return;
+        if (el.name !== 'strike' && el.name !== 'expiration' && el.name !== 'option_type') return;
+        if (!manualOptionContractSwitch || !manualOptionContractSwitch.checked) return;
+        if (typeof updateOptionPriceFromManualContract === 'function') updateOptionPriceFromManualContract();
+    });
+    document.addEventListener('input', function(e) {
+        const el = e.target;
+        if (!el || el.name !== 'strike' && el.name !== 'expiration') return;
+        const container = document.getElementById('optionContractFieldsContainer');
+        if (!container || !container.contains(el)) return;
+        if (!manualOptionContractSwitch || !manualOptionContractSwitch.checked) return;
+        clearTimeout(manualOptionPriceDebounce);
+        manualOptionPriceDebounce = setTimeout(function() {
+            if (typeof updateOptionPriceFromManualContract === 'function') updateOptionPriceFromManualContract();
+        }, 400);
+    });
 });
 </script>
 {% endblock %}

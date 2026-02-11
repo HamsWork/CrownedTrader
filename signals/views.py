@@ -997,9 +997,21 @@ def get_signal_template(signal):
                     joiner = ",  " if any(str(t or "").startswith("TP") for t in targets) else ", "
                     injected.append({"name": f"🎯 Targets: {joiner.join(targets)}", "value": "", "inline": False})
                 
-                # Stop Loss: show multiple levels if provided, otherwise single price or percentage
+                # Stop Loss: show multiple levels if provided, otherwise single price or percentage. Append trailing stop trigger and % when set.
+                trailing_trigger = str(data_copy.get("trailing_stop_trigger") or "").strip().lower()
+                trailing_per = str(data_copy.get("trailing_stop_per") or "").strip()
+                trailing_stop_on = trailing_trigger and trailing_trigger != "none"
+                if trailing_stop_on and (trailing_per or trailing_trigger):
+                    trigger_labels = {"entry": "Entry", "custom": "Custom"}
+                    trigger_label = trigger_labels.get(trailing_trigger)
+                    if not trigger_label and len(trailing_trigger) == 3 and trailing_trigger.startswith("tp") and trailing_trigger[2:].isdigit():
+                        trigger_label = f"Take Profit {trailing_trigger[2:]}"
+                    per_part = f" {trailing_per}%" if trailing_per else ""
+                    trailing_suffix = f" (Trailing{per_part} from {trigger_label or trailing_trigger})"
+                else:
+                    trailing_suffix = ""
                 if sl_levels_formatted:
-                    stop_loss_name = f"🛑 Stop Loss: {sl_levels_formatted}"
+                    stop_loss_name = f"🛑 Stop Loss: {sl_levels_formatted}{trailing_suffix}"
                 elif sl_price_str and sl_price_str != "0.00":
                     # Calculate percentage for single stop loss price
                     try:
@@ -1009,12 +1021,12 @@ def get_signal_template(signal):
                             percent_str = f"{percent:+.1f}%"
                         else:
                             percent_str = f"({sl_per_str})" if sl_per_str else ""
-                        stop_loss_name = f"🛑 Stop Loss: {sl_price_str}({percent_str})" if percent_str else f"🛑 Stop Loss: {sl_price_str}"
+                        stop_loss_name = f"🛑 Stop Loss: {sl_price_str}({percent_str}){trailing_suffix}" if percent_str else f"🛑 Stop Loss: {sl_price_str}{trailing_suffix}"
                     except (ValueError, TypeError):
-                        stop_loss_name = f"🛑 Stop Loss: {sl_price_str}{f'({sl_per_str})' if sl_per_str else ''}"
+                        stop_loss_name = f"🛑 Stop Loss: {sl_price_str}{f'({sl_per_str})' if sl_per_str else ''}{trailing_suffix}"
                 elif sl_per_str:
                     # Show stop loss percentage even if no price is set yet
-                    stop_loss_name = f"🛑 Stop Loss: {sl_per_str}"
+                    stop_loss_name = f"🛑 Stop Loss: {sl_per_str}{trailing_suffix}"
                 else:
                     stop_loss_name = None
                 
