@@ -459,7 +459,7 @@ class PolygonClient:
         strike_gte: Optional[float] = None,
         strike_lte: Optional[float] = None,
         timeout: int = 10,
-        max_pages: int = 50,
+        max_pages: int = 5,
     ) -> Optional[list]:
         """
         Best-effort: return a list of option snapshots for an underlying using Polygon snapshot endpoint.
