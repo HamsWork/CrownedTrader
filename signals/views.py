@@ -124,6 +124,99 @@ def _search_tickers_tradingview(q: str, *, limit: int, include_etfs: bool) -> li
     return results
 
 
+def _search_crypto_tickers_polygon(q: str, *, limit: int) -> list[dict]:
+    """
+    Search crypto tickers via Polygon API.
+    Returns list[{symbol, name}] for crypto symbols matching the query.
+    """
+    q = (q or "").strip().upper()
+    if not q:
+        return []
+    
+    polygon_key = getattr(settings, "POLYGON_API_KEY", "") or ""
+    if not polygon_key:
+        return []
+    
+    try:
+        client = PolygonClient(polygon_key)
+        
+        # Polygon crypto tickers endpoint: /v3/reference/tickers
+        # Search for crypto tickers matching the query
+        params = {
+            "market": "crypto",
+            "search": q,
+            "active": "true",
+            "limit": min(limit or 50, 100),  # Polygon limit is 100
+            "order": "ticker",
+        }
+        
+        # Use PolygonClient's _get method
+        data = client._get("/v3/reference/tickers", params=params, timeout=6)
+        if not data or data.get("status") != "OK":
+            return []
+        
+        results = data.get("results") or []
+        crypto_tickers = []
+        
+        # Common crypto symbols to prioritize
+        common_cryptos = {"BTC", "ETH", "SOL", "ADA", "DOT", "MATIC", "AVAX", "LINK", "UNI", "ATOM", 
+                         "ALGO", "XRP", "DOGE", "SHIB", "LTC", "BCH", "ETC", "XLM", "AAVE", "SAND",
+                         "MANA", "AXS", "ENJ", "CHZ", "FLOW", "NEAR", "FTM", "ICP", "APT", "ARB",
+                         "OP", "SUI", "SEI", "TIA", "INJ", "RUNE", "THETA", "FIL", "EOS", "TRX"}
+        
+        seen = set()
+        prioritized = []
+        others = []
+        
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            
+            ticker_raw = str(item.get("ticker") or "").strip().upper()
+            if not ticker_raw:
+                continue
+            
+            # Only include USD pairs (exclude USDT and other pairs)
+            # Skip if it ends with USDT or doesn't end with USD
+            if ticker_raw.endswith("USDT") or not ticker_raw.endswith("USD"):
+                continue
+            
+            # Remove X: prefix
+            display_symbol = ticker_raw.replace("X:", "").strip()
+            # Extract base symbol for deduplication and prioritization
+            base_symbol = display_symbol.replace("USD", "").strip()
+            if not display_symbol or not display_symbol.endswith("USD") or base_symbol in seen:
+                continue
+            seen.add(base_symbol)
+            
+            # Symbol should already end with USD, but ensure it does
+            if not display_symbol.endswith("USD"):
+                display_symbol = f"{base_symbol}USD"
+            
+            name = str(item.get("name") or "").strip()
+            if not name:
+                # Use friendly name from PolygonClient if available
+                name = client.get_company_name(base_symbol) or f"{base_symbol} (Crypto)"
+            
+            ticker_info = {"symbol": display_symbol, "name": name}
+            
+            # Prioritize common cryptos
+            if base_symbol in common_cryptos:
+                prioritized.append(ticker_info)
+            else:
+                others.append(ticker_info)
+        
+        # Combine: prioritized first, then others
+        crypto_tickers = prioritized + others
+        
+        # Apply limit
+        return crypto_tickers[:limit] if limit > 0 else crypto_tickers
+        
+    except Exception as e:
+        logger.warning(f"Crypto ticker search failed: {e}")
+        return []
+
+
 def _normalize_symbol(symbol: str) -> str:
     symbol = (symbol or "").strip().upper()
     # Basic allowlist: alnum plus "." and "-" (BRK.B, BF.B, etc)
@@ -997,21 +1090,9 @@ def get_signal_template(signal):
                     joiner = ",  " if any(str(t or "").startswith("TP") for t in targets) else ", "
                     injected.append({"name": f"🎯 Targets: {joiner.join(targets)}", "value": "", "inline": False})
                 
-                # Stop Loss: show multiple levels if provided, otherwise single price or percentage. Append trailing stop trigger and % when set.
-                trailing_trigger = str(data_copy.get("trailing_stop_trigger") or "").strip().lower()
-                trailing_per = str(data_copy.get("trailing_stop_per") or "").strip()
-                trailing_stop_on = trailing_trigger and trailing_trigger != "none"
-                if trailing_stop_on and (trailing_per or trailing_trigger):
-                    trigger_labels = {"entry": "Entry", "custom": "Custom"}
-                    trigger_label = trigger_labels.get(trailing_trigger)
-                    if not trigger_label and len(trailing_trigger) == 3 and trailing_trigger.startswith("tp") and trailing_trigger[2:].isdigit():
-                        trigger_label = f"Take Profit {trailing_trigger[2:]}"
-                    per_part = f" {trailing_per}%" if trailing_per else ""
-                    trailing_suffix = f" (Trailing{per_part} from {trigger_label or trailing_trigger})"
-                else:
-                    trailing_suffix = ""
+                # Stop Loss: show multiple levels if provided, otherwise single price or percentage
                 if sl_levels_formatted:
-                    stop_loss_name = f"🛑 Stop Loss: {sl_levels_formatted}{trailing_suffix}"
+                    stop_loss_name = f"🛑 Stop Loss: {sl_levels_formatted}"
                 elif sl_price_str and sl_price_str != "0.00":
                     # Calculate percentage for single stop loss price
                     try:
@@ -1021,12 +1102,12 @@ def get_signal_template(signal):
                             percent_str = f"{percent:+.1f}%"
                         else:
                             percent_str = f"({sl_per_str})" if sl_per_str else ""
-                        stop_loss_name = f"🛑 Stop Loss: {sl_price_str}({percent_str}){trailing_suffix}" if percent_str else f"🛑 Stop Loss: {sl_price_str}{trailing_suffix}"
+                        stop_loss_name = f"🛑 Stop Loss: {sl_price_str}({percent_str})" if percent_str else f"🛑 Stop Loss: {sl_price_str}"
                     except (ValueError, TypeError):
-                        stop_loss_name = f"🛑 Stop Loss: {sl_price_str}{f'({sl_per_str})' if sl_per_str else ''}{trailing_suffix}"
+                        stop_loss_name = f"🛑 Stop Loss: {sl_price_str}{f'({sl_per_str})' if sl_per_str else ''}"
                 elif sl_per_str:
                     # Show stop loss percentage even if no price is set yet
-                    stop_loss_name = f"🛑 Stop Loss: {sl_per_str}{trailing_suffix}"
+                    stop_loss_name = f"🛑 Stop Loss: {sl_per_str}"
                 else:
                     stop_loss_name = None
                 
@@ -1038,6 +1119,31 @@ def get_signal_template(signal):
                             "inline": False,
                         }
                     )
+                
+                # Trailing Stop: show when trigger is not "none"
+                trailing_stop_trigger = str(data_copy.get("trailing_stop_trigger") or "").strip().lower() or "none"
+                trailing_stop_per_raw = str(data_copy.get("trailing_stop_per") or "").strip()
+                if trailing_stop_trigger != "none" and trailing_stop_per_raw:
+                    trailing_stop_per_str = trailing_stop_per_raw if trailing_stop_per_raw.endswith("%") else f"{trailing_stop_per_raw}%"
+                    trigger_labels = {
+                        "entry": "Entry",
+                        "tp1": "Take Profit 1",
+                        "tp2": "Take Profit 2",
+                        "tp3": "Take Profit 3",
+                        "tp4": "Take Profit 4",
+                        "tp5": "Take Profit 5",
+                        "tp6": "Take Profit 6",
+                        "custom": "Custom"
+                    }
+                    trigger_label = trigger_labels.get(trailing_stop_trigger, trailing_stop_trigger)
+                    injected.append(
+                        {
+                            "name": f"📉 Trailing Stop: {trailing_stop_per_str} (trigger: {trigger_label})",
+                            "value": "",
+                            "inline": False,
+                        }
+                    )
+                
                 # Time Horizon (for leaps/swings only; under Stop Loss in Trade Plan)
                 time_horizon_raw = str(data_copy.get("time_horizon") or "").strip()
                 trade_type_raw = str(data_copy.get("trade_type") or "").strip().lower()
@@ -3017,17 +3123,41 @@ def us_tickers(request):
         source = "tradingview" if q else "cache"
 
     include_etfs = True  # keep consistent with existing behavior unless you want a flag later
+    include_crypto = True  # include crypto tickers in search results
 
     if source == "tradingview":
         # Live search only (TradingView endpoint is search-oriented, not a full-universe dump).
+        tickers = []
         try:
-            tickers = _search_tickers_tradingview(q, limit=limit or 40, include_etfs=include_etfs) if q else []
-            return JsonResponse({"tickers": tickers, "source": "tradingview"})
+            stock_tickers = _search_tickers_tradingview(q, limit=limit or 40, include_etfs=include_etfs) if q else []
+            tickers.extend(stock_tickers)
         except Exception as e:
             # Fall back to cache to keep UI usable.
             # (We intentionally don't expose internal error details to the client.)
-            tickers = []
-            # Continue into cache flow below.
+            pass
+        
+        # Add crypto tickers if query provided and crypto is enabled
+        if q and include_crypto:
+            try:
+                crypto_limit = max(10, (limit or 40) - len(tickers))  # Reserve some slots for crypto
+                crypto_tickers = _search_crypto_tickers_polygon(q, limit=crypto_limit)
+                tickers.extend(crypto_tickers)
+            except Exception as e:
+                logger.warning(f"Crypto ticker search failed: {e}")
+        
+        if tickers:
+            # Sort: exact symbol matches first, then prefix matches, then alphabetical
+            q_upper = q.upper()
+            tickers.sort(key=lambda r: (
+                0 if r["symbol"].upper() == q_upper else (1 if r["symbol"].upper().startswith(q_upper) else 2),
+                r["symbol"]
+            ))
+            # Apply limit after combining
+            if limit:
+                tickers = tickers[:limit]
+            return JsonResponse({"tickers": tickers, "source": "tradingview"})
+        
+        # Continue into cache flow below if no results.
 
     # Cache flow (fallback or explicit): ensure popular ETFs (SPY, QQQ, etc.) are always in the list
     POPULAR_ETFS = [
@@ -3037,6 +3167,19 @@ def us_tickers(request):
         {"symbol": "DIA", "name": "SPDR Dow Jones Industrial Average ETF"},
         {"symbol": "VOO", "name": "Vanguard S&P 500 ETF"},
     ]
+    # Popular crypto symbols (for cache flow when searching) - use USD suffix format
+    POPULAR_CRYPTOS = [
+        {"symbol": "BTCUSD", "name": "Bitcoin"},
+        {"symbol": "ETHUSD", "name": "Ethereum"},
+        {"symbol": "SOLUSD", "name": "Solana"},
+        {"symbol": "ADAUSD", "name": "Cardano"},
+        {"symbol": "XRPUSD", "name": "Ripple"},
+        {"symbol": "DOGEUSD", "name": "Dogecoin"},
+        {"symbol": "MATICUSD", "name": "Polygon"},
+        {"symbol": "AVAXUSD", "name": "Avalanche"},
+        {"symbol": "LINKUSD", "name": "Chainlink"},
+        {"symbol": "UNIUSD", "name": "Uniswap"},
+    ]
     tickers_all = list(get_us_tickers() or [])
     seen = {str(t.get("symbol") or "").strip().upper() for t in tickers_all if isinstance(t, dict)}
     for etf in POPULAR_ETFS:
@@ -3044,6 +3187,14 @@ def us_tickers(request):
         if sym and sym not in seen:
             tickers_all.append(etf)
             seen.add(sym)
+    
+    # Add popular cryptos to cache if searching (they'll be filtered by query below)
+    if q and include_crypto:
+        for crypto in POPULAR_CRYPTOS:
+            sym = str(crypto.get("symbol") or "").strip().upper()
+            if sym and sym not in seen:
+                tickers_all.append(crypto)
+                seen.add(sym)
     tickers = tickers_all
 
     if q:

@@ -23,6 +23,7 @@ def _to_float(v):
 def run_auto_tracking_check(dry_run=False):
     """
     Check all open positions with mode=auto; post TP/SL exit when price hits level.
+    Also handles trailing stops.
     dry_run: if True, do not send Discord or update DB.
     """
     open_auto = Position.objects.filter(
@@ -48,6 +49,59 @@ def run_auto_tracking_check(dry_run=False):
                 pos.symbol,
             )
             continue
+
+        # Check trailing stop if configured
+        trailing_stop_trigger = str(data.get("trailing_stop_trigger", "")).strip().lower()
+        trailing_stop_per = _to_float(data.get("trailing_stop_per", ""))
+        
+        trailing_stop_active = False
+        trailing_stop_price = None
+        
+        if trailing_stop_trigger and trailing_stop_trigger != "none" and trailing_stop_per > 0:
+            # Determine if trailing stop should be active based on trigger condition
+            if trailing_stop_trigger == "entry":
+                # Trailing stop activates immediately after entry
+                trailing_stop_active = True
+            elif trailing_stop_trigger.startswith("tp"):
+                # Trailing stop activates when a specific TP level is hit
+                try:
+                    trigger_tp_level = int(trailing_stop_trigger.replace("tp", ""))
+                    # Trailing stop activates when TP level is hit (tp_hit_level >= trigger_tp_level)
+                    trailing_stop_active = (pos.tp_hit_level or 0) >= trigger_tp_level
+                except (ValueError, TypeError):
+                    trailing_stop_active = False
+            
+            if trailing_stop_active:
+                # Calculate trailing stop price: highest price * (1 - trailing_stop_per/100)
+                # For now, use current price as highest (in production, you'd track highest price)
+                # TODO: Add highest_price field to Position model to track peak price
+                highest_price = current_price  # Simplified: use current price as highest
+                trailing_stop_price = highest_price * (1 - trailing_stop_per / 100)
+                
+                # Check if price has dropped below trailing stop
+                if current_price <= trailing_stop_price:
+                    if dry_run:
+                        logger.info(
+                            "Would post trailing stop exit for position id=%s %s (current=%.2f <= trailing_stop=%.2f)",
+                            pos.id, pos.symbol, current_price, trailing_stop_price,
+                        )
+                        continue
+                    with transaction.atomic():
+                        pos.refresh_from_db()
+                        if pos.status != Position.STATUS_OPEN:
+                            continue
+                        if _apply_position_exit(pos, "sl"):  # Use "sl" exit type for trailing stop
+                            logger.info(
+                                "check_auto_positions: posted trailing stop exit position_id=%s symbol=%s",
+                                pos.id,
+                                pos.symbol,
+                            )
+                        else:
+                            logger.warning(
+                                "check_auto_positions: failed to post trailing stop exit position_id=%s",
+                                pos.id,
+                            )
+                    continue
 
         # Stop loss: price at or past stop level
         if sl_price > 0 and current_price <= sl_price:

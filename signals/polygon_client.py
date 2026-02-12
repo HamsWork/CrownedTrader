@@ -86,7 +86,31 @@ class PolygonClient:
         return data.get("results") or None
 
     def get_company_name(self, ticker: str) -> str:
-        """Best-effort company name for a stock ticker (empty string if unavailable)."""
+        """Best-effort company name for a stock or crypto ticker (empty string if unavailable)."""
+        # For crypto, return a friendly name
+        if self._is_crypto_symbol(ticker):
+            crypto_names = {
+                "BTC": "Bitcoin", "ETH": "Ethereum", "SOL": "Solana", "ADA": "Cardano",
+                "DOT": "Polkadot", "MATIC": "Polygon", "AVAX": "Avalanche", "LINK": "Chainlink",
+                "UNI": "Uniswap", "ATOM": "Cosmos", "ALGO": "Algorand", "XRP": "Ripple",
+                "DOGE": "Dogecoin", "SHIB": "Shiba Inu", "LTC": "Litecoin", "BCH": "Bitcoin Cash",
+                "ETC": "Ethereum Classic", "XLM": "Stellar", "AAVE": "Aave", "SAND": "The Sandbox",
+                "MANA": "Decentraland", "AXS": "Axie Infinity", "ENJ": "Enjin", "CHZ": "Chiliz",
+                "FLOW": "Flow", "NEAR": "NEAR Protocol", "FTM": "Fantom", "ICP": "Internet Computer",
+                "APT": "Aptos", "ARB": "Arbitrum", "OP": "Optimism", "SUI": "Sui", "SEI": "Sei",
+                "TIA": "Celestia", "INJ": "Injective", "RUNE": "THORChain", "THETA": "Theta Network",
+                "FIL": "Filecoin", "EOS": "EOS", "TRX": "TRON", "XMR": "Monero", "ZEC": "Zcash",
+                "DASH": "Dash", "WAVES": "Waves", "ZIL": "Zilliqa", "VET": "VeChain", "HBAR": "Hedera",
+                "IOTA": "IOTA", "QTUM": "Qtum", "ONT": "Ontology", "ZEN": "Horizen", "BAT": "Basic Attention Token",
+                "OMG": "OMG Network", "KNC": "Kyber Network", "COMP": "Compound", "MKR": "Maker",
+                "SNX": "Synthetix", "YFI": "yearn.finance", "SUSHI": "SushiSwap", "CRV": "Curve",
+                "1INCH": "1inch", "BAL": "Balancer", "REN": "Ren", "KSM": "Kusama", "LUNA": "Terra",
+                "UST": "TerraUSD"
+            }
+            base = ticker.split("USD")[0].split("USDT")[0] if "USD" in ticker or "USDT" in ticker else ticker
+            base = base.replace("X:", "").strip()
+            return crypto_names.get(base, f"{base} (Crypto)")
+        
         details = self.get_ticker_details(ticker)
         if not details:
             return ""
@@ -104,10 +128,42 @@ class PolygonClient:
         results = data.get("results") or []
         return results[0] if results else None
 
+    def _is_crypto_symbol(self, ticker: str) -> bool:
+        """Check if a ticker symbol is a crypto symbol."""
+        ticker = (ticker or "").strip().upper()
+        if not ticker:
+            return False
+        # Common crypto symbols (BTC, ETH, etc.) - if it doesn't contain USD/USDT and is short, likely crypto
+        # Or if it already starts with X:, it's crypto
+        if ticker.startswith("X:"):
+            return True
+        # Common crypto base symbols
+        crypto_bases = {"BTC", "ETH", "SOL", "ADA", "DOT", "MATIC", "AVAX", "LINK", "UNI", "ATOM", "ALGO", "XRP", "DOGE", "SHIB", "LTC", "BCH", "ETC", "XLM", "AAVE", "SAND", "MANA", "AXS", "ENJ", "CHZ", "FLOW", "NEAR", "FTM", "ICP", "APT", "ARB", "OP", "SUI", "SEI", "TIA", "INJ", "RUNE", "THETA", "FIL", "EOS", "TRX", "XMR", "ZEC", "DASH", "WAVES", "ZIL", "VET", "HBAR", "IOTA", "QTUM", "ONT", "ZEN", "BAT", "OMG", "KNC", "COMP", "MKR", "SNX", "YFI", "SUSHI", "CRV", "1INCH", "BAL", "REN", "KSM", "DOT", "LUNA", "UST"}
+        # Check if ticker is a crypto base symbol or ends with crypto patterns
+        base = ticker.split("USD")[0].split("USDT")[0] if "USD" in ticker or "USDT" in ticker else ticker
+        return base in crypto_bases or len(base) <= 5  # Short symbols are often crypto
+
+    def _normalize_crypto_ticker(self, ticker: str) -> str:
+        """Normalize crypto ticker for Polygon API (X:BTCUSD format)."""
+        ticker = (ticker or "").strip().upper()
+        if not ticker:
+            return ticker
+        # If already prefixed, return as-is
+        if ticker.startswith("X:"):
+            return ticker
+        # Remove any existing prefix
+        if ":" in ticker:
+            ticker = ticker.split(":")[-1]
+        # If it ends with USD/USDT, use as-is; otherwise append USD
+        if ticker.endswith("USD") or ticker.endswith("USDT"):
+            return f"X:{ticker}"
+        return f"X:{ticker}USD"
+
     def get_latest_quote(self, ticker: str, bypass_cache: bool = False) -> Optional[Dict[str, Any]]:
         """
         Get latest quote data for a ticker via /v2/last/nbbo/{ticker}.
         Results are cached for POLYGON_QUOTE_CACHE_SECONDS to reduce API calls.
+        Supports both stocks and crypto (crypto symbols are prefixed with X:).
 
         Returns dict with:
           - p: mid price (preferred), else ask, else bid
@@ -121,14 +177,18 @@ class PolygonClient:
         if not ticker:
             return None
 
-        cache_key = f"stock:{ticker}"
+        # Normalize crypto symbols for Polygon API
+        is_crypto = self._is_crypto_symbol(ticker)
+        polygon_ticker = self._normalize_crypto_ticker(ticker) if is_crypto else ticker
+
+        cache_key = f"{'crypto' if is_crypto else 'stock'}:{ticker}"
         if not bypass_cache:
             cached = _cache_get(cache_key)
             if cached is not None:
                 return cached
 
-        # Try NBBO first for bid/ask
-        data = self._get(f"/v2/last/nbbo/{ticker}", timeout=6)
+        # Try NBBO first for bid/ask (works for both stocks and crypto)
+        data = self._get(f"/v2/last/nbbo/{polygon_ticker}", timeout=6)
         if data and data.get("status") == "OK" and data.get("results"):
             results = data["results"] or {}
             bid = results.get("p", 0)  # bid price
@@ -157,8 +217,12 @@ class PolygonClient:
                     _cache_set(cache_key, out)
                 return out
 
-        # Fallback: snapshot (often available even when NBBO isn't entitled)
-        snap = self._get(f"/v2/snapshot/locale/us/markets/stocks/tickers/{ticker}", timeout=6)
+        # Fallback: snapshot (stocks only; crypto uses different endpoint)
+        if not is_crypto:
+            snap = self._get(f"/v2/snapshot/locale/us/markets/stocks/tickers/{ticker}", timeout=6)
+        else:
+            # For crypto, try snapshot endpoint
+            snap = self._get(f"/v2/snapshot/locale/global/markets/crypto/tickers/{polygon_ticker}", timeout=6)
         if snap and snap.get("ticker"):
             t = snap.get("ticker") or {}
             last_trade = t.get("lastTrade") or {}
