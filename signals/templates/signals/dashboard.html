@@ -2527,12 +2527,27 @@ async function updateOptionPriceFromManualContract() {
 
 function getSelectedTradeType() {
     const el = document.getElementById('trade_type');
-    return String(el ? el.value : '').trim().toLowerCase() || 'swing';
+    const value = el ? String(el.value || '').trim() : '';
+    const normalized = value.toLowerCase() || 'swing';
+    console.log('getSelectedTradeType: element:', el, 'raw value:', value, 'normalized:', normalized);
+    return normalized;
 }
 
 /** Show Strike and Expiration inputs only when Manual Option Contract is on; hide when off (best-option fills them). */
 function updateManualOptionContractFieldsVisibility() {
     const manualSwitch = document.getElementById('manualOptionContractSwitch');
+    const isSharesCheckbox = document.getElementById('id_is_shares');
+    const isShares = isSharesCheckbox && isSharesCheckbox.checked;
+    
+    // If is_shares is on, hide Strike and Expiration regardless of manual switch state
+    if (isShares) {
+        document.querySelectorAll('#optionContractFieldsContainer [data-variable-name="strike"], #optionContractFieldsContainer [data-variable-name="expiration"]').forEach(function (el) {
+            el.style.display = 'none';
+        });
+        return;
+    }
+    
+    // When is_shares is off, show/hide based on manual switch state
     const show = manualSwitch && manualSwitch.checked;
     document.querySelectorAll('#optionContractFieldsContainer [data-variable-name="strike"], #optionContractFieldsContainer [data-variable-name="expiration"]').forEach(function (el) {
         el.style.display = show ? '' : 'none';
@@ -2549,12 +2564,24 @@ function updateTimeHorizonVisibility() {
     if (show && typeof setTimeHorizonDefault === 'function') setTimeHorizonDefault();
 }
 
-async function fetchBestOption(symbol, { tradeType, side } = {}) {
+async function fetchBestOption(symbol, { tradeType, side, stockPrice } = {}) {
     const sym = String(symbol || '').trim().toUpperCase();
     const tt = String(tradeType || '').trim().toLowerCase() || 'swing';
     const s = String(side || '').trim().toLowerCase() || 'call';
-    if (!sym || !['call','put'].includes(s)) return null;
-    const url = `/api/best-option/?symbol=${encodeURIComponent(sym)}&trade_type=${encodeURIComponent(tt)}&side=${encodeURIComponent(s)}`;
+    if (!sym || !['call','put'].includes(s)) {
+        console.warn('fetchBestOption: Invalid parameters - symbol:', sym, 'side:', s);
+        return null;
+    }
+    const params = new URLSearchParams({
+        symbol: sym,
+        trade_type: tt,
+        side: s
+    });
+    if (stockPrice != null && stockPrice !== '' && !isNaN(parseFloat(stockPrice))) {
+        params.set('stock_price', String(parseFloat(stockPrice)));
+    }
+    const url = `/api/best-option/?${params.toString()}`;
+    console.log('fetchBestOption: Calling API -', url);
     const res = await fetch(url, { credentials: 'same-origin' });
     if (!res.ok) {
         try {
@@ -2571,20 +2598,41 @@ async function fetchBestOption(symbol, { tradeType, side } = {}) {
 async function maybeAutoPickBestOption() {
     const isSharesCheckbox = document.getElementById('id_is_shares');
     const isShares = isSharesCheckbox && isSharesCheckbox.checked;
-    if (isShares) return;
+    if (isShares) {
+        console.log('maybeAutoPickBestOption: Skipping - is_shares is ON');
+        return;
+    }
     const manualSwitch = document.getElementById('manualOptionContractSwitch');
-    if (manualSwitch && manualSwitch.checked) return; // Manual option contract: user enters Expiration and Strike
+    if (manualSwitch && manualSwitch.checked) {
+        console.log('maybeAutoPickBestOption: Skipping - Manual option contract is ON');
+        return; // Manual option contract: user enters Expiration and Strike
+    }
 
     const sym = getCurrentTickerSymbol();
-    if (!sym) return;
+    if (!sym) {
+        console.log('maybeAutoPickBestOption: Skipping - No ticker symbol');
+        return;
+    }
 
     const optTypeEl = findFieldByName('option_type');
     const raw = optTypeEl ? String(optTypeEl.value || '').trim().toLowerCase() : '';
     const side = raw.includes('put') ? 'put' : (raw.includes('call') ? 'call' : 'call');
     const tradeType = getSelectedTradeType();
+    const currentPriceEl = findFieldByName('current_price');
+    const stockPrice = currentPriceEl && currentPriceEl.value
+        ? parseFloat(String(currentPriceEl.value).replace(/[$,]/g, ''))
+        : (tickerMetaCache[sym] && tickerMetaCache[sym].price != null ? tickerMetaCache[sym].price : undefined);
+    
+    console.log('maybeAutoPickBestOption: Calling API - symbol:', sym, 'tradeType:', tradeType, 'side:', side, 'stockPrice:', stockPrice);
 
-    const best = await fetchBestOption(sym, { tradeType, side });
-    if (!best || best.error) return;
+    const best = await fetchBestOption(sym, { tradeType, side, stockPrice });
+    if (!best || best.error) {
+        // Show alert when best option is not found
+        const errorMsg = best?.error || 'No suitable option contract found';
+        const tradeTypeDisplay = tradeType.charAt(0).toUpperCase() + tradeType.slice(1);
+        alert(`Could not find best option for ${sym} (${tradeTypeDisplay}, ${side.toUpperCase()}).\n\n${errorMsg}\n\nPlease enable "Manual Option Contract" to enter Strike and Expiration manually.`);
+        return;
+    }
 
     const strikeEl = findFieldByName('strike');
     const expEl = findFieldByName('expiration');
@@ -5954,6 +6002,10 @@ function createDynamicFields(signalTypeId) {
         isSharesCheckbox.addEventListener('change', function() {
             toggleOptionFields(this.checked);
             updateVariableVisibility(); // Update variable visibility when is_shares changes
+            // Update Option Contract Expiration and Strike visibility when is_shares changes
+            if (typeof updateManualOptionContractFieldsVisibility === 'function') {
+                updateManualOptionContractFieldsVisibility();
+            }
             if (typeof setTimeHorizonDefault === 'function') setTimeHorizonDefault(); // Options: expiration; Stock: 1wk/6mo
             // Re-attach option_type change handler (in case field was recreated or listener was lost)
             ensureOptionTypeChangeHandler();

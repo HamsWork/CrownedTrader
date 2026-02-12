@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import requests
 
@@ -47,8 +47,14 @@ class PolygonClient:
 
     def __init__(self, api_key: str):
         self.api_key = api_key or ""
-        self.base_url = "https://api.polygon.io"
+        self.base_url = "https://api.massive.com"
         self.logger = logging.getLogger(__name__)
+        # Ensure logger outputs to console if no handlers are configured
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            self.logger.addHandler(handler)
+            self.logger.setLevel(logging.INFO)
         self.last_error: Optional[Dict[str, Any]] = None
 
     def _get(self, path: str, *, params: Optional[Dict[str, Any]] = None, timeout: int = 6) -> Optional[Dict[str, Any]]:
@@ -133,15 +139,18 @@ class PolygonClient:
         ticker = (ticker or "").strip().upper()
         if not ticker:
             return False
-        # Common crypto symbols (BTC, ETH, etc.) - if it doesn't contain USD/USDT and is short, likely crypto
-        # Or if it already starts with X:, it's crypto
+        # If it already starts with X:, it's crypto
         if ticker.startswith("X:"):
+            return True
+        # If it ends with USD or USDT, it's likely crypto (e.g., BTCUSD, ETHUSD)
+        if ticker.endswith("USD") or ticker.endswith("USDT"):
             return True
         # Common crypto base symbols
         crypto_bases = {"BTC", "ETH", "SOL", "ADA", "DOT", "MATIC", "AVAX", "LINK", "UNI", "ATOM", "ALGO", "XRP", "DOGE", "SHIB", "LTC", "BCH", "ETC", "XLM", "AAVE", "SAND", "MANA", "AXS", "ENJ", "CHZ", "FLOW", "NEAR", "FTM", "ICP", "APT", "ARB", "OP", "SUI", "SEI", "TIA", "INJ", "RUNE", "THETA", "FIL", "EOS", "TRX", "XMR", "ZEC", "DASH", "WAVES", "ZIL", "VET", "HBAR", "IOTA", "QTUM", "ONT", "ZEN", "BAT", "OMG", "KNC", "COMP", "MKR", "SNX", "YFI", "SUSHI", "CRV", "1INCH", "BAL", "REN", "KSM", "DOT", "LUNA", "UST"}
-        # Check if ticker is a crypto base symbol or ends with crypto patterns
+        # Check if ticker is a crypto base symbol
         base = ticker.split("USD")[0].split("USDT")[0] if "USD" in ticker or "USDT" in ticker else ticker
-        return base in crypto_bases or len(base) <= 5  # Short symbols are often crypto
+        base = base.replace("X:", "").strip()
+        return base in crypto_bases
 
     def _normalize_crypto_ticker(self, ticker: str) -> str:
         """Normalize crypto ticker for Polygon API (X:BTCUSD format)."""
@@ -447,15 +456,20 @@ class PolygonClient:
         side: str,
         expiration_gte: str,
         expiration_lte: str,
-        limit: int = 250,
-        max_pages: int = 4,
+        strike_gte: Optional[float] = None,
+        strike_lte: Optional[float] = None,
         timeout: int = 10,
+        max_pages: int = 50,
     ) -> Optional[list]:
         """
         Best-effort: return a list of option snapshots for an underlying using Polygon snapshot endpoint.
 
         Uses:
           /v3/snapshot/options/{underlying}
+
+        Fetches pages until no more data, or until max_pages is reached (pagination limit).
+        Uses expiration_date.gte and expiration_date.lte parameters to filter by expiration date.
+        Optionally uses strike_price.gte and strike_price.lte when strike_gte/strike_lte are provided.
 
         We rely on snapshot data because it typically includes:
           - greeks.delta
@@ -470,28 +484,91 @@ class PolygonClient:
         if not u or s not in ("call", "put"):
             return None
 
+        import datetime as _dt
+        # Parse expiration dates for filtering
+        try:
+            exp_gte_date = _dt.date.fromisoformat(expiration_gte)
+            exp_lte_date = _dt.date.fromisoformat(expiration_lte)
+        except Exception:
+            exp_gte_date = None
+            exp_lte_date = None
+
+        # Try fetching with expiration filters first
+        # Use a reasonable default limit per page
+        default_limit = 250
         params = {
             "contract_type": s,
             "expiration_date.gte": expiration_gte,
             "expiration_date.lte": expiration_lte,
-            "limit": int(limit or 250),
+            "limit": default_limit,
         }
+        if strike_gte is not None:
+            params["strike_price.gte"] = strike_gte
+        if strike_lte is not None:
+            params["strike_price.lte"] = strike_lte
 
         out: list = []
         path = f"/v3/snapshot/options/{u}"
-        pages = 0
-        while pages < max_pages:
-            pages += 1
+        use_expiration_filter = True
+        page_count = 0
+
+        # Fetch pages until no more data or max_pages reached
+        while page_count < max_pages:
+            page_count += 1
             data = self._get(path, params=params, timeout=timeout)
+            
             if not data:
+                # Log to console (like print) - ensure logger outputs to console
+                msg = f"No data returned from Polygon API - path: {path}, params: {params}, timeout: {timeout}, underlying: {u}, side: {s}"
+                self.logger.info(msg)
+                # Also print directly to ensure it shows in console
+                print(f"[POLYGON] {msg}")
+                # If first request fails and we used expiration filters, retry without them
+                if use_expiration_filter and exp_gte_date and exp_lte_date:
+                    msg = f"Retrying without expiration filters (API may not support them) - underlying: {u}, side: {s}, expiration_gte: {expiration_gte}, expiration_lte: {expiration_lte}"
+                    self.logger.info(msg)
+                    print(f"[POLYGON] {msg}")
+                    use_expiration_filter = False
+                    params = {"contract_type": s, "limit": default_limit}
+                    if strike_gte is not None:
+                        params["strike_price.gte"] = strike_gte
+                    if strike_lte is not None:
+                        params["strike_price.lte"] = strike_lte
+                    path = f"/v3/snapshot/options/{u}"
+                    continue
                 break
+            
             results = data.get("results") or []
             if isinstance(results, list):
-                out.extend(results)
+                # Filter every page by expiration and strike while paginating (no separate fetch-then-filter step)
+                filtered_results = []
+                for item in results:
+                    details = item.get("details") or {}
+                    exp_str = details.get("expiration_date") or ""
+                    strike_val = self._coerce_float(details.get("strike_price"))
+                    if exp_gte_date and exp_lte_date:
+                        try:
+                            exp_date = _dt.date.fromisoformat(exp_str)
+                            if not (exp_gte_date <= exp_date <= exp_lte_date):
+                                continue
+                        except Exception:
+                            continue
+                    if strike_gte is not None and strike_val is not None and strike_val < strike_gte:
+                        continue
+                    if strike_lte is not None and strike_val is not None and strike_val > strike_lte:
+                        continue
+                    filtered_results.append(item)
+                out.extend(filtered_results)
+            
             # Polygon snapshot endpoints sometimes return next_url for pagination.
             next_url = data.get("next_url") or data.get("nextUrl")
-            if not next_url:
+            # Stop if no next_url, fewer results than limit (end of data), or hit max_pages
+            current_limit = params.get("limit", default_limit) if isinstance(params, dict) else default_limit
+            if not next_url or (isinstance(results, list) and len(results) < current_limit):
                 break
+            if page_count >= max_pages:
+                break
+
             # Convert next_url into a path+params call by stripping base URL if present.
             try:
                 if isinstance(next_url, str) and next_url.startswith(self.base_url):
@@ -503,13 +580,57 @@ class PolygonClient:
                     next_path = next_url
                 if isinstance(next_path, str) and next_path:
                     path = next_path
-                    params = {}  # next_url already encodes query; we keep params empty to avoid collisions
+                    # If using expiration filters, preserve them in params; otherwise clear params
+                    if not use_expiration_filter:
+                        params = {}  # next_url already encodes query; we keep params empty to avoid collisions
                 else:
                     break
             except Exception:
                 break
 
         return out
+
+    def get_best_option(
+        self,
+        *,
+        underlying: str,
+        side: str,
+        expiration_gte: str,
+        expiration_lte: str,
+        strike_gte: Optional[float] = None,
+        strike_lte: Optional[float] = None,
+        underlying_price: float,
+        trade_type: str,
+        timeout: int = 30,
+    ) -> Tuple[Optional[Dict[str, Any]], bool]:
+        """
+        Fetch option chain snapshots (with pagination and expiration/strike filter) and pick the best
+        contract for the given trade_type. Single entry point instead of get_option_chain_snapshots + pick_best_option_from_snapshots.
+
+        Returns:
+          (best_option_dict, fetch_failed).
+          - If fetch failed (snapshots None): (None, True) -> caller should return 502.
+          - If no suitable contract found: (None, False) -> caller should return 404.
+          - Otherwise: (best, False).
+        """
+        snaps = self.get_option_chain_snapshots(
+            underlying=underlying,
+            side=side,
+            expiration_gte=expiration_gte,
+            expiration_lte=expiration_lte,
+            strike_gte=strike_gte,
+            strike_lte=strike_lte,
+            timeout=timeout,
+        )
+        if snaps is None:
+            return (None, True)
+        best = self.pick_best_option_from_snapshots(
+            snapshots=snaps,
+            underlying_price=float(underlying_price),
+            trade_type=trade_type,
+            side=side,
+        )
+        return (best, False)
 
     @staticmethod
     def _coerce_float(x: Any) -> Optional[float]:
@@ -611,163 +732,261 @@ class PolygonClient:
 
         tt = (trade_type or "").strip().lower()
         if tt not in ("scalp", "swing", "leap"):
-            tt = "swing"
+            return None
 
-        # Helper: score moneyness (target slightly OTM within ~2%).
-        def moneyness_score(strike: float, is_call: bool) -> float:
+        # Helper: score moneyness (target slightly OTM within specified %).
+        def moneyness_score(strike: float, is_call: bool, max_percent: float = 0.02) -> float:
             m = (strike - px) / px
-            target = 0.02 if is_call else -0.02
-            # Strongly prefer within +/-2%, then closeness to target.
-            return abs(m - target) + (0 if abs(m) <= 0.02 else 0.5 + abs(m))
+            target = max_percent if is_call else -max_percent
+            # Strongly prefer within max_percent, then closeness to target.
+            return abs(m - target) + (0 if abs(m) <= max_percent else 0.5 + abs(m))
+
+        # Helper: check if strike is within percentage range
+        def strike_in_range(strike: float, max_percent: float) -> bool:
+            m = abs((strike - px) / px)
+            return m <= max_percent
 
         s_side = (side or "").strip().lower()
         if s_side not in ("call", "put"):
             s_side = "call"
         prefer_call = s_side == "call"
 
-        # Scalp: Find best option by increasing DTE until one matches criteria:
-        # Delta between 0.35 and 0.60, Open interest >= 500, Spread < $0.10, Closest to 0.50 delta
-        # CALL for BUY signals, PUT for SELL signals
+        # SCALP - Progressive Fallback
         if tt == "scalp":
-            by_exp: Dict[str, list] = {}
-            for r in rows:
-                exp = r["expiration"]
-                by_exp.setdefault(exp, []).append(r)
+            # Define fallback levels
+            levels = [
+                {  # LEVEL 0 (Strict)
+                    "dte_range": (0, 0),
+                    "delta_range": (0.35, 0.60),
+                    "min_oi": 500,
+                    "max_spread": 0.10,
+                },
+                {  # LEVEL 1 (Widen Delta)
+                    "dte_range": (0, 0),
+                    "delta_range": (0.25, 0.65),
+                    "min_oi": 300,
+                    "max_spread": 0.15,
+                },
+                {  # LEVEL 2 (Add 1DTE)
+                    "dte_range": (0, 1),
+                    "delta_range": (0.25, 0.65),
+                    "min_oi": 200,
+                    "max_spread": 0.15,
+                },
+                {  # LEVEL 3 (Add 2DTE)
+                    "dte_range": (0, 2),
+                    "delta_range": (0.20, 0.70),
+                    "min_oi": 100,
+                    "max_spread": 0.20,
+                },
+            ]
             
-            # Sort expirations by DTE (ascending) to try increasing DTE
-            exp_list = sorted(by_exp.keys(), key=lambda e: (_dt.date.fromisoformat(e) - _dt.date.today()).days)
-            
-            for exp in exp_list:
+            for level_idx, level in enumerate(levels):
                 candidates = []
-                for r in by_exp[exp]:
+                dte_lo, dte_hi = level["dte_range"]
+                delta_lo, delta_hi = level["delta_range"]
+                
+                for r in rows:
+                    dte = r.get("dte")
                     d = r.get("delta")
                     oi = r.get("open_interest") or 0
                     spr = r.get("spread")
+                    
+                    if dte is None or not (dte_lo <= dte <= dte_hi):
+                        continue
                     if d is None:
                         continue
-                    # Delta between 0.35 and 0.60
                     abs_delta = abs(d)
-                    if not (0.35 <= abs_delta <= 0.60):
+                    if not (delta_lo <= abs_delta <= delta_hi):
                         continue
-                    # Open interest >= 500
-                    if oi < 500:
+                    if oi < level["min_oi"]:
                         continue
-                    # Spread < $0.10
-                    if spr is None or spr >= 0.10:
+                    if spr is None or spr >= level["max_spread"]:
                         continue
                     candidates.append(r)
                 
                 if candidates:
-                    # Sort by: closest to 0.50 delta, then tighter spread, then higher OI
+                    # Score: closest to 0.50 delta, then shortest DTE, then tighter spread, then higher OI
                     candidates.sort(key=lambda r: (
                         abs(abs(r.get("delta") or 0) - 0.50),
+                        r.get("dte") or 9999,
                         (r.get("spread") or 9e9),
                         -(r.get("open_interest") or 0)
                     ))
-                    return candidates[0]
+                    result = candidates[0]
+                    result["fallback_level"] = level_idx
+                    return result
+            
+            # All levels exhausted - abort
+            return None
 
-            # Fallback: pick closest-to-0.50 delta ignoring OI/spread
-            rows2 = [r for r in rows if r.get("delta") is not None and 0.35 <= abs(r.get("delta")) <= 0.60]
-            if not rows2:
-                return None
-            rows2.sort(key=lambda r: (abs(abs(r.get("delta") or 0) - 0.50), (r.get("spread") or 9e9)))
-            return rows2[0]
-
-        # Swing: Select strike within ±2% (ATM), prefer slightly OTM
-        # Delta between 0.40 and 0.60
-        # Expiration: 6–45 days out, prefer 13–25 DTE for weekly setups or 6–15 DTE for single timeframe
-        # Open interest >= 1,000, Spread < $0.05
+        # SWING - Progressive Fallback
         if tt == "swing":
-            def in_window(r, lo, hi):
-                dte = r.get("dte")
-                return dte is not None and lo <= dte <= hi
+            # Define fallback levels (prefer weekly 13-25, fallback to single 6-15)
+            levels = [
+                {  # LEVEL 0 (Strict - Try weekly first, then single)
+                    "dte_ranges": [(13, 25), (6, 15)],  # Weekly first, then single
+                    "delta_range": (0.40, 0.60),
+                    "strike_percent": 0.02,  # ±2%
+                    "min_oi": 1000,
+                    "max_spread": 0.05,
+                },
+                {  # LEVEL 1 (Extend DTE Out)
+                    "dte_ranges": [(13, 45), (6, 30)],  # Weekly first, then single
+                    "delta_range": (0.40, 0.60),
+                    "strike_percent": 0.02,  # ±2%
+                    "min_oi": 500,
+                    "max_spread": 0.08,
+                },
+                {  # LEVEL 2 (Extend DTE + Widen Delta & Strike)
+                    "dte_ranges": [(13, 60), (6, 45)],  # Weekly first, then single
+                    "delta_range": (0.30, 0.70),
+                    "strike_percent": 0.05,  # ±5%
+                    "min_oi": 300,
+                    "max_spread": 0.10,
+                },
+                {  # LEVEL 3 (Maximum Flexibility - DTE Only Extends)
+                    "dte_ranges": [(13, 90), (6, 60)],  # Weekly first, then single
+                    "delta_range": (0.25, 0.75),
+                    "strike_percent": 0.08,  # ±8%
+                    "min_oi": 200,
+                    "max_spread": 0.15,
+                },
+            ]
             
-            # Filter by delta, OI, and spread first
-            filtered = []
-            for r in rows:
-                d = r.get("delta")
-                oi = r.get("open_interest") or 0
-                spr = r.get("spread")
-                if d is None:
-                    continue
-                abs_delta = abs(d)
-                # Delta between 0.40 and 0.60
-                if not (0.40 <= abs_delta <= 0.60):
-                    continue
-                # Open interest >= 1,000
-                if oi < 1000:
-                    continue
-                # Spread < $0.05
-                if spr is None or spr >= 0.05:
-                    continue
-                filtered.append(r)
+            for level_idx, level in enumerate(levels):
+                candidates = []
+                delta_lo, delta_hi = level["delta_range"]
+                strike_percent = level["strike_percent"]
+                
+                for r in rows:
+                    dte = r.get("dte")
+                    d = r.get("delta")
+                    oi = r.get("open_interest") or 0
+                    spr = r.get("spread")
+                    strike = r.get("strike")
+                    
+                    if dte is None:
+                        continue
+                    # Check if DTE is in any of the preferred ranges (try weekly first, then single)
+                    dte_match = False
+                    for dte_lo, dte_hi in level["dte_ranges"]:
+                        if dte_lo <= dte <= dte_hi:
+                            dte_match = True
+                            break
+                    if not dte_match:
+                        continue
+                    
+                    if d is None:
+                        continue
+                    abs_delta = abs(d)
+                    if not (delta_lo <= abs_delta <= delta_hi):
+                        continue
+                    
+                    if strike is None or not strike_in_range(strike, strike_percent):
+                        continue
+                    
+                    if oi < level["min_oi"]:
+                        continue
+                    if spr is None or spr >= level["max_spread"]:
+                        continue
+                    candidates.append(r)
+                
+                if candidates:
+                    # Score: moneyness (prefer ±2% ATM, slightly OTM), then shorter DTE, then tighter spread, then higher OI
+                    candidates.sort(key=lambda r: (
+                        moneyness_score(r["strike"], is_call=prefer_call, max_percent=strike_percent),
+                        r.get("dte") or 9999,  # Prefer shorter DTE
+                        (r.get("spread") or 9e9),
+                        -(r.get("open_interest") or 0)
+                    ))
+                    result = candidates[0]
+                    result["fallback_level"] = level_idx
+                    return result
             
-            if not filtered:
-                return None
-            
-            # Prefer DTE windows: 13-25 (weekly) or 6-15 (single timeframe), then 6-45
-            window_rows = [r for r in filtered if in_window(r, 13, 25)]
-            if not window_rows:
-                window_rows = [r for r in filtered if in_window(r, 6, 15)]
-            if not window_rows:
-                window_rows = [r for r in filtered if in_window(r, 6, 45)]
-            if not window_rows:
-                window_rows = filtered
-            
-            # Sort by: moneyness (prefer ±2% ATM, slightly OTM), then tighter spread, then higher OI
-            window_rows.sort(
-                key=lambda r: (
-                    moneyness_score(r["strike"], is_call=prefer_call),
-                    (r.get("spread") or 9e9),
-                    -(r.get("open_interest") or 0),
-                )
-            )
-            return window_rows[0]
+            # All levels exhausted - abort
+            return None
 
-        # LEAP: Select strike within ±2% (ATM), prefer slightly OTM
-        # Delta between 0.50 and 0.80 (higher delta for LEAPs)
-        # Expiration: 330–395 days out (~1 year), target closest to 365 DTE
-        # Open interest >= 500, Spread < $0.05
+        # LEAP - Progressive Fallback
         if tt == "leap":
-            def in_window(r, lo, hi):
-                dte = r.get("dte")
-                return dte is not None and lo <= dte <= hi
+            # Define fallback levels
+            levels = [
+                {  # LEVEL 0 (Strict)
+                    "dte_range": (330, 395),
+                    "delta_range": (0.50, 0.80),
+                    "strike_percent": 0.02,  # ±2%
+                    "min_oi": 500,
+                    "max_spread": 0.05,
+                    "target_dte": 365,
+                },
+                {  # LEVEL 1 (Widen DTE)
+                    "dte_range": (270, 450),
+                    "delta_range": (0.50, 0.80),
+                    "strike_percent": 0.02,  # ±2%
+                    "min_oi": 300,
+                    "max_spread": 0.08,
+                    "target_dte": 365,
+                },
+                {  # LEVEL 2 (Widen Delta + Strike)
+                    "dte_range": (180, 500),
+                    "delta_range": (0.40, 0.85),
+                    "strike_percent": 0.05,  # ±5%
+                    "min_oi": 200,
+                    "max_spread": 0.10,
+                    "target_dte": 365,
+                },
+                {  # LEVEL 3 (Maximum Flexibility)
+                    "dte_range": (120, 550),
+                    "delta_range": (0.35, 0.90),
+                    "strike_percent": 0.08,  # ±8%
+                    "min_oi": 100,
+                    "max_spread": 0.15,
+                    "target_dte": 365,
+                },
+            ]
             
-            # Filter by delta, OI, and spread first
-            filtered = []
-            for r in rows:
-                d = r.get("delta")
-                oi = r.get("open_interest") or 0
-                spr = r.get("spread")
-                if d is None:
-                    continue
-                abs_delta = abs(d)
-                # Delta between 0.50 and 0.80
-                if not (0.50 <= abs_delta <= 0.80):
-                    continue
-                # Open interest >= 500
-                if oi < 500:
-                    continue
-                # Spread < $0.05
-                if spr is None or spr >= 0.05:
-                    continue
-                filtered.append(r)
+            for level_idx, level in enumerate(levels):
+                candidates = []
+                dte_lo, dte_hi = level["dte_range"]
+                delta_lo, delta_hi = level["delta_range"]
+                strike_percent = level["strike_percent"]
+                target_dte = level.get("target_dte", 365)
+                
+                for r in rows:
+                    dte = r.get("dte")
+                    d = r.get("delta")
+                    oi = r.get("open_interest") or 0
+                    spr = r.get("spread")
+                    strike = r.get("strike")
+                    
+                    if dte is None or not (dte_lo <= dte <= dte_hi):
+                        continue
+                    if d is None:
+                        continue
+                    abs_delta = abs(d)
+                    if not (delta_lo <= abs_delta <= delta_hi):
+                        continue
+                    
+                    if strike is None or not strike_in_range(strike, strike_percent):
+                        continue
+                    
+                    if oi < level["min_oi"]:
+                        continue
+                    if spr is None or spr >= level["max_spread"]:
+                        continue
+                    candidates.append(r)
+                
+                if candidates:
+                    # Score: closest to target DTE (365), then moneyness, then tighter spread, then higher OI
+                    candidates.sort(key=lambda r: (
+                        abs((r.get("dte") or 0) - target_dte),
+                        moneyness_score(r["strike"], is_call=prefer_call, max_percent=strike_percent),
+                        (r.get("spread") or 9e9),
+                        -(r.get("open_interest") or 0)
+                    ))
+                    result = candidates[0]
+                    result["fallback_level"] = level_idx
+                    return result
             
-            if not filtered:
-                return None
-            
-            # Prefer 330-395 DTE window, target closest to 365 DTE
-            window_rows = [r for r in filtered if in_window(r, 330, 395)]
-            if not window_rows:
-                window_rows = filtered
-            
-            # Sort by: closest to 365 DTE, then moneyness, then tighter spread, then higher OI
-            window_rows.sort(
-                key=lambda r: (
-                    abs((r.get("dte") or 0) - 365),  # Closest to 365 DTE
-                    moneyness_score(r["strike"], is_call=prefer_call),
-                    (r.get("spread") or 9e9),
-                    -(r.get("open_interest") or 0),
-                )
-            )
-            return window_rows[0]
+            # All levels exhausted - abort
+            return None

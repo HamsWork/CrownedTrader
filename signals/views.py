@@ -1668,7 +1668,6 @@ def dashboard(request):
                             client = PolygonClient(polygon_key)
                             underlying_price = client.get_share_current_price(sym)
                             if underlying_price is not None:
-                                # DTE windows per trade type (same as /api/best-option/)
                                 import datetime as dt
                                 today = dt.date.today()
                                 if tt == "scalp":
@@ -1679,22 +1678,23 @@ def dashboard(request):
                                     lo, hi = 6, 45
                                 exp_gte = (today + dt.timedelta(days=lo)).isoformat()
                                 exp_lte = (today + dt.timedelta(days=hi)).isoformat()
+                                try:
+                                    price_f = float(underlying_price)
+                                    strike_gte = round(price_f * 0.5, 2)
+                                    strike_lte = round(price_f * 2.0, 2)
+                                except (TypeError, ValueError):
+                                    strike_gte = strike_lte = None
 
-                                snaps = client.get_option_chain_snapshots(
+                                best, _ = client.get_best_option(
                                     underlying=sym,
                                     side=side,
                                     expiration_gte=exp_gte,
                                     expiration_lte=exp_lte,
-                                    limit=250,
-                                    max_pages=4,
-                                    timeout=12,
-                                ) or []
-
-                                best = client.pick_best_option_from_snapshots(
-                                    snapshots=snaps,
+                                    strike_gte=strike_gte,
+                                    strike_lte=strike_lte,
                                     underlying_price=float(underlying_price),
                                     trade_type=tt,
-                                    side=side,
+                                    timeout=30,
                                 )
                                 if best and best.get("option_price") is not None:
                                     # Fill key option fields used by templates
@@ -3508,6 +3508,7 @@ def best_option(request):
       - symbol: underlying ticker (e.g. AAPL)
       - trade_type: Scalp|Swing|Leap
       - side: call|put (optional; defaults to call)
+      - stock_price: optional; if provided and valid, used as underlying price instead of fetching from Polygon
 
     Returns:
       { contract, strike, expiration, side, option_price, bid, ask, spread, delta, open_interest, dte, underlying_price }
@@ -3526,57 +3527,85 @@ def best_option(request):
 
     import datetime as dt
 
-    client = PolygonClient(polygon_key)
-    underlying_price = client.get_share_current_price(symbol)
-    if underlying_price is None:
-        payload = {"error": "underlying price unavailable", "source": "polygon"}
-        if getattr(settings, "DEBUG", False):
-            payload["polygon_error"] = getattr(client, "last_error", None)
-        return JsonResponse(payload, status=502)
+    # Use client-provided stock_price if valid; otherwise fetch from Polygon
+    stock_price_param = request.GET.get("stock_price") or request.GET.get("underlying_price")
+    try:
+        underlying_price = float(stock_price_param) if stock_price_param else None
+    except (TypeError, ValueError):
+        underlying_price = None
+    if underlying_price is None or underlying_price <= 0:
+        client = PolygonClient(polygon_key)
+        underlying_price = client.get_share_current_price(symbol)
+        if underlying_price is None:
+            payload = {"error": "underlying price unavailable", "source": "polygon"}
+            if getattr(settings, "DEBUG", False):
+                payload["polygon_error"] = getattr(client, "last_error", None)
+            return JsonResponse(payload, status=502)
+    else:
+        client = PolygonClient(polygon_key)
 
     today = dt.date.today()
-    # DTE windows per trade type
+    # Fetch wider DTE ranges to cover all fallback levels
+    # The selection logic will filter by level-specific criteria
     if trade_type == "scalp":
-        lo, hi = 1, 30  # Will increase DTE until criteria match
+        lo, hi = 0, 2  # Covers all scalp levels (0-2 DTE)
     elif trade_type == "leap":
-        lo, hi = 330, 395  # ~1 year (330-395 days)
+        lo, hi = 120, 550  # Covers all leap levels (120-550 DTE)
     else:  # swing
-        lo, hi = 6, 45
+        lo, hi = 6, 90  # Covers all swing levels (6-90 DTE)
 
     exp_gte = (today + dt.timedelta(days=lo)).isoformat()
     exp_lte = (today + dt.timedelta(days=hi)).isoformat()
 
-    snaps = client.get_option_chain_snapshots(
+    # Strike filter: optional request params strike_gte / strike_lte; else default 0.5x–2x underlying price
+    strike_gte = request.GET.get("strike_gte")
+    strike_lte = request.GET.get("strike_lte")
+    try:
+        strike_gte = float(strike_gte) if strike_gte not in (None, "") else None
+    except (TypeError, ValueError):
+        strike_gte = None
+    try:
+        strike_lte = float(strike_lte) if strike_lte not in (None, "") else None
+    except (TypeError, ValueError):
+        strike_lte = None
+    if strike_gte is None or strike_lte is None:
+        try:
+            price_float = float(underlying_price)
+            if strike_gte is None:
+                strike_gte = round(price_float * 0.5, 2)
+            if strike_lte is None:
+                strike_lte = round(price_float * 2.0, 2)
+        except (TypeError, ValueError):
+            pass
+
+    # Fetch option chain (with pagination + filter) and pick best contract in one call
+    best, fetch_failed = client.get_best_option(
         underlying=symbol,
         side=side,
         expiration_gte=exp_gte,
         expiration_lte=exp_lte,
-        limit=250,
-        max_pages=4,
-        timeout=12,
+        strike_gte=strike_gte,
+        strike_lte=strike_lte,
+        underlying_price=float(underlying_price),
+        trade_type=trade_type,
+        timeout=30,
     )
-    if snaps is None:
+    if fetch_failed:
         payload = {"error": "options unavailable", "source": "polygon"}
         if getattr(settings, "DEBUG", False):
             payload["polygon_error"] = getattr(client, "last_error", None)
             payload["query"] = {"expiration_gte": exp_gte, "expiration_lte": exp_lte, "side": side, "trade_type": trade_type}
         return JsonResponse(payload, status=502)
-
-    best = client.pick_best_option_from_snapshots(
-        snapshots=snaps,
-        underlying_price=float(underlying_price),
-        trade_type=trade_type,
-        side=side,
-    )
     if not best:
         return JsonResponse(
             {
-                "error": "No suitable option contract found",
+                "error": "No suitable option contract found after all fallback levels",
                 "source": "polygon",
                 "symbol": symbol,
                 "underlying_price": underlying_price,
                 "side": side,
                 "trade_type": trade_type,
+                "message": f"No viable contract found for {symbol} after trying all fallback levels (0-3). Please use Manual Option Contract selection.",
             },
             status=404,
         )
