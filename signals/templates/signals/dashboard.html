@@ -1219,7 +1219,7 @@
     <div class="page-header">
         <div class="page-title-section">
             {% if trade_plan_only %}
-            <h1>New Trade Plan</h1>
+            <h1>{% if preset_id %}Edit Trade Plan{% else %}New Trade Plan{% endif %}</h1>
             <p>Create or edit your Trade Plan presets and confirm how they will look in the Live Preview.</p>
             {% else %}
             <h1>Submit New Signal</h1>
@@ -2277,9 +2277,11 @@ function updateTpSlPrices() {
         if (!perEl || !priceElN) continue;
         const tpPer = parsePercent(perEl.value);
         if (Number.isFinite(tpPer)) {
+            // When selling: Take Profit % is always positive, calculate price in opposite direction (subtract)
+            // When buying: Take Profit % is positive, calculate price in same direction (add)
             const computed = isSell
                 ? formatFloat3(base * (1 - Math.abs(tpPer) / 100))
-                : formatFloat3(base * (1 + tpPer / 100));
+                : formatFloat3(base * (1 + Math.abs(tpPer) / 100));
             setValueIfAllowed(priceElN, computed);
             const priceDisplayEl = document.querySelector(`input[data-tp-price-display][data-tp-level="${i}"]`);
             if (priceDisplayEl) {
@@ -2370,7 +2372,7 @@ function updateDefaultTpStockTargets() {
     }
     if (!Number.isFinite(base) || base < 0) return;
 
-    // BUY (CALL) = +10/+20/... %, SELL (PUT) = -10/-20/... %
+    // LONG (CALL) = +10/+20/... %, SHORT (PUT) = +10/+20/... % (but calculated in opposite direction)
     const optTypeEl = findFieldByName('option_type');
     const optTypeRaw = String(optTypeEl ? optTypeEl.value : '').trim().toLowerCase();
     const isPut = optTypeRaw.includes('put');
@@ -2385,7 +2387,7 @@ function updateDefaultTpStockTargets() {
     }
 }
 
-// When is_shares is on: set TP level % direction from Buy or Sell (CALL = +10/+20/..., PUT = -10/-20/...)
+// When is_shares is on: set TP level % direction from Long or Short (CALL = +10/+20/..., PUT = +10/+20/... but calculated in opposite direction)
 // force: when true (e.g. user changed Buy/Sell), always set; when false, only set if allowed (auto-filled or empty)
 function applyTpLevelDirectionForShares(force) {
     const isSharesCheckbox = document.getElementById('id_is_shares');
@@ -2393,13 +2395,14 @@ function applyTpLevelDirectionForShares(force) {
     const optTypeEl = findFieldByName('option_type');
     const optTypeRaw = String(optTypeEl ? optTypeEl.value : '').trim().toLowerCase();
     const isPut = optTypeRaw.includes('put');
-    const dir = isPut ? -1 : 1;
+    // Always use positive percentages for both Buy and Sell
     const defaults = [10, 20, 30, 40, 50, 60];
     for (let i = 1; i <= defaults.length; i++) {
         const el = findFieldByName(`tp${i}_per`);
         if (!el) continue;
-        const val = dir * defaults[i - 1];
-        el.setAttribute('min', isPut ? '-100' : '0');
+        // Always positive: for Long (CALL) = +10/+20/..., for Short (PUT) = +10/+20/... (but calculated in opposite direction)
+        const val = defaults[i - 1];
+        el.setAttribute('min', '0'); // Always allow only positive percentages
         if (force) {
             el.value = String(val);
             el.dataset.autoFilled = '1';
@@ -2439,19 +2442,24 @@ async function fetchOptionQuote(symbol, { strike, expiration, side } = {}) {
     const k = strike;
     if (!sym || !exp || !k || !['call','put'].includes(s)) return null;
     const url = `/api/option-quote/?symbol=${encodeURIComponent(sym)}&expiration=${encodeURIComponent(exp)}&strike=${encodeURIComponent(String(k))}&side=${encodeURIComponent(s)}`;
-    const res = await fetch(url, { credentials: 'same-origin' });
-    if (!res.ok) {
-        // Best-effort debug info (shows up in browser console)
-        try {
-            const errPayload = await res.json();
-            console.warn('Option quote failed:', res.status, errPayload);
-        } catch (_) {
-            console.warn('Option quote failed:', res.status);
+    try {
+        const res = await fetch(url, { credentials: 'same-origin' });
+        if (!res.ok) {
+            try {
+                const errPayload = await res.json();
+                console.warn('Option quote failed:', res.status, errPayload);
+            } catch (_) {
+                console.warn('Option quote failed:', res.status);
+            }
+            return null;
         }
+        const payload = await res.json();
+        return payload && payload.price != null ? payload : null;
+    } catch (err) {
+        // Network error, CORS, or server unreachable (e.g. "Failed to fetch")
+        console.warn('Option quote request failed:', err && err.message ? err.message : 'network error');
         return null;
     }
-    const payload = await res.json();
-    return payload && payload.price != null ? payload : null;
 }
 
 /** When Manual option contract is on: fetch option quote for current strike/expiration/option_type and update option_price, entry_price, price (and option_contract). If contract unavailable, set price to 0 and show Strike/Expiration validation error. */
@@ -2501,7 +2509,12 @@ async function updateOptionPriceFromManualContract() {
         clearStrikeExpirationValidationError(strikeEl, expEl);
         return;
     }
-    const optQuote = await fetchOptionQuote(sym, { strike: parseFloat(strike) || strike, expiration, side });
+    let optQuote = null;
+    try {
+        optQuote = await fetchOptionQuote(sym, { strike: parseFloat(strike) || strike, expiration, side });
+    } catch (e) {
+        console.warn('updateOptionPriceFromManualContract:', e && e.message ? e.message : e);
+    }
     const optionPriceEl = findFieldByName('option_price');
     const entryPriceEl = findFieldByName('entry_price');
     const priceEl = findFieldByName('price');
@@ -2816,7 +2829,7 @@ function isOptionalFieldForSignalType(field, signalType) {
     return isOptionalField(field) || isInferredOptionalField(field, signalType);
 }
 
-// Get label from variable or fall back to default (option_type shown as Buy or Sell only when is_shares is on; see toggleOptionFields)
+// Get label from variable or fall back to default (option_type shown as Long or Short only when is_shares is on; see toggleOptionFields)
 function getLabel(variable) {
     if (variable && variable.label) {
         return variable.label;
@@ -3136,10 +3149,7 @@ function updatePreview() {
     const showTitle = showTitleCheckbox ? showTitleCheckbox.checked : true;
     const title = renderTemplate(signalType.title_template, formData);
     const titleEl = document.getElementById('previewTitle');
-    if (isTradePlanOnlyPage) {
-        titleEl.innerHTML = parseDiscordMarkdown('📝 Trade Plan');
-        titleEl.style.display = 'block';
-    } else if (title && showTitle) {
+    if (title && showTitle) {
         titleEl.innerHTML = parseDiscordMarkdown(title);
         titleEl.style.display = 'block';
     } else {
@@ -3151,7 +3161,7 @@ function updatePreview() {
     const showDescription = showDescriptionCheckbox ? showDescriptionCheckbox.checked : true;
     const description = renderTemplate(signalType.description_template, formData);
     const descEl = document.getElementById('previewDescription');
-    if (!isTradePlanOnlyPage && description && description.trim() && showDescription) {
+    if (description && description.trim() && showDescription) {
         descEl.innerHTML = parseDiscordMarkdown(description.trim());
         descEl.style.display = 'block';
     } else {
@@ -3334,7 +3344,7 @@ function updatePreview() {
                 const raiseSlSelect = rowEl.querySelector('[data-tp-raise-sl-to]');
                 const raiseSlTo = raiseSlSelect ? String(raiseSlSelect.value || '').trim().toLowerCase() : '';
                 if (raiseSlTo === 'entry') {
-                    raiseSlSuffix = i === 1 ? ' and raise stop loss to break even (entry)' : ` and raise stop loss to TP${i - 1}`;
+                    raiseSlSuffix = i === 1 ? ' and raise stop loss to break even' : ` and raise stop loss to TP${i - 1}`;
                 } else if (raiseSlTo === 'custom') {
                     const customPer = rowEl.querySelector('[data-tp-raise-sl-custom-per]');
                     const customPrice = rowEl.querySelector('[data-tp-raise-sl-custom]');
@@ -3352,8 +3362,68 @@ function updatePreview() {
                     }
                     // When custom is selected but value is empty/zero: no suffix (omit "raise the stop loss to custom level")
                 }
+                
+                // Trailing stop suffix from row's selection with change tracking
+                let trailingStopSuffix = '';
+                const trailingTriggerSelect = rowEl.querySelector('[data-tp-trailing-stop-trigger]');
+                const trailingPerInput = rowEl.querySelector(`input[name="tp${i}_trailing_stop_per"]`);
+                if (trailingTriggerSelect && trailingPerInput) {
+                    const trigger = String(trailingTriggerSelect.value || '').trim().toLowerCase() || 'off';
+                    const perRaw = String(trailingPerInput.value || '').trim();
+                    const perStr = perRaw ? (perRaw.endsWith('%') ? perRaw : `${perRaw}%`) : '';
+                    
+                    // Get previous level's original trailing stop state for comparison (for TP2+)
+                    let originalTrigger = 'off';
+                    let originalPer = '0';
+                    let hadOriginalState = false;
+                    let previousLevelTrailingStopOn = false;
+                    if (i > 1) {
+                        const prevLevel = i - 1;
+                        // Check previous level's original state
+                        hadOriginalState = window.originalTrailingStopState && window.originalTrailingStopState[prevLevel];
+                        if (hadOriginalState) {
+                            const originalState = window.originalTrailingStopState[prevLevel];
+                            originalTrigger = String(originalState.trigger || '').trim().toLowerCase() || 'off';
+                            originalPer = String(originalState.per || '').trim().replace('%', '') || '0';
+                        }
+                        
+                        // Check previous level's current trailing stop status
+                        const prevLevelRow = document.querySelector(`.tp-level-row[data-tp-row="1"][data-tp-level="${prevLevel}"]`);
+                        if (prevLevelRow) {
+                            const prevLevelTrailingTriggerSelect = prevLevelRow.querySelector('[data-tp-trailing-stop-trigger]');
+                            if (prevLevelTrailingTriggerSelect) {
+                                const prevLevelTrigger = String(prevLevelTrailingTriggerSelect.value || '').trim().toLowerCase() || 'off';
+                                previousLevelTrailingStopOn = prevLevelTrigger === 'on';
+                            }
+                        }
+                    }
+                    
+                    // Normalize current per for comparison (remove % if present)
+                    const currentPerNormalized = perRaw ? String(perRaw).trim().replace('%', '') : '';
+                    
+                    // Determine change type and generate appropriate message
+                    if (trigger === 'on' && perStr) {
+                        if (!hadOriginalState || originalTrigger === 'off' || !originalTrigger) {
+                            // New trailing stop added (no original state or was off)
+                            trailingStopSuffix = ` and set ${perStr} trailing stop`;
+                        } else if (originalTrigger === 'on' && originalPer !== currentPerNormalized) {
+                            // Trailing stop changed (was on, percent changed)
+                            trailingStopSuffix = ` and change trailing stop percent to ${perStr}`;
+                        } else {
+                            // Trailing stop unchanged (show normally)
+                            trailingStopSuffix = ` and trailing stop ${perStr}`;
+                        }
+                    } else if (trigger === 'off') {
+                        // Check if trailing stop was removed - show "remove trailing stop" if previous level has trailing stop ON
+                        if (previousLevelTrailingStopOn) {
+                            // Previous level has trailing stop ON, so this level removing it should show "remove trailing stop"
+                            trailingStopSuffix = ` and remove trailing stop`;
+                        }
+                        // If previous level doesn't have trailing stop ON, don't show anything (was never set)
+                    }
+                }
 
-                tpSteps.push({ level: i, atStr, takePct, raiseSlSuffix });
+                tpSteps.push({ level: i, atStr, takePct, raiseSlSuffix, trailingStopSuffix });
             }
 
             const ensurePeriod = (s) => (String(s || '').trim().endsWith('.') ? String(s || '').trim() : `${String(s || '').trim()}.`);
@@ -3361,7 +3431,9 @@ function updatePreview() {
                 const takeStr = step.takePct
                     ? (idx === 0 ? ` take off ${step.takePct} of position` : ` take off ${step.takePct} of remaining position`)
                     : '';
-                const suffix = step.raiseSlSuffix || '';
+                const raiseSlSuffix = step.raiseSlSuffix || '';
+                const trailingStopSuffix = step.trailingStopSuffix || '';
+                const suffix = raiseSlSuffix + trailingStopSuffix;
                 const line = ensurePeriod(`Take Profit (${step.level}): At ${step.atStr}${takeStr}${suffix}`);
                 tps.push(line);
             });
@@ -3369,17 +3441,43 @@ function updatePreview() {
             const slPriceRaw = String(formData['sl_price'] ?? formData['sl_price_visible'] ?? '0.00').trim() || '0.00';
             const slLevelsRaw = String(formData['sl_levels'] ?? '').trim();
             const timeHorizonRaw = String(formData['time_horizon'] ?? '').trim();
-            const trailingStopTrigger = String(formData['trailing_stop_trigger'] ?? '').trim().toLowerCase() || 'none';
-            const trailingStopPerRaw = String(formData['trailing_stop_per'] ?? '').trim();
-            const trailingStopPerStr = trailingStopPerRaw ? (trailingStopPerRaw.endsWith('%') ? trailingStopPerRaw : `${trailingStopPerRaw}%`) : '';
-            const hasTrailingStop = trailingStopTrigger !== 'none' && trailingStopTrigger !== '';
+            // Trailing stop is now per TP level, collect from each TP level
+            const trailingStopsByTp = {};
+            for (let i = 1; i <= MAX_TP_LEVELS; i++) {
+                const rowEl = document.querySelector(`.tp-level-row[data-tp-row="1"][data-tp-level="${i}"]`);
+                if (!rowEl) break;
+                const trailingTriggerSelect = rowEl.querySelector('[data-tp-trailing-stop-trigger]');
+                const trailingPerInput = rowEl.querySelector(`input[name="tp${i}_trailing_stop_per"]`);
+                if (trailingTriggerSelect && trailingPerInput) {
+                    const trigger = String(trailingTriggerSelect.value || '').trim().toLowerCase() || 'off';
+                    const perRaw = String(trailingPerInput.value || '').trim();
+                    if (trigger !== 'off' && trigger !== 'none' && perRaw) {
+                        trailingStopsByTp[i] = {
+                            trigger: trigger,
+                            per: perRaw.endsWith('%') ? perRaw : `${perRaw}%`
+                        };
+                    }
+                }
+            }
             const slPerStr = slPerRaw ? (slPerRaw.endsWith('%') ? slPerRaw : `${slPerRaw}%`) : '';
             
             // Collect stop loss levels from "raise stop loss to" settings in TP plan
-            const entryPrice = parseFloat(String(formData['entry_price'] ?? formData['current_price'] ?? formData['price'] ?? '0').replace(/[$,]/g, '')) || 0;
+            // Entry price: when is_shares on = stock price; when is_shares off = option price
+            const entryPrice = isShares
+                ? (parseFloat(String(formData['current_price'] ?? formData['stock_price'] ?? formData['entry_price'] ?? '0').replace(/[$,]/g, '')) || 0)
+                : (parseFloat(String(formData['option_price'] ?? formData['price'] ?? formData['entry_price'] ?? '0').replace(/[$,]/g, '')) || 0);
+            // Check if this is a sell trade (is_shares on and option_type is PUT/SHORT)
+            const optTypeRaw = String(formData['option_type'] ?? '').trim().toLowerCase();
+            const isSell = isShares && optTypeRaw.includes('put');
             // Compute initial stop loss price from percentage when price is zero or missing
+            // For sell: base * (1 + slPer / 100), for buy: base * (1 - slPer / 100)
             const slPerNum = slPerRaw ? parseFloat(String(slPerRaw).replace(/[%,]/g, '')) : NaN;
-            const initialSlPriceFromPer = (entryPrice > 0 && !isNaN(slPerNum)) ? entryPrice * (1 + slPerNum / 100) : null;
+            const baseForSl = isShares 
+                ? (parseFloat(String(formData['current_price'] ?? formData['stock_price'] ?? '0').replace(/[$,]/g, '')) || entryPrice)
+                : (parseFloat(String(formData['option_price'] ?? formData['price'] ?? '0').replace(/[$,]/g, '')) || entryPrice);
+            const initialSlPriceFromPer = (baseForSl > 0 && !isNaN(slPerNum)) 
+                ? (isSell ? baseForSl * (1 + slPerNum / 100) : baseForSl * (1 - slPerNum / 100))
+                : null;
             const basePrice = isShares ? parseFloat(String(formData['current_price'] ?? formData['stock_price'] ?? '0').replace(/[$,]/g, '')) || entryPrice : parseFloat(String(formData['option_price'] ?? formData['price'] ?? '0').replace(/[$,]/g, '')) || entryPrice;
             
             // Get TP prices for calculating stop loss levels
@@ -3416,8 +3514,13 @@ function updatePreview() {
             }
             
             // Collect stop loss levels from raise stop loss to settings
-            // Store with TP level index to preserve order
+            // Store with TP level index and source percent (break-even or that TP level's percent) so we don't recalculate
             const stopLossLevelsFromTpWithOrder = [];
+            const formatPctForSl = (raw) => {
+                const n = Number(String(raw ?? '').replace('%', '').trim());
+                if (!Number.isFinite(n)) return null;
+                return n >= 0 ? `+${n.toFixed(1)}%` : `${n.toFixed(1)}%`;
+            };
             for (let i = 1; i <= MAX_TP_LEVELS; i++) {
                 const rowEl = document.querySelector(`.tp-level-row[data-tp-row="1"][data-tp-level="${i}"]`);
                 if (!rowEl) break;
@@ -3431,13 +3534,31 @@ function updatePreview() {
                 }
                 
                 let slLevel = null;
+                let sourcePercent = null; // Use this instead of calculating: break-even = 0%, raise to TP = that TP level percent
                 if (raiseSlTo === 'entry') {
                     if (i === 1 && entryPrice > 0) {
-                        // TP1: raise to entry price
+                        // TP1: raise to entry price (break even)
                         slLevel = entryPrice;
+                        sourcePercent = entryPrice > 0 ? '+0%' : '0%';
                     } else if (i > 1 && tpPrices[i - 1]) {
-                        // TP2+: raise to previous TP price
+                        // TP2+: raise to previous TP price — use that TP level's percent
                         slLevel = tpPrices[i - 1];
+                        const prevTpLevel = i - 1;
+                        const tpPerRaw = formData[`tp${prevTpLevel}_per`];
+                        const tpModeRaw = String(formData[`tp${prevTpLevel}_mode`] ?? '').trim().toLowerCase();
+                        const isStockMode = tpModeRaw === 'stock' || tpModeRaw === 'stock_price' || tpModeRaw === 'underlying' || tpModeRaw === 'share_price';
+                        if (isStockMode) {
+                            if (entryPrice > 0) {
+                                const pct = ((tpPrices[i - 1] - entryPrice) / entryPrice) * 100;
+                                sourcePercent = pct >= 0 ? `+${pct.toFixed(1)}%` : `${pct.toFixed(1)}%`;
+                            }
+                        } else {
+                            sourcePercent = formatPctForSl(tpPerRaw);
+                        }
+                        if (sourcePercent == null && entryPrice > 0) {
+                            const pct = ((tpPrices[i - 1] - entryPrice) / entryPrice) * 100;
+                            sourcePercent = pct >= 0 ? `+${pct.toFixed(1)}%` : `${pct.toFixed(1)}%`;
+                        }
                     }
                 } else if (raiseSlTo === 'custom') {
                     const modeRaw = String(formData[`tp${i}_mode`] ?? '').trim().toLowerCase();
@@ -3460,17 +3581,20 @@ function updatePreview() {
                 }
                 
                 if (slLevel != null && slLevel > 0) {
-                    stopLossLevelsFromTpWithOrder.push({ level: slLevel, tpIndex: i });
+                    stopLossLevelsFromTpWithOrder.push({ level: slLevel, tpIndex: i, sourcePercent });
                 }
             }
             
-            // Combine manual sl_levels with calculated levels from TP plan
-            // Maintain order: initial stop loss first, then levels from TP plan in order (TP1, TP2, etc.), then manual levels
-            let allStopLossLevels = [];
-            // Track levels with their order/index for proper sorting
-            const levelOrder = [];
-            
-            // Add initial stop loss price first (first stop level)
+            // Build list of stop loss levels with optional percent (use level percent when possible, else compute)
+            const slLevelEntries = [];
+
+            function addSlLevel(price, percentStr, isInitialSl = false, isBreakEven = false) {
+                if (price == null || isNaN(price) || price <= 0) return;
+                const exists = slLevelEntries.some(e => Math.abs(e.price - price) < 0.01);
+                if (!exists) slLevelEntries.push({ price, percentStr: percentStr || null, isInitialSl, isBreakEven });
+            }
+
+            // 1) Initial Stop Loss (from sl_price or computed from sl_per) — use sl_per as level percent when available
             const initialSlPrice = (function() {
                 if (slPriceRaw && slPriceRaw !== '0.00') {
                     const n = parseFloat(slPriceRaw.replace(/[$,]/g, ''));
@@ -3479,60 +3603,72 @@ function updatePreview() {
                 return initialSlPriceFromPer;
             })();
             if (initialSlPrice != null && !isNaN(initialSlPrice)) {
-                if (!allStopLossLevels.some(l => Math.abs(l - initialSlPrice) < 0.01)) {
-                    allStopLossLevels.push(initialSlPrice);
-                    levelOrder.push({ level: initialSlPrice, order: 0 }); // Initial stop is order 0
-                }
+                const levelPercent = slPerStr ? (slPerStr.endsWith('%') ? slPerStr : slPerStr + '%') : null;
+                addSlLevel(initialSlPrice, levelPercent, true); // Mark as initial SL
             }
-            
-            // Add calculated levels from TP plan in order (TP1, TP2, etc.) - these come after initial stop
-            stopLossLevelsFromTpWithOrder.forEach((item) => {
-                const level = item.level;
-                const tpIndex = item.tpIndex;
-                if (level > 0 && !allStopLossLevels.some(l => Math.abs(l - level) < 0.01)) {
-                    allStopLossLevels.push(level);
-                    levelOrder.push({ level: level, order: tpIndex }); // TP levels come after initial, ordered by TP index (1, 2, 3...)
-                }
-            });
-            
-            // Add manual sl_levels last (after initial and TP levels)
+
+            // 2) Manual sl_levels (semicolon-separated extra levels) — no known percent
             if (slLevelsRaw) {
-                const manualLevels = slLevelsRaw.split(';').map(s => {
+                slLevelsRaw.split(';').forEach(s => {
                     const num = parseFloat(s.trim().replace(/[$,]/g, ''));
-                    return !isNaN(num) && num > 0 ? num : null;
-                }).filter(l => l !== null);
-                manualLevels.forEach((level, idx) => {
-                    if (!allStopLossLevels.some(l => Math.abs(l - level) < 0.01)) {
-                        allStopLossLevels.push(level);
-                        levelOrder.push({ level: level, order: 1000 + idx }); // Manual levels come last
-                    }
+                    if (!isNaN(num) && num > 0) addSlLevel(num, null, false); // Not initial SL
                 });
             }
-            
-            // Sort levels by order (first stop level first, then subsequent levels in chronological order)
-            // This maintains: initial stop -> TP1 stop -> TP2 stop -> ... -> manual levels
-            allStopLossLevels.sort((a, b) => {
-                const orderA = levelOrder.find(o => Math.abs(o.level - a) < 0.01)?.order ?? 9999;
-                const orderB = levelOrder.find(o => Math.abs(o.level - b) < 0.01)?.order ?? 9999;
-                return orderA - orderB;
+
+            // 3) Raise Stop Loss levels from Take Profit plan — use sourcePercent (break-even 0% or that TP level percent), don't calculate
+            stopLossLevelsFromTpWithOrder.forEach((item) => {
+                const level = item.level;
+                const atEntry = entryPrice > 0 && Math.abs(level - entryPrice) < 0.01;
+                addSlLevel(level, item.sourcePercent != null ? item.sourcePercent : null, false, atEntry);
             });
-            // Format each stop loss level with price and percentage relative to entry price
-            const allStopLossLevelsFormatted = allStopLossLevels.length > 0 
-                ? allStopLossLevels.map(l => {
-                    const priceStr = l.toFixed(2);
-                    let percentStr = '';
-                    if (entryPrice > 0) {
-                        const percent = ((l - entryPrice) / entryPrice) * 100;
-                        percentStr = `${percent >= 0 ? '+' : ''}${percent.toFixed(1)}%`;
-                    } else {
-                        percentStr = '0%';
+
+            // Sort by percent from small to large (e.g. -15%, -10%, 0%, +5%)
+            function numericPercentForSlEntry(e) {
+                let pct;
+                if (e.percentStr != null && e.percentStr !== '') {
+                    const parsed = parseFloat(String(e.percentStr).replace(/[%+]/g, '').trim());
+                    if (Number.isFinite(parsed)) {
+                        pct = parsed;
+                        // For initial Stop Loss, stored percent is "below entry" — use negative for sorting
+                        if (e.isInitialSl && pct > 0) pct = -pct;
+                        return pct;
                     }
+                }
+                if (entryPrice > 0) return ((e.price - entryPrice) / entryPrice) * 100;
+                return 0;
+            }
+            slLevelEntries.sort((a, b) => numericPercentForSlEntry(a) - numericPercentForSlEntry(b));
+            // Format: use level percent when available, otherwise compute from entry price. Show minus before percent ONLY for initial Stop Loss.
+            function formatSlPercentForDisplay(p, isInitialSl) {
+                if (!isInitialSl) return p; // Don't modify Raise Stop Loss percents
+                if (p == null || p === '') return p;
+                const s = String(p).trim();
+                if (s.startsWith('-')) return s;
+                const withoutPlus = s.replace(/^\+/, '');
+                return withoutPlus ? `-${withoutPlus}` : s;
+            }
+            const allStopLossLevelsFormatted = slLevelEntries.length > 0
+                ? slLevelEntries.map(e => {
+                    const priceStr = e.price.toFixed(2);
+                    let percentStr = e.percentStr;
+                    if (percentStr == null || percentStr === '') {
+                        // Raise to entry/TP levels already have percent from sourcePercent; only calculate when not set
+                        if (entryPrice > 0) {
+                            const percent = ((e.price - entryPrice) / entryPrice) * 100;
+                            percentStr = `${percent >= 0 ? '+' : ''}${percent.toFixed(1)}%`;
+                        } else {
+                            percentStr = '0%';
+                        }
+                    }
+                    // Only add minus for initial Stop Loss, not for Raise Stop Loss levels
+                    percentStr = formatSlPercentForDisplay(percentStr, e.isInitialSl) || percentStr;
                     return `${priceStr}(${percentStr})`;
                 }).join(', ')
                 : '';
 
-            // Show Trade Plan even before option price is computed (defaults: 0.00)
-            if (targets.length || tps.length || slPerRaw || slPriceRaw || slLevelsRaw || allStopLossLevelsFormatted || timeHorizonRaw) {
+
+            // Always show Trade Plan block in Live Preview (like Trade Plan Preview) when template doesn't have it
+            {
                 // Find insertion index: after last option-related field (Expiration/Strike/Option/Price)
                 let insertAt = -1;
                 fieldsToRenderFinal.forEach((it, idx) => {
@@ -3558,22 +3694,21 @@ function updatePreview() {
                 }
 
                 const injected = [];
-                // Blank line before Trade Plan (like before Take Profit Plan)
-                injected.push({ field: { inline: false }, index: -1000, fieldName: '', fieldValue: '\u200b' });
-                injected.push({ field: { inline: false }, index: -1001, fieldName: '📝 **Trade Plan**', fieldValue: '' });
-                // When is_shares on: show Targets line directly below Trade Plan in Discord preview
-                const showTargetsLine = targets.length > 0 || isShares;
-                if (showTargetsLine) {
-                    const joiner = targets.some(t => String(t || '').startsWith('TP')) ? ',  ' : ', ';
-                    const targetsText = targets.length ? targets.join(joiner) : '—';
-                    tpBlock.targetsLine = `🎯 Targets: ${targetsText}`;
-                    injected.push({
-                        field: { inline: false },
-                        index: -1002,
-                        fieldName: `🎯 Targets: ${targetsText}`,
-                        fieldValue: '',
-                    });
+                // Post a trade: add blank space before Trade Plan; Create/Edit Trade Plan: no blank space before
+                if (!isTradePlanOnlyPage) {
+                    injected.push({ field: { inline: false }, index: -1000.5, fieldName: '', fieldValue: '\u200b' });
                 }
+                injected.push({ field: { inline: false }, index: -1001, fieldName: '📝 **Trade Plan**', fieldValue: '' });
+                // Always show Targets line in Live Preview (like Trade Plan Preview); use — when empty
+                const joiner = targets.some(t => String(t || '').startsWith('TP')) ? ',  ' : ', ';
+                const targetsText = targets.length ? targets.join(joiner) : '—';
+                tpBlock.targetsLine = `🎯 Targets: ${targetsText}`;
+                injected.push({
+                    field: { inline: false },
+                    index: -1002,
+                    fieldName: `🎯 Targets: ${targetsText}`,
+                    fieldValue: '',
+                });
                 // Stop Loss: show multiple levels if provided (from manual input or calculated from TP plan), otherwise single price or percentage
                 if (allStopLossLevelsFormatted) {
                     tpBlock.stopLossLine = `🛑 Stop Loss: ${allStopLossLevelsFormatted}`;
@@ -3585,18 +3720,35 @@ function updatePreview() {
                     });
                 } else {
                     // Single stop loss: use explicit price or compute from percentage when price is zero
+                    // Use baseForSl for percentage calculation (matches Trade Plan preview logic)
                     const slPrice = initialSlPrice != null && !isNaN(initialSlPrice)
                         ? initialSlPrice
                         : (slPriceRaw && slPriceRaw !== '0.00' ? parseFloat(slPriceRaw.replace(/[$,]/g, '')) : NaN);
                     const slPriceStr = (!isNaN(slPrice) && slPrice !== null) ? slPrice.toFixed(2) : slPriceRaw;
                     let percentStr = '';
-                    if (entryPrice > 0 && !isNaN(slPrice)) {
+                    // Prefer original slPerStr if available; show minus before percent for Stop Loss
+                    if (slPerStr) {
+                        const slPerDisplay = slPerStr.startsWith('-') ? slPerStr : `-${slPerStr.replace(/^\+/, '')}`;
+                        percentStr = `(${slPerDisplay})`;
+                    } else if (baseForSl > 0 && !isNaN(slPrice)) {
+                        const percent = ((slPrice - baseForSl) / baseForSl) * 100;
+                        const pctDisplay = percent >= 0 ? `-${percent.toFixed(1)}%` : `${percent.toFixed(1)}%`;
+                        percentStr = `(${pctDisplay})`;
+                    } else if (entryPrice > 0 && !isNaN(slPrice)) {
                         const percent = ((slPrice - entryPrice) / entryPrice) * 100;
-                        percentStr = `(${percent >= 0 ? '+' : ''}${percent.toFixed(1)}%)`;
-                    } else if (slPerStr) {
-                        percentStr = `(${slPerStr})`;
+                        const pctDisplay = percent >= 0 ? `-${percent.toFixed(1)}%` : `${percent.toFixed(1)}%`;
+                        percentStr = `(${pctDisplay})`;
                     }
-                    if (slPriceStr !== '0.00' || percentStr || slPerStr) {
+                    // Format matches Trade Plan preview: "🛑 Stop Loss: price(percent)" or "🛑 Stop Loss: percent"
+                    if (slPriceStr && slPriceStr !== '0.00' && percentStr) {
+                        tpBlock.stopLossLine = `🛑 Stop Loss: ${slPriceStr}${percentStr}`;
+                        injected.push({
+                            field: { inline: false },
+                            index: -1003,
+                            fieldName: `🛑 Stop Loss: ${slPriceStr}${percentStr}`,
+                            fieldValue: '',
+                        });
+                    } else if (slPriceStr && slPriceStr !== '0.00') {
                         tpBlock.stopLossLine = `🛑 Stop Loss: ${slPriceStr}${percentStr}`;
                         injected.push({
                             field: { inline: false },
@@ -3605,35 +3757,26 @@ function updatePreview() {
                             fieldValue: '',
                         });
                     } else if (slPerStr) {
-                        tpBlock.stopLossLine = `🛑 Stop Loss: ${slPerStr}`;
+                        const slPerDisplay = slPerStr.startsWith('-') ? slPerStr : `-${slPerStr.replace(/^\+/, '')}`;
+                        tpBlock.stopLossLine = `🛑 Stop Loss: ${slPerDisplay}`;
                         injected.push({
                             field: { inline: false },
                             index: -1003,
-                            fieldName: `🛑 Stop Loss: ${slPerStr}`,
+                            fieldName: `🛑 Stop Loss: ${slPerDisplay}`,
+                            fieldValue: '',
+                        });
+                    } else {
+                        // Always show Stop Loss line in Live Preview (like Trade Plan Preview), use — when no data
+                        tpBlock.stopLossLine = '🛑 Stop Loss: —';
+                        injected.push({
+                            field: { inline: false },
+                            index: -1003,
+                            fieldName: tpBlock.stopLossLine,
                             fieldValue: '',
                         });
                     }
                 }
-                // Trailing Stop: show when trigger is not "none"
-                if (hasTrailingStop && trailingStopPerStr) {
-                    const triggerLabels = {
-                        'entry': 'Entry',
-                        'tp1': 'Hit TP1',
-                        'tp2': 'Hit TP2',
-                        'tp3': 'Hit TP3',
-                        'tp4': 'Hit TP4',
-                        'tp5': 'Hit TP5',
-                        'tp6': 'Hit TP6',
-                        'custom': 'Custom'
-                    };
-                    const triggerLabel = triggerLabels[trailingStopTrigger] || trailingStopTrigger;
-                    injected.push({
-                        field: { inline: false },
-                        index: -1003.2,
-                        fieldName: `📉 Trailing Stop: ${trailingStopPerStr} (trigger: ${triggerLabel})`,
-                        fieldValue: '',
-                    });
-                }
+                // Trailing stop is now shown inline with each TP level in the Take Profit Plan, no separate section needed
                 // Time Horizon (for leaps/swings only; show in preview when trade type is Swing or Leap)
                 const tradeTypeForPreview = String(formData['trade_type'] ?? '').trim().toLowerCase();
                 if (timeHorizonRaw && (tradeTypeForPreview === 'swing' || tradeTypeForPreview === 'leap')) {
@@ -3967,7 +4110,7 @@ function createDynamicFields(signalTypeId) {
         input.addEventListener('change', updatePreview);
         input.addEventListener('input', () => markUserTouched(input));
 
-        // When synthetic option_type (Buy/Sell) changes: update Trade Plan targets and preview; when is_shares off, pick best option.
+        // When synthetic option_type (Long/Short) changes: update Trade Plan targets and preview; when is_shares off, pick best option.
         if (name === 'option_type') {
             input.dataset.optionTypeChangeWired = '1';
             const onOptionTypeChange = async () => {
@@ -4091,7 +4234,7 @@ function createDynamicFields(signalTypeId) {
         return formGroup;
     }
 
-    function createTakeProfitRow(level, defaultPer, defaultTakeoffPer, { defaultMode = 'percent', defaultStockPrice = '', defaultRaiseSlTo = '', defaultRaiseSlCustom = '', defaultRaiseSlCustomPer = '', defaultRaiseSlCustomStock = '', isLastLevel = false } = {}) {
+    function createTakeProfitRow(level, defaultPer, defaultTakeoffPer, { defaultMode = 'percent', defaultStockPrice = '', defaultRaiseSlTo = '', defaultRaiseSlCustom = '', defaultRaiseSlCustomPer = '', defaultRaiseSlCustomStock = '', defaultTrailingStopTrigger = 'off', defaultTrailingStopPer = '5', isLastLevel = false } = {}) {
         const rowWrap = document.createElement('div');
         rowWrap.className = 'tp-level-row';
         rowWrap.dataset.tpRow = '1';
@@ -4141,8 +4284,8 @@ function createDynamicFields(signalTypeId) {
         const percentCol = document.createElement('div');
         percentCol.dataset.tpPercentCol = '1';
 
-        // TP % input (label goes in header); allowNegative for SELL (is_shares on, negative %)
-        const tpGroup = createSyntheticPercentField(`tp${level}_per`, defaultPer, `TP %`, { showPercentSuffix: true, allowNegative: true });
+        // TP % input (label goes in header); always positive (for SELL, calculated in opposite direction)
+        const tpGroup = createSyntheticPercentField(`tp${level}_per`, defaultPer, `TP %`, { showPercentSuffix: true, allowNegative: false });
         const tpLabel = tpGroup.querySelector('label');
         if (tpLabel) {
             // Put "Take Profit N" in header, remove inner label to avoid duplication
@@ -4239,7 +4382,16 @@ function createDynamicFields(signalTypeId) {
             if (!Number.isFinite(base) || base <= 0) return;
             const per = parsePercent(perInput?.value);
             if (Number.isFinite(per)) {
-                const p = base * (1 + per / 100);
+                // Check if this is a short trade (is_shares on and option_type is PUT/SHORT)
+                const isShares = (findFieldByName('is_shares') && findFieldByName('is_shares').checked) || false;
+                const optTypeEl = findFieldByName('option_type');
+                const optTypeRaw = String(optTypeEl ? optTypeEl.value : '').trim().toLowerCase();
+                const isSell = isShares && optTypeRaw.includes('put');
+                // When selling: Take Profit % is always positive, calculate price in opposite direction (subtract)
+                // When buying: Take Profit % is positive, calculate price in same direction (add)
+                const p = isSell
+                    ? base * (1 - Math.abs(per) / 100)
+                    : base * (1 + Math.abs(per) / 100);
                 setPriceDisplaySilent(formatFloat3(p));
             }
             updateTpSlPrices();
@@ -4254,7 +4406,15 @@ function createDynamicFields(signalTypeId) {
             if (!Number.isFinite(base) || base <= 0) return;
             const price = Number(String(priceDisplayInput.value || '').trim());
             if (!Number.isFinite(price) || price <= 0) return;
-            const per = (price / base - 1) * 100;
+            // Check if this is a sell trade (is_shares on and option_type is PUT/SELL)
+            const isShares = (findFieldByName('is_shares') && findFieldByName('is_shares').checked) || false;
+            const optTypeEl = findFieldByName('option_type');
+            const optTypeRaw = String(optTypeEl ? optTypeEl.value : '').trim().toLowerCase();
+            const isSell = isShares && optTypeRaw.includes('put');
+            // Calculate percentage: for sell, price is lower than base, so we need to calculate the positive %
+            const per = isSell
+                ? Math.abs((1 - price / base) * 100)  // Always positive for sell
+                : (price / base - 1) * 100;  // Positive for buy
             if (perInput) {
                 // Prevent percent->price sync from immediately overwriting the user-edited price.
                 priceDisplayInput.dataset.skipNextInput = '1';
@@ -4325,8 +4485,7 @@ function createDynamicFields(signalTypeId) {
         body.appendChild(takeoffGroup);
         rowWrap.appendChild(body);
 
-        if (!isLastLevel) {
-        // Raise stop loss: visible on all TP levels except the last (last is always off)
+        // Raise stop loss: visible on all TP levels including the last
         const actionsPanel = document.createElement('div');
         actionsPanel.className = 'tp-actions-panel';
         actionsPanel.dataset.tpActionsPanel = '1';
@@ -4489,8 +4648,106 @@ function createDynamicFields(signalTypeId) {
         actionsPanel.appendChild(actionsLabel);
         actionsPanel.appendChild(raiseSlSelect);
         actionsPanel.appendChild(customWrap);
-        rowWrap.appendChild(actionsPanel);
+        
+        // Trailing Stop section (part of Raise Stop Loss section)
+        const trailingStopDivider = document.createElement('div');
+        trailingStopDivider.style.height = '1px';
+        trailingStopDivider.style.background = 'rgba(255, 255, 255, 0.1)';
+        trailingStopDivider.style.margin = '12px 0';
+        actionsPanel.appendChild(trailingStopDivider);
+        
+        const trailingStopLabel = document.createElement('label');
+        trailingStopLabel.textContent = 'Trailing Stop:';
+        trailingStopLabel.style.marginBottom = '8px';
+        trailingStopLabel.style.display = 'block';
+        
+        const trailingStopTriggerSelect = document.createElement('select');
+        trailingStopTriggerSelect.className = 'form-input';
+        trailingStopTriggerSelect.dataset.tpTrailingStopTrigger = '1';
+        trailingStopTriggerSelect.dataset.tpLevel = String(level);
+        trailingStopTriggerSelect.style.marginBottom = '8px';
+        
+        // Options: Off, On only
+        const trailingOff = document.createElement('option');
+        trailingOff.value = 'off';
+        trailingOff.textContent = 'Off';
+        trailingStopTriggerSelect.appendChild(trailingOff);
+        
+        const trailingOn = document.createElement('option');
+        trailingOn.value = 'on';
+        trailingOn.textContent = 'On';
+        trailingStopTriggerSelect.appendChild(trailingOn);
+        
+        // Set default value from parameter (convert old 'none' to 'off')
+        let trailingTriggerValue = defaultTrailingStopTrigger || 'off';
+        if (trailingTriggerValue === 'none') {
+            trailingTriggerValue = 'off';
         }
+        trailingStopTriggerSelect.value = trailingTriggerValue;
+        
+        const trailingStopPerGroup = document.createElement('div');
+        trailingStopPerGroup.className = 'form-group';
+        trailingStopPerGroup.dataset.tpTrailingStopPerGroup = '1';
+        trailingStopPerGroup.style.display = (trailingTriggerValue === 'off' || !trailingTriggerValue) ? 'none' : 'block';
+        trailingStopPerGroup.style.marginTop = '8px';
+        
+        const trailingStopPerLabel = document.createElement('label');
+        trailingStopPerLabel.textContent = 'Trailing Stop Percent';
+        trailingStopPerLabel.setAttribute('for', `id_tp${level}_trailing_stop_per`);
+        
+        const trailingStopPerInput = document.createElement('input');
+        trailingStopPerInput.type = 'number';
+        trailingStopPerInput.className = 'form-input';
+        trailingStopPerInput.id = `id_tp${level}_trailing_stop_per`;
+        trailingStopPerInput.name = `tp${level}_trailing_stop_per`;
+        trailingStopPerInput.step = '0.01';
+        trailingStopPerInput.min = '0';
+        trailingStopPerInput.value = defaultTrailingStopPer || '5';
+        trailingStopPerInput.placeholder = '0.00';
+        
+        // Add percent suffix wrapper
+        const trailingPercentWrap = document.createElement('div');
+        trailingPercentWrap.className = 'percent-input-wrap';
+        trailingPercentWrap.appendChild(trailingStopPerInput);
+        const trailingPercentSuffix = document.createElement('span');
+        trailingPercentSuffix.className = 'percent-suffix';
+        trailingPercentSuffix.textContent = '%';
+        trailingPercentWrap.appendChild(trailingPercentSuffix);
+        trailingStopPerInput.style.paddingRight = '34px';
+        
+        trailingStopPerGroup.appendChild(trailingStopPerLabel);
+        trailingStopPerGroup.appendChild(trailingPercentWrap);
+        
+        // Function to update trailing stop percent visibility
+        const updateTrailingStopPerVisibility = () => {
+            const triggerValue = String(trailingStopTriggerSelect.value || '').trim().toLowerCase();
+            if (triggerValue === 'off' || triggerValue === 'none' || triggerValue === '') {
+                trailingStopPerGroup.style.display = 'none';
+            } else {
+                trailingStopPerGroup.style.display = 'block';
+                // When turning on trailing stop, set default to 5 if empty
+                if (triggerValue === 'on' && (!trailingStopPerInput.value || trailingStopPerInput.value.trim() === '' || trailingStopPerInput.value === '0')) {
+                    trailingStopPerInput.value = '5';
+                }
+            }
+            if (typeof updatePreview === 'function') updatePreview();
+        };
+        
+        trailingStopTriggerSelect.addEventListener('change', () => {
+            updateTrailingStopPerVisibility();
+        });
+        
+        trailingStopPerInput.addEventListener('input', () => {
+            if (typeof updatePreview === 'function') updatePreview();
+        });
+        trailingStopPerInput.addEventListener('change', () => {
+            if (typeof updatePreview === 'function') updatePreview();
+        });
+        
+        actionsPanel.appendChild(trailingStopLabel);
+        actionsPanel.appendChild(trailingStopTriggerSelect);
+        actionsPanel.appendChild(trailingStopPerGroup);
+        rowWrap.appendChild(actionsPanel);
 
         // --- Percent <-> Price sync (Option price targets) ---
         const tpPerInput = tpGroup.querySelector('input');
@@ -4717,16 +4974,42 @@ function createDynamicFields(signalTypeId) {
         presetBar.style.gap = '10px';
         presetBar.style.marginBottom = '14px';
 
+        const isTradePlanOnlyPage = (document.querySelector('.dashboard-page')?.dataset?.mode === 'trade_plan_only');
+        
         const presetLabel = document.createElement('div');
         presetLabel.style.color = '#9ca3af';
         presetLabel.style.fontSize = '0.9em';
         presetLabel.style.fontWeight = '600';
-        presetLabel.textContent = 'Saved Plans';
-
+        
         const presetSelect = document.createElement('select');
         presetSelect.className = 'form-select';
         presetSelect.style.width = 'auto';
         presetSelect.style.minWidth = '220px';
+
+        // Trade Plan name display (for trade_plan_only mode)
+        const tradePlanNameDisplay = document.createElement('div');
+        tradePlanNameDisplay.style.color = '#e8ecff';
+        tradePlanNameDisplay.style.fontSize = '1em';
+        tradePlanNameDisplay.style.fontWeight = '700';
+        
+        // In trade_plan_only mode: hide dropdown, show Trade Plan name (only when editing, not when creating new)
+        if (isTradePlanOnlyPage) {
+            presetSelect.style.display = 'none';
+            {% if preset_name %}
+            // Editing existing Trade Plan: show name
+            presetLabel.textContent = 'Trade Plan:';
+            tradePlanNameDisplay.textContent = '{{ preset_name }}';
+            presetBar.appendChild(presetLabel);
+            presetBar.appendChild(tradePlanNameDisplay);
+            {% else %}
+            // Creating new Trade Plan: hide Trade Plan name display
+            presetBar.style.display = 'none';
+            {% endif %}
+        } else {
+            presetLabel.textContent = 'Saved Plans';
+            presetBar.appendChild(presetLabel);
+            presetBar.appendChild(presetSelect);
+        }
 
         const savePresetBtn = document.createElement('button');
         savePresetBtn.type = 'button';
@@ -4765,9 +5048,6 @@ function createDynamicFields(signalTypeId) {
         defaultPresetBtn.style.width = 'auto';
         defaultPresetBtn.style.borderRadius = '10px';
         defaultPresetBtn.style.opacity = '0.85';
-
-        presetBar.appendChild(presetLabel);
-        presetBar.appendChild(presetSelect);
 
             const tpHeader = document.createElement('div');
             tpHeader.style.display = 'flex';
@@ -4875,7 +5155,12 @@ function createDynamicFields(signalTypeId) {
                     const raise_sl_custom_per = raiseSlCustomPer ? String(raiseSlCustomPer.value || '').trim() : '';
                     const raise_sl_custom = raiseSlCustom ? String(raiseSlCustom.value || '').trim() : '';
                     const raise_sl_custom_stock = raiseSlCustomStock ? String(raiseSlCustomStock.value || '').trim() : '';
-                    return { per: String(per), takeoff: String(takeoff), stock_price: String(stock_price).trim(), raise_sl_to, raise_sl_custom, raise_sl_custom_per, raise_sl_custom_stock };
+                    // Read trailing stop per TP level
+                    const trailingStopTriggerSelect = r.querySelector('[data-tp-trailing-stop-trigger]');
+                    const trailingStopPerInput = r.querySelector(`input[name="tp${lvl}_trailing_stop_per"]`);
+                    const trailing_stop_trigger = trailingStopTriggerSelect ? String(trailingStopTriggerSelect.value || '').trim() : 'off';
+                    const trailing_stop_per = trailingStopPerInput ? String(trailingStopPerInput.value || '').trim() : '';
+                    return { per: String(per), takeoff: String(takeoff), stock_price: String(stock_price).trim(), raise_sl_to, raise_sl_custom, raise_sl_custom_per, raise_sl_custom_stock, trailing_stop_trigger, trailing_stop_per };
                 });
             };
 
@@ -4903,8 +5188,8 @@ function createDynamicFields(signalTypeId) {
             const renderTpRows = (state) => {
                 tpRows.innerHTML = '';
                 const s = Array.isArray(state) ? state : [];
-                // On add/remove, normalize: last TP takes 100%, all others 50%.
-                const normalizedTakeoffFor = (lvl, total) => (lvl === total ? 100 : 50);
+                // On add/remove, normalize: default to 50% for all TPs (last TP doesn't have to be 100%)
+                const normalizedTakeoffFor = (lvl, total) => 50;
                 s.forEach((it, idx) => {
                     const lvl = idx + 1;
                     ensureTpPriceHidden(lvl);
@@ -4918,8 +5203,14 @@ function createDynamicFields(signalTypeId) {
                     const raiseSlCustom = String(it?.raise_sl_custom ?? '').trim();
                     const raiseSlCustomPer = String(it?.raise_sl_custom_per ?? '').trim();
                     const raiseSlCustomStock = String(it?.raise_sl_custom_stock ?? '').trim();
+                    let trailingStopTrigger = String(it?.trailing_stop_trigger ?? '').trim() || 'off';
+                    // Convert old 'none' values to 'off' for backward compatibility
+                    if (trailingStopTrigger === 'none') {
+                        trailingStopTrigger = 'off';
+                    }
+                    const trailingStopPer = String(it?.trailing_stop_per ?? '').trim() || (trailingStopTrigger === 'on' ? '5' : '0');
                     const isLastLevel = (lvl === s.length);
-                    const rowEl = createTakeProfitRow(lvl, perVal, takeoffVal, { defaultMode: globalTpMode, defaultStockPrice: stockPriceRaw, defaultRaiseSlTo: raiseSlTo, defaultRaiseSlCustom: raiseSlCustom, defaultRaiseSlCustomPer: raiseSlCustomPer, defaultRaiseSlCustomStock: raiseSlCustomStock, isLastLevel });
+                    const rowEl = createTakeProfitRow(lvl, perVal, takeoffVal, { defaultMode: globalTpMode, defaultStockPrice: stockPriceRaw, defaultRaiseSlTo: raiseSlTo, defaultRaiseSlCustom: raiseSlCustom, defaultRaiseSlCustomPer: raiseSlCustomPer, defaultRaiseSlCustomStock: raiseSlCustomStock, defaultTrailingStopTrigger: trailingStopTrigger, defaultTrailingStopPer: trailingStopPer, isLastLevel });
                     // Wire remove: allowed for TP2+; removing reindexes rows so tp1/tp2/... stay stable.
                     const btn = rowEl.querySelector('.tp-level-row-header .tp-remove-btn');
                     if (btn) {
@@ -4930,9 +5221,8 @@ function createDynamicFields(signalTypeId) {
                             current.splice(lvl - 1, 1);
                             removeTpPriceHidden(current.length + 1); // remove old highest tp_price
                             renderTpRows(current);
-                            // Update trailing trigger options after removing TP level
-                            if (typeof updateTrailingTriggerOptions === 'function') updateTrailingTriggerOptions();
-                        });
+                            // Trailing stop is now per TP level, no global update needed
+                            });
                     }
                     tpRows.appendChild(rowEl);
                 });
@@ -4961,196 +5251,42 @@ function createDynamicFields(signalTypeId) {
                 const state = readTpState();
                 const next = state.length + 1;
                 if (next > MAX_TP_LEVELS) return;
-                // Leave takeoff empty so defaults apply; last TP will be 100%.
+                // Leave takeoff empty so defaults apply (defaults to 50%).
                 state.push({ per: String(next * 10), takeoff: '' });
                 renderTpRows(state);
                 updateTpSlPrices();
-                // Update trailing trigger options after adding TP level
-                if (typeof updateTrailingTriggerOptions === 'function') updateTrailingTriggerOptions();
+                // Trailing stop is now per TP level, no global update needed
             });
 
             // Prefill from selected preset if present; otherwise defaults.
             const defaultTp = [{ per: '10', takeoff: '50' }, { per: '20', takeoff: '50' }, { per: '30', takeoff: '100' }];
             const defaultSl = 10;
             const initialPreset = getInitialTradePlanPreset();
-            const initialPlan = (initialPreset && typeof initialPreset === 'object') ? (initialPreset.plan || {}) : {};
+            // New Trade Plan page (trade_plan_only, no preset): treat as Live Custom → use default plan; else use preset or default
+            const isNewTradePlanPage = (document.querySelector('.dashboard-page')?.dataset?.mode === 'trade_plan_only') && !String('{{ preset_id|default:"" }}').trim();
+            const initialPlan = isNewTradePlanPage ? {} : ((initialPreset && typeof initialPreset === 'object') ? (initialPreset.plan || {}) : {});
             const initialTp = Array.isArray(initialPlan?.tp_levels) && initialPlan.tp_levels.length ? initialPlan.tp_levels : defaultTp;
             const initialSlNum = Number(String(initialPlan?.sl_per ?? '').trim());
             const initialSl = Number.isFinite(initialSlNum) && initialSlNum > 0 ? initialSlNum : defaultSl;
+
+            // Store original trailing stop state for change tracking
+            window.originalTrailingStopState = {};
+            if (Array.isArray(initialTp)) {
+                initialTp.forEach((it, idx) => {
+                    const level = idx + 1;
+                    const trigger = String(it?.trailing_stop_trigger ?? '').trim() || 'off';
+                    const per = String(it?.trailing_stop_per ?? '').trim() || '0';
+                    window.originalTrailingStopState[level] = { trigger, per };
+                });
+            }
 
             // Initial TP rows (from saved plan or defaults)
             renderTpRows(initialTp);
             updateTpSlPrices();
             
-            // Note: updateTrailingTriggerOptions will be called after trailing stop elements are created
-
             const slGroup = createSyntheticPercentField('sl_per', initialSl, 'Stop Loss', { showPercentSuffix: true });
             
-            // Trailing Stop Panel (form groups behind Stop Loss, inside Trade Plan card)
-            // Trigger condition dropdown
-            const trailingTriggerGroup = document.createElement('div');
-            trailingTriggerGroup.className = 'form-group';
-            const trailingTriggerLabel = document.createElement('label');
-            trailingTriggerLabel.textContent = 'Trigger Trailing Stop Condition';
-            trailingTriggerLabel.setAttribute('for', 'id_trailing_stop_trigger');
-            const trailingTriggerSelect = document.createElement('select');
-            trailingTriggerSelect.className = 'form-select';
-            trailingTriggerSelect.id = 'id_trailing_stop_trigger';
-            trailingTriggerSelect.name = 'trailing_stop_trigger';
-            
-            // Function to update trigger options based on active TP levels
-            const updateTrailingTriggerOptions = () => {
-                trailingTriggerSelect.innerHTML = '';
-                const baseOptions = [
-                    { value: 'none', text: 'None' },
-                    { value: 'entry', text: 'Entry' }
-                ];
-                baseOptions.forEach(opt => {
-                    const option = document.createElement('option');
-                    option.value = opt.value;
-                    option.textContent = opt.text;
-                    trailingTriggerSelect.appendChild(option);
-                });
-                
-                // Add only active TP levels (query from tpRows container - it may not be in document yet)
-                const tpRowEls = tpRows && tpRows.querySelectorAll ? tpRows.querySelectorAll('.tp-level-row[data-tp-row="1"]') : document.querySelectorAll('.tp-level-row[data-tp-row="1"]');
-                (tpRowEls || []).forEach((row) => {
-                    const lvl = Number(row.dataset.tpLevel || row.getAttribute('data-tp-level') || '');
-                    if (lvl >= 1 && lvl <= MAX_TP_LEVELS) {
-                        const option = document.createElement('option');
-                        option.value = `tp${lvl}`;
-                        option.textContent = `Hit TP${lvl}`;
-                        trailingTriggerSelect.appendChild(option);
-                    }
-                });
-                
-                // Set value if it's still valid, otherwise default to 'none'
-                const currentValue = trailingTriggerSelect.value || 'none';
-                const hasOption = Array.from(trailingTriggerSelect.options).some(opt => opt.value === currentValue);
-                trailingTriggerSelect.value = hasOption ? currentValue : 'none';
-                
-                // Update visibility after updating options
-                // Try to use the global function first, otherwise update directly
-                if (typeof window.updateTrailingStopPercentVisibility === 'function') {
-                    window.updateTrailingStopPercentVisibility();
-                } else {
-                    // Fallback: update visibility directly
-                    const trailingStopPerGroupEl = document.querySelector('[data-variable-name="trailing_stop_per"]');
-                    if (trailingStopPerGroupEl) {
-                        const triggerValue = String(trailingTriggerSelect.value || '').trim().toLowerCase();
-                        if (triggerValue === 'none') {
-                            trailingStopPerGroupEl.style.display = 'none';
-                            trailingStopPerGroupEl.style.visibility = 'hidden';
-                            trailingStopPerGroupEl.style.opacity = '0';
-                        } else {
-                            trailingStopPerGroupEl.style.display = 'block';
-                            trailingStopPerGroupEl.style.visibility = 'visible';
-                            trailingStopPerGroupEl.style.opacity = '1';
-                        }
-                    }
-                }
-            };
-            
-            // Initial setup with initialTp length
-            const initialTpCount = Array.isArray(initialTp) ? initialTp.length : 0;
-            const triggerOptions = [
-                { value: 'none', text: 'None' },
-                { value: 'entry', text: 'Entry' }
-            ];
-            for (let i = 1; i <= initialTpCount && i <= MAX_TP_LEVELS; i++) {
-                triggerOptions.push({ value: `tp${i}`, text: `Hit TP${i}` });
-            }
-            triggerOptions.forEach(opt => {
-                const option = document.createElement('option');
-                option.value = opt.value;
-                option.textContent = opt.text;
-                trailingTriggerSelect.appendChild(option);
-            });
-            
-            const initialTrigger = String(initialPlan.trailing_stop_trigger || '').trim().toLowerCase() || 'none';
-            trailingTriggerSelect.value = triggerOptions.some(o => o.value === initialTrigger) ? initialTrigger : 'none';
-            
-            trailingTriggerGroup.appendChild(trailingTriggerLabel);
-            trailingTriggerGroup.appendChild(trailingTriggerSelect);
-            trailingTriggerSelect.addEventListener('input', updatePreview);
-            trailingTriggerSelect.addEventListener('change', updatePreview);
-            // Explicitly ensure visibility - this field is always visible in Trade Plan
-            trailingTriggerGroup.setAttribute('data-variable-name', 'trailing_stop_trigger');
-            trailingTriggerGroup.style.display = 'block';
-            trailingTriggerGroup.style.visibility = 'visible';
-            trailingTriggerGroup.style.opacity = '1';
-            
-            // Trailing stop percent input (directly under Trigger dropdown) - create manually to avoid data-requires-options
-            const trailingStopPerGroup = document.createElement('div');
-            trailingStopPerGroup.className = 'form-group';
-            trailingStopPerGroup.setAttribute('data-variable-name', 'trailing_stop_per');
-            // Do NOT set data-requires-options - this field is always visible in Trade Plan
-            
-            const trailingStopPerLabel = document.createElement('label');
-            trailingStopPerLabel.textContent = 'Trailing Stop Percent';
-            trailingStopPerLabel.setAttribute('for', 'id_trailing_stop_per');
-            
-            const trailingStopPerInput = document.createElement('input');
-            trailingStopPerInput.type = 'number';
-            trailingStopPerInput.className = 'form-input';
-            trailingStopPerInput.id = 'id_trailing_stop_per';
-            trailingStopPerInput.name = 'trailing_stop_per';
-            trailingStopPerInput.step = '0.01';
-            trailingStopPerInput.min = '0';
-            trailingStopPerInput.value = String(Number(String(initialPlan.trailing_stop_per || '').trim()) || 0);
-            
-            // Add percent suffix wrapper
-            const percentWrap = document.createElement('div');
-            percentWrap.className = 'percent-input-wrap';
-            percentWrap.appendChild(trailingStopPerInput);
-            const percentSuffix = document.createElement('span');
-            percentSuffix.className = 'percent-suffix';
-            percentSuffix.textContent = '%';
-            percentWrap.appendChild(percentSuffix);
-            trailingStopPerInput.style.paddingRight = '34px';
-            
-            trailingStopPerGroup.appendChild(trailingStopPerLabel);
-            trailingStopPerGroup.appendChild(percentWrap);
-            trailingStopPerGroup.style.marginTop = '8px'; // Add spacing after Trigger dropdown
-            
-            // Function to update trailing stop percent visibility based on trigger condition
-            const updateTrailingStopPercentVisibility = () => {
-                const triggerValue = String(trailingTriggerSelect.value || '').trim().toLowerCase();
-                if (triggerValue === 'none') {
-                    trailingStopPerGroup.style.display = 'none';
-                    trailingStopPerGroup.style.visibility = 'hidden';
-                    trailingStopPerGroup.style.opacity = '0';
-                } else {
-                    trailingStopPerGroup.style.display = 'block';
-                    trailingStopPerGroup.style.visibility = 'visible';
-                    trailingStopPerGroup.style.opacity = '1';
-                }
-            };
-            
-            // Set initial visibility based on initial trigger value
-            updateTrailingStopPercentVisibility();
-            
-            // Update visibility when trigger condition changes
-            trailingTriggerSelect.addEventListener('change', () => {
-                updateTrailingStopPercentVisibility();
-                updatePreview();
-            });
-            trailingTriggerSelect.addEventListener('input', () => {
-                updateTrailingStopPercentVisibility();
-            });
-            
-            trailingStopPerInput.addEventListener('input', updatePreview);
-            trailingStopPerInput.addEventListener('change', updatePreview);
-            trailingStopPerInput.addEventListener('input', () => markUserTouched(trailingStopPerInput));
-            
-            // Update trigger options after initial setup (called after trailing stop elements are created)
-            // This will also update visibility via the code inside updateTrailingTriggerOptions
-            if (typeof updateTrailingTriggerOptions === 'function') {
-                updateTrailingTriggerOptions();
-            }
-            
-            // Store the visibility update function globally so it can be called on page load
-            window.updateTrailingStopPercentVisibility = updateTrailingStopPercentVisibility;
+            // Trailing Stop is now part of each TP level's Raise Stop Loss section (removed global section)
             
             // Add Time Horizon field (for leaps/swings only; date selection, under Stop Loss in Trade Plan)
             const timeHorizonGroup = document.createElement('div');
@@ -5186,10 +5322,27 @@ function createDynamicFields(signalTypeId) {
             presetActionsBar.appendChild(deletePresetBtn);
 
             const LIVE_CUSTOM_VALUE = '__live_custom__';
-            let selectedPresetId = initialPreset ? String(initialPreset.id) : ''; // DB id (only when a saved plan is selected)
-            let selectedPresetName = initialPreset ? String(initialPreset.name || 'Default') : '';
+            // In trade_plan_only mode: New Trade Plan has no name → treat as Live Custom; Edit Trade Plan uses preset_id/preset_name
+            let selectedPresetId, selectedPresetName;
+            {% if preset_name %}
+            selectedPresetId = '{{ preset_id }}';
+            selectedPresetName = '{{ preset_name }}';
+            {% elif trade_plan_only %}
+            selectedPresetId = '';
+            selectedPresetName = 'Live Custom';
+            {% else %}
+            selectedPresetId = initialPreset ? String(initialPreset.id) : ''; // DB id (only when a saved plan is selected)
+            selectedPresetName = initialPreset ? String(initialPreset.name || 'Default') : '';
+            {% endif %}
             // What the dropdown currently shows as selected
             let selectedPresetValue = selectedPresetId || (tradePlanPresets.length ? '' : LIVE_CUSTOM_VALUE);
+            
+            // When creating new Trade Plan (trade_plan_only mode, no preset_id): disable Save, Set as Default, Delete buttons
+            if (isTradePlanOnlyPage && !selectedPresetId) {
+                savePresetBtn.disabled = true;
+                defaultPresetBtn.disabled = true;
+                deletePresetBtn.disabled = true;
+            }
 
             function setLiveCustomMode({ reset = true } = {}) {
                 selectedPresetId = '';
@@ -5205,7 +5358,7 @@ function createDynamicFields(signalTypeId) {
                     renderTpRows(defaultTp);
                     applyGlobalTpModeToRows();
                     updateDefaultTpStockTargets(); // show default stock targets in Stock price mode (even if price is 0)
-                    if (typeof updateTrailingTriggerOptions === 'function') updateTrailingTriggerOptions();
+                    // Trailing stop is now per TP level, no global update needed
                     const slEl = findFieldByName('sl_per');
                     if (slEl) {
                         slEl.value = String(defaultSl);
@@ -5214,26 +5367,27 @@ function createDynamicFields(signalTypeId) {
                         slEl.dispatchEvent(new Event('input', { bubbles: true }));
                         slEl.dispatchEvent(new Event('change', { bubbles: true }));
                     }
-                    const trailingTriggerEl = findFieldByName('trailing_stop_trigger');
-                    const trailingPerEl = findFieldByName('trailing_stop_per');
-                    if (trailingTriggerEl) {
-                        trailingTriggerEl.value = 'none';
-                        trailingTriggerEl.dispatchEvent(new Event('input', { bubbles: true }));
-                        trailingTriggerEl.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                    if (trailingPerEl) {
-                        trailingPerEl.value = '0';
-                        trailingPerEl.dataset.autoFilled = '1';
-                        delete trailingPerEl.dataset.userTouched;
-                        trailingPerEl.dispatchEvent(new Event('input', { bubbles: true }));
-                        trailingPerEl.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
+                    // Reset original trailing stop state when switching to Live Custom
+                    window.originalTrailingStopState = {};
                     updateTpSlPrices();
                     updatePreview();
                 }
             }
 
             function rebuildPresetSelect() {
+                // Skip rebuilding if in trade_plan_only mode (dropdown is hidden)
+                if (isTradePlanOnlyPage) {
+                    // Update trade plan name display instead
+                    if (tradePlanNameDisplay) {
+                        if (selectedPresetId && selectedPresetName) {
+                            tradePlanNameDisplay.textContent = selectedPresetName;
+                        } else {
+                            tradePlanNameDisplay.textContent = 'Live Custom';
+                        }
+                    }
+                    return;
+                }
+                
                 presetSelect.innerHTML = '';
                 const none = document.createElement('option');
                 none.value = '';
@@ -5281,7 +5435,7 @@ function createDynamicFields(signalTypeId) {
                 }
                 renderTpRows(tp);
                 updateTpSlPrices();
-                if (typeof updateTrailingTriggerOptions === 'function') updateTrailingTriggerOptions();
+                // Trailing stop is now per TP level, no global update needed
                 const slEl = findFieldByName('sl_per');
                 if (slEl) {
                     slEl.value = String(slVal);
@@ -5290,22 +5444,17 @@ function createDynamicFields(signalTypeId) {
                     slEl.dispatchEvent(new Event('input', { bubbles: true }));
                     slEl.dispatchEvent(new Event('change', { bubbles: true }));
                 }
-                const trailingTriggerEl = findFieldByName('trailing_stop_trigger');
-                const trailingPerEl = findFieldByName('trailing_stop_per');
-                if (trailingTriggerEl) {
-                    const triggerVal = String(plan.trailing_stop_trigger || '').trim().toLowerCase() || 'none';
-                    trailingTriggerEl.value = triggerVal;
-                    trailingTriggerEl.dispatchEvent(new Event('input', { bubbles: true }));
-                    trailingTriggerEl.dispatchEvent(new Event('change', { bubbles: true }));
+                // Update original trailing stop state when preset is applied
+                window.originalTrailingStopState = {};
+                if (Array.isArray(tp)) {
+                    tp.forEach((it, idx) => {
+                        const level = idx + 1;
+                        const trigger = String(it?.trailing_stop_trigger ?? '').trim() || 'off';
+                        const per = String(it?.trailing_stop_per ?? '').trim() || '0';
+                        window.originalTrailingStopState[level] = { trigger, per };
+                    });
                 }
-                if (trailingPerEl) {
-                    const perVal = String(plan.trailing_stop_per || '').trim() || '0';
-                    trailingPerEl.value = perVal;
-                    trailingPerEl.dataset.autoFilled = '1';
-                    delete trailingPerEl.dataset.userTouched;
-                    trailingPerEl.dispatchEvent(new Event('input', { bubbles: true }));
-                    trailingPerEl.dispatchEvent(new Event('change', { bubbles: true }));
-                }
+                // Trailing stop is now per TP level, handled in renderTpRows via tp_levels data
                 updateTpSlPrices();
                 updatePreview();
             }
@@ -5339,15 +5488,12 @@ function createDynamicFields(signalTypeId) {
             });
 
             function currentPlanPayload() {
-                const trailingTriggerEl = findFieldByName('trailing_stop_trigger');
-                const trailingPerEl = findFieldByName('trailing_stop_per');
                 return {
                     version: 1,
                     tp_mode: globalTpMode,
                     tp_levels: readTpState(),
                     sl_per: String(findFieldByName('sl_per')?.value ?? '').trim(),
-                    trailing_stop_trigger: trailingTriggerEl ? String(trailingTriggerEl.value || '').trim() : 'none',
-                    trailing_stop_per: trailingPerEl ? String(trailingPerEl.value || '').trim() : '',
+                    // Trailing stop is now stored per TP level in tp_levels array
                 };
             }
 
@@ -5618,8 +5764,6 @@ function createDynamicFields(signalTypeId) {
             const tradePlanChildren = [
                 tpContainer,
                 slGroup,
-                trailingTriggerGroup,
-                trailingStopPerGroup, // Trailing Stop Percent is now directly under Trigger dropdown
                 timeHorizonGroup,
                 presetActionsBar,
                 createSyntheticHiddenField('sl_price', '0.00'),
@@ -5947,7 +6091,7 @@ function createDynamicFields(signalTypeId) {
             });
         }
 
-        // When BUY/SELL (option_type) changes: update all Trade Plan target price values and preview
+        // When LONG/SHORT (option_type) changes: update all Trade Plan target price values and preview
         if (variable.name === 'option_type') {
             input.dataset.optionTypeChangeWired = '1';
             const onOptionTypeChange = async () => {
@@ -5971,7 +6115,7 @@ function createDynamicFields(signalTypeId) {
         }
     });
 
-    // Ensure option_type (Buy/Sell) has change/input handler; (re-)attach when is_shares changes in case DOM was updated.
+    // Ensure option_type (Long/Short) has change/input handler; (re-)attach when is_shares changes in case DOM was updated.
     function ensureOptionTypeChangeHandler() {
         const optEl = findFieldByName('option_type');
         if (!optEl || optEl.dataset.optionTypeChangeWired === '1') return;
@@ -6010,7 +6154,7 @@ function createDynamicFields(signalTypeId) {
             // Re-attach option_type change handler (in case field was recreated or listener was lost)
             ensureOptionTypeChangeHandler();
             if (this.checked) {
-                // When is_shares on: set TP level direction from Buy/Sell, then update Price from stock base
+                // When is_shares on: set TP level direction from Long/Short, then update Price from stock base
                 applyTpLevelDirectionForShares();
                 // Recompute default Stock price ($) targets from stock base when in Stock price mode
                 updateDefaultTpStockTargets();
@@ -6112,7 +6256,7 @@ function createDynamicFields(signalTypeId) {
     updatePreview();
 }
 
-// Update option_type field label and option display text: "Option Type" + CALL/PUT when is_shares off, "Buy or Sell" + Buy/Sell when on
+// Update option_type field label and option display text: "Option Type" + CALL/PUT when is_shares off, "Long or Short" + Long/Short when on
 function updateOptionTypeLabelAndOptions(isShares) {
     const containers = [document.getElementById('dynamicFields'), document.getElementById('optionalFieldsVariablesContainer')];
     containers.forEach((root) => {
@@ -6122,15 +6266,15 @@ function updateOptionTypeLabelAndOptions(isShares) {
         const labelEl = optionTypeGroup.querySelector('label');
         const selectEl = optionTypeGroup.querySelector('select');
         if (labelEl) {
-            labelEl.textContent = isShares ? 'Buy or Sell' : 'Option Type';
+            labelEl.textContent = isShares ? 'Long or Short' : 'Option Type';
         }
         if (selectEl) {
-            const optLabels = isShares ? { 'CALL': 'BUY', 'PUT': 'SELL' } : { 'CALL': 'CALL', 'PUT': 'PUT' };
+            const optLabels = isShares ? { 'CALL': 'LONG', 'PUT': 'SHORT' } : { 'CALL': 'CALL', 'PUT': 'PUT' };
             Array.from(selectEl.options).forEach((opt) => {
                 const v = (opt.value || '').toUpperCase();
                 opt.textContent = optLabels[v] || opt.value || opt.textContent;
             });
-            // Refresh custom dropdown if option_type was upgraded (so it shows Buy/Sell instead of CALL/PUT)
+            // Refresh custom dropdown if option_type was upgraded (so it shows Long/Short instead of CALL/PUT)
             if (typeof selectEl._refreshDropdownOptions === 'function') {
                 selectEl._refreshDropdownOptions();
             }
@@ -6140,7 +6284,7 @@ function updateOptionTypeLabelAndOptions(isShares) {
 
 // Toggle visibility of option-related fields based on is_shares checkbox
 function toggleOptionFields(isShares) {
-    // When is_shares on: hide Option Contract card; show Buy or Sell (option_type) outside the card, below ticker.
+    // When is_shares on: hide Option Contract card; show Long or Short (option_type) outside the card, below ticker.
     // When is_shares off: show Option Contract card with Strike, Expiration, Option Type inside it.
     const manualCard = document.getElementById('manualOptionContractCard');
     const optionContractContainer = document.getElementById('optionContractFieldsContainer');
@@ -6153,7 +6297,7 @@ function toggleOptionFields(isShares) {
     // Move option_type (Buy or Sell / Option Type) in or out of the Option Contract card
     if (optionTypeGroup && optionContractContainer && dynamicFieldsContainer) {
         if (isShares) {
-            // Is_shares on: show Buy or Sell outside the card (after the card in DOM so it appears below ticker when card is hidden)
+            // Is_shares on: show Long or Short outside the card (after the card in DOM so it appears below ticker when card is hidden)
             if (optionTypeGroup.parentNode === optionContractContainer) {
                 dynamicFieldsContainer.insertBefore(optionTypeGroup, manualCard && manualCard.nextSibling ? manualCard.nextSibling : null);
             }
@@ -6229,19 +6373,7 @@ function toggleOptionFields(isShares) {
         g.style.display = 'block';
     });
     
-    // Ensure trailing stop fields are always visible when inside trade plan group
-    const trailingStopPerGroup = document.querySelector('[data-variable-name="trailing_stop_per"]');
-    const trailingStopTriggerGroup = document.querySelector('[data-variable-name="trailing_stop_trigger"]');
-    if (trailingStopPerGroup && trailingStopPerGroup.closest('.trade-plan-group')) {
-        trailingStopPerGroup.style.display = 'block';
-        trailingStopPerGroup.style.visibility = 'visible';
-        trailingStopPerGroup.style.opacity = '1';
-    }
-    if (trailingStopTriggerGroup && trailingStopTriggerGroup.closest('.trade-plan-group')) {
-        trailingStopTriggerGroup.style.display = 'block';
-        trailingStopTriggerGroup.style.visibility = 'visible';
-        trailingStopTriggerGroup.style.opacity = '1';
-    }
+    // Trailing stop is now per TP level, no global visibility update needed
 }
 
 // Update variable visibility based on which variables are currently used
@@ -6267,7 +6399,7 @@ function updateVariableVisibility() {
         'tp1_takeoff_per', 'tp2_takeoff_per', 'tp3_takeoff_per', 'tp4_takeoff_per', 'tp5_takeoff_per', 'tp6_takeoff_per',
         'tp1_mode', 'tp2_mode', 'tp3_mode', 'tp4_mode', 'tp5_mode', 'tp6_mode',
         'tp1_stock_price', 'tp2_stock_price', 'tp3_stock_price', 'tp4_stock_price', 'tp5_stock_price', 'tp6_stock_price',
-        'sl_per', 'trailing_stop_per', 'trailing_stop_trigger', 'time_horizon',
+        'sl_per', 'time_horizon',
     ]);
     const forceShowOptionFields = hasTickerTypeControl && !isShares;
     
@@ -6279,9 +6411,11 @@ function updateVariableVisibility() {
         const isSpecialControl = variableName === 'is_shares';
         // Fields inside Trade Plan group should always be visible
         const isInsideTradePlan = formGroup.closest('.trade-plan-group') !== null;
-        // Trailing stop fields should always be visible when inside trade plan group
-        const isTrailingStopField = (variableName === 'trailing_stop_per' || variableName === 'trailing_stop_trigger') && isInsideTradePlan;
-        // When is_shares is on: show option_type as "Buy or Sell", and show Trade Plan inputs (tp1_per, sl_per, etc.) but not strike/expiration
+        // Trigger always visible in trade plan; trailing_stop_per visibility is controlled by updateTrailingStopPercentVisibility (hidden when trigger is None)
+        const isTrailingStopTriggerField = variableName === 'trailing_stop_trigger' && isInsideTradePlan;
+        const isTrailingStopPerField = variableName === 'trailing_stop_per' && isInsideTradePlan;
+        const isTrailingStopField = isTrailingStopTriggerField || isTrailingStopPerField;
+        // When is_shares is on: show option_type as "Long or Short", and show Trade Plan inputs (tp1_per, sl_per, etc.) but not strike/expiration
         const showOptionTypeAsBuyOrSell = isShares && variableName === 'option_type';
         const showTradePlanWhenShares = isShares && optionFieldNames.has(variableName) && variableName !== 'strike' && variableName !== 'expiration';
         const isUsed = usedVariables.has(variableName) || isSpecialControl || isInsideTradePlan || isTrailingStopField || (forceShowOptionFields && optionFieldNames.has(variableName)) || showOptionTypeAsBuyOrSell || showTradePlanWhenShares;
@@ -6295,8 +6429,15 @@ function updateVariableVisibility() {
                 formGroup.style.display = 'none';
             } else {
                 // Preserve checkbox-group alignment (inline style wins over CSS)
-                // Ensure trailing stop fields are always visible
-                if (isTrailingStopField) {
+                // Trailing stop trigger: always visible; trailing_stop_per: visibility set by updateTrailingStopPercentVisibility (hidden when trigger is None)
+                if (isTrailingStopTriggerField) {
+                    formGroup.style.display = 'block';
+                    formGroup.style.visibility = 'visible';
+                    formGroup.style.opacity = '1';
+                } else if (isTrailingStopPerField) {
+                    // Do not force visible here; updateTrailingStopPercentVisibility will run below
+                    formGroup.style.display = formGroup.classList.contains('checkbox-group') ? 'flex' : 'block';
+                } else if (isTrailingStopField) {
                     formGroup.style.display = 'block';
                     formGroup.style.visibility = 'visible';
                     formGroup.style.opacity = '1';
@@ -6335,19 +6476,7 @@ function updateVariableVisibility() {
         }
     });
     
-    // Ensure trailing stop fields are always visible when inside trade plan group
-    const trailingStopPerGroup = document.querySelector('[data-variable-name="trailing_stop_per"]');
-    const trailingStopTriggerGroup = document.querySelector('[data-variable-name="trailing_stop_trigger"]');
-    if (trailingStopPerGroup && trailingStopPerGroup.closest('.trade-plan-group')) {
-        trailingStopPerGroup.style.display = 'block';
-        trailingStopPerGroup.style.visibility = 'visible';
-        trailingStopPerGroup.style.opacity = '1';
-    }
-    if (trailingStopTriggerGroup && trailingStopTriggerGroup.closest('.trade-plan-group')) {
-        trailingStopTriggerGroup.style.display = 'block';
-        trailingStopTriggerGroup.style.visibility = 'visible';
-        trailingStopTriggerGroup.style.opacity = '1';
-    }
+    // Trailing stop is now per TP level, no global visibility update needed
     
     // Show/hide optional fields variables container based on visible variable inputs
     // Chart Analysis: show image/video upload (TA Media) only when Chart Analysis switch is on
@@ -6428,7 +6557,7 @@ function updateVariableVisibility() {
         }
     }
 
-    // When is_shares is on, show Buy or Sell instead of Option Type (keep in sync after any visibility update)
+    // When is_shares is on, show Long or Short instead of Option Type (keep in sync after any visibility update)
     const isSharesCheckboxForLabel = document.getElementById('id_is_shares');
     if (isSharesCheckboxForLabel) {
         updateOptionTypeLabelAndOptions(isSharesCheckboxForLabel.checked);
@@ -6644,6 +6773,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     const signalTypeSelect = document.querySelector('select[name="signal_type"]');
     const form = document.getElementById('signalForm');
+    if (form) form.noValidate = true; // Disable browser validation so hidden required fields (expiration, time_horizon) never cause "not focusable" errors
     const isTradePlanOnlyPage = (document.querySelector('.dashboard-page')?.dataset?.mode === 'trade_plan_only');
 
     function setupTradePlanOnlyLayout() {
@@ -6800,6 +6930,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 e.preventDefault();
                 return false;
             }
+            // Prevent native HTML5 validation so hidden required fields (expiration, time_horizon) never trigger "not focusable" errors.
+            e.preventDefault();
+            // Remove required from expiration/strike/option_type when hidden: is_shares on, or Manual option contract off
+            const isSharesCheckboxSubmit = document.getElementById('id_is_shares');
+            const manualOptionOff = document.getElementById('manualOptionContractSwitch') && !document.getElementById('manualOptionContractSwitch').checked;
+            if ((isSharesCheckboxSubmit && isSharesCheckboxSubmit.checked) || manualOptionOff) {
+                form.querySelectorAll('input[name="strike"], input[name="expiration"], select[name="option_type"]').forEach(function(inp) {
+                    inp.removeAttribute('required');
+                });
+            }
+            // Remove required from time_horizon when hidden (trade type is Scalp; only Swing/Leap show it)
+            const tradeTypeSelect = document.getElementById('trade_type') || form.querySelector('select[name="trade_type"]');
+            const tradeTypeVal = tradeTypeSelect ? String(tradeTypeSelect.value || '').trim().toLowerCase() : '';
+            if (tradeTypeVal && tradeTypeVal !== 'swing' && tradeTypeVal !== 'leap') {
+                form.querySelectorAll('input[name="time_horizon"], select[name="time_horizon"]').forEach(function(inp) {
+                    inp.removeAttribute('required');
+                });
+            }
             // If we already ran the auto-fill flow, proceed with normal submit.
             if (form.dataset.skipAutoFillOnce === '1') {
                 delete form.dataset.skipAutoFillOnce;
@@ -6835,79 +6983,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
 
-            // Get current signal type and its variables
+            // Get current signal type and its variables (no client-side validation on publish)
             const currentSignalTypeId = signalTypeSelect.value;
             const currentSignalType = signalTypesData[currentSignalTypeId];
             const currentVariables = currentSignalType ? (currentSignalType.variables || []) : [];
-            
-            // Validate required fields - include inputs from both containers
             const dynamicInputs = document.querySelectorAll('#dynamicFields input, #dynamicFields textarea, #dynamicFields select, #optionalFieldsVariablesContainer input, #optionalFieldsVariablesContainer textarea, #optionalFieldsVariablesContainer select');
-            const errors = [];
-            
-            // Check if is_shares is checked
-            const isSharesCheckbox = document.getElementById('id_is_shares');
-            const isShares = isSharesCheckbox && isSharesCheckbox.checked;
-            const manualOptionOn = document.getElementById('manualOptionContractSwitch') && document.getElementById('manualOptionContractSwitch').checked;
-
-            // Manual option contract on: if Strike/Expiration marked as option unavailable, block submit
-            if (!isShares && manualOptionOn) {
-                const optionUnavailableInput = document.querySelector('#dynamicFields input[data-option-unavailable="1"]');
-                if (optionUnavailableInput) {
-                    errors.push('Strike / Expiration: Option contract unavailable');
-                    dynamicInputs.forEach(function (input) {
-                        if (input.dataset.optionUnavailable === '1') input.style.borderColor = '#dc3545';
-                    });
-                }
-            }
-            
-            dynamicInputs.forEach(input => {
-                // Skip cosmetic controls (e.g. custom dropdown inputs) or unnamed elements
-                if (!input.name || input.dataset.ignoreDynamic === '1') {
-                    return;
-                }
-                // Skip validation if field is hidden due to is_shares
-                if (input.closest('[data-requires-options="true"]') && isShares) {
-                    return;
-                }
-                
-                // Find the variable definition for this input
-                const variable = currentVariables.find(v => v.name === input.name);
-                
-                // Check if field is required
-                if (variable && variable.required === true) {
-                    let isEmpty = false;
-                    
-                    // Check if field is empty based on type
-                    if (input.type === 'checkbox') {
-                        isEmpty = !input.checked;
-                    } else {
-                        isEmpty = !input.value || input.value.trim() === '';
-                    }
-                    
-                    if (isEmpty) {
-                        errors.push(variable.label || variable.name);
-                        // Add error styling to the field
-                        input.style.borderColor = '#dc3545';
-                        const formGroup = input.closest('.form-group');
-                        if (formGroup) {
-                            formGroup.style.marginBottom = '10px';
-                        }
-                    } else {
-                        // Remove error styling if field is valid
-                        input.style.borderColor = '';
-                    }
-                } else {
-                    // Remove error styling for non-required fields
-                    input.style.borderColor = '';
-                }
-            });
-            
-            // Show errors if any and prevent submission
-            if (errors.length > 0) {
-                e.preventDefault();
-                alert('Please fill in the following required fields:\n' + errors.map(e => '  • ' + e).join('\n'));
-                return false;
-            }
             
             // Collect all dynamic field values into a JSON object
             const signalData = {};
@@ -6988,16 +7068,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (raiseSlCustomStock) signalData[`tp${lvl}_raise_sl_custom_stock`] = String(raiseSlCustomStock.value || '').trim();
             });
             
-            // Include Trailing Stop data
-            const trailingTriggerEl = findFieldByName('trailing_stop_trigger');
-            const trailingPerEl = findFieldByName('trailing_stop_per');
-            if (trailingTriggerEl) {
-                const triggerVal = String(trailingTriggerEl.value || '').trim().toLowerCase();
-                signalData['trailing_stop_trigger'] = triggerVal || 'none';
-            }
-            if (trailingPerEl) {
-                const perVal = String(trailingPerEl.value || '').trim();
-                signalData['trailing_stop_per'] = perVal || '';
+            // Include Trailing Stop data per TP level
+            tpRowsForData.forEach((r) => {
+                const lvl = Number(r.dataset.tpLevel || '');
+                const trailingTriggerSelect = r.querySelector('[data-tp-trailing-stop-trigger]');
+                const trailingPerInput = r.querySelector(`input[name="tp${lvl}_trailing_stop_per"]`);
+                if (trailingTriggerSelect) {
+                    let triggerVal = String(trailingTriggerSelect.value || '').trim() || 'off';
+                    // Convert old 'none' values to 'off' for backward compatibility
+                    if (triggerVal === 'none') {
+                        triggerVal = 'off';
+                    }
+                    signalData[`tp${lvl}_trailing_stop_trigger`] = triggerVal;
+                }
+                if (trailingPerInput) {
+                    signalData[`tp${lvl}_trailing_stop_per`] = String(trailingPerInput.value || '').trim() || '';
+                }
+            });
+            
+            // Store original trailing stop state for change tracking in backend
+            if (window.originalTrailingStopState && Object.keys(window.originalTrailingStopState).length > 0) {
+                signalData['_original_trailing_stop_state'] = window.originalTrailingStopState;
             }
             
             // Set the data field value
@@ -7013,7 +7104,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 form.appendChild(hiddenInput);
             }
             
-            // Let form submit naturally if validation passes
+            // We called e.preventDefault() so submit manually (avoids native validation on hidden required fields)
+            form.submit();
         });
     }
 
@@ -7048,7 +7140,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!container || !container.contains(el)) return;
         if (el.name !== 'strike' && el.name !== 'expiration' && el.name !== 'option_type') return;
         if (!manualOptionContractSwitch || !manualOptionContractSwitch.checked) return;
-        if (typeof updateOptionPriceFromManualContract === 'function') updateOptionPriceFromManualContract();
+        if (typeof updateOptionPriceFromManualContract === 'function') updateOptionPriceFromManualContract().catch(function() {});
     });
     document.addEventListener('input', function(e) {
         const el = e.target;
@@ -7058,7 +7150,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!manualOptionContractSwitch || !manualOptionContractSwitch.checked) return;
         clearTimeout(manualOptionPriceDebounce);
         manualOptionPriceDebounce = setTimeout(function() {
-            if (typeof updateOptionPriceFromManualContract === 'function') updateOptionPriceFromManualContract();
+            if (typeof updateOptionPriceFromManualContract === 'function') updateOptionPriceFromManualContract().catch(function() {});
         }, 400);
     });
 });

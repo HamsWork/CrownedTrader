@@ -38,6 +38,16 @@ def _cache_set(key: str, value: Any, ttl_sec: Optional[int] = None) -> None:
         _quote_cache[key] = (time.time() + ttl_sec, value)
 
 
+def _safe_float(v: Any) -> Optional[float]:
+    """Coerce value to float; return None if missing or invalid."""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 class PolygonClient:
     """
     Minimal Polygon.io client for stock quotes used by the dashboard.
@@ -304,11 +314,20 @@ class PolygonClient:
             _cache_set(cache_key, result)
         return result
 
+    def _underlying_from_option_ticker(self, option_ticker: str) -> str:
+        """Extract underlying ticker from OCC option ticker (e.g. O:AAPL260119C00150000 -> AAPL)."""
+        t = (option_ticker or "").strip()
+        if not t.startswith("O:") or len(t) < 2 + 15:
+            return ""
+        # O: + ROOT + YYMMDD(6) + C|P(1) + strike(8) = 15 chars at end
+        return t[2:-15].strip().upper() or ""
+
     def get_option_quote(self, contract_ticker: str, bypass_cache: bool = False) -> Optional[Dict[str, Any]]:
         """
-        Get current option quote for a Polygon options contract ticker (e.g. O:AAPL260119C00150000)
-        via /v2/last/nbbo/{ticker}, with trade fallback. Results cached to reduce API calls.
-        
+        Get current option quote for a Polygon options contract ticker (e.g. O:AAPL260119C00150000).
+        Uses /v3/snapshot/options/{underlyingAsset}/{optionContract} first, then falls back to
+        /v2/last/nbbo and last trade. Returns dict with contract, bid, ask, mid, price, timestamp, source.
+
         Args:
             bypass_cache: If True, bypasses cache to get fresh data (for live updates)
         """
@@ -322,48 +341,102 @@ class PolygonClient:
             if cached is not None:
                 return cached
 
+        # Primary: v3 snapshot (e.g. /v3/snapshot/options/A/O:A250815C00055000)
+        underlying = self._underlying_from_option_ticker(ct)
+        if underlying:
+            data = self._get(f"/v3/snapshot/options/{underlying}/{ct}", timeout=8)
+            if data and data.get("status") == "OK":
+                results = data.get("results")
+                if isinstance(results, dict) and results:
+                    out = self._option_quote_from_snapshot_results(ct, results)
+                    if out is not None:
+                        if not bypass_cache:
+                            _cache_set(cache_key, out)
+                        return out
+
+        # Fallback: v2 last NBBO
         data = self._get(f"/v2/last/nbbo/{ct}", timeout=8)
-        if data and data.get("status") == "OK" and data.get("results"):
-            results = data["results"] or {}
-            bid = results.get("p", 0)
-            ask = results.get("P", 0)
-            ts = results.get("t")
-            try:
-                bid_f = float(bid or 0)
-                ask_f = float(ask or 0)
-            except Exception:
-                bid_f = 0.0
-                ask_f = 0.0
+        raw = data.get("results") if data and data.get("status") == "OK" else None
+        if raw is not None:
+            results = raw[0] if isinstance(raw, list) and raw else (raw if isinstance(raw, dict) else {})
+        else:
+            results = {}
 
-            mid = None
-            if bid_f > 0 and ask_f > 0:
-                mid = (bid_f + ask_f) / 2.0
+        if results:
+            bid_f = _safe_float(results.get("p")) or 0.0
+            ask_f = _safe_float(results.get("P")) or 0.0
+            mid = (bid_f + ask_f) / 2.0 if (bid_f > 0 and ask_f > 0) else None
             price = mid if mid is not None else (ask_f if ask_f > 0 else (bid_f if bid_f > 0 else None))
-            out = {
-                "contract": ct,
-                "bid": bid_f if bid_f > 0 else None,
-                "ask": ask_f if ask_f > 0 else None,
-                "mid": mid,
-                "price": price,
-                "timestamp": ts,
-                "source": "nbbo",
-            }
-            if not bypass_cache:
-                _cache_set(cache_key, out)
-            return out
-
-        trade = self.get_last_trade(ct, bypass_cache=bypass_cache)
-        if trade and trade.get("p") is not None:
-            try:
-                p = float(trade.get("p"))
-            except Exception:
-                p = None
-            if p is not None:
-                out = {"contract": ct, "price": p, "timestamp": trade.get("t"), "source": "trade"}
+            if price is not None:
+                out = {
+                    "contract": ct,
+                    "bid": bid_f if bid_f > 0 else None,
+                    "ask": ask_f if ask_f > 0 else None,
+                    "mid": mid,
+                    "price": price,
+                    "timestamp": results.get("t"),
+                    "source": "nbbo",
+                }
                 if not bypass_cache:
                     _cache_set(cache_key, out)
                 return out
 
+        # Fallback: last trade
+        trade = self.get_last_trade(ct, bypass_cache=bypass_cache)
+        if trade:
+            p = _safe_float(trade.get("p"))
+            if p is not None and p > 0:
+                out = {
+                    "contract": ct,
+                    "bid": None,
+                    "ask": None,
+                    "mid": None,
+                    "price": p,
+                    "timestamp": trade.get("t"),
+                    "source": "trade",
+                }
+                if not bypass_cache:
+                    _cache_set(cache_key, out)
+                return out
+
+        if self.last_error is None:
+            self.last_error = {"kind": "no_quote", "ticker": ct}
+        return None
+
+    def _option_quote_from_snapshot_results(self, ct: str, results: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Build quote dict from /v3/snapshot/options response results (last_quote, last_trade)."""
+        lq = results.get("last_quote") or results.get("lastQuote") or {}
+        bid = _safe_float(lq.get("bid") or lq.get("bid_price"))
+        ask = _safe_float(lq.get("ask") or lq.get("ask_price"))
+        ts = lq.get("sip_timestamp") or lq.get("t") or results.get("sip_timestamp")
+        if bid is None:
+            bid = 0.0
+        if ask is None:
+            ask = 0.0
+        mid = (bid + ask) / 2.0 if (bid > 0 and ask > 0) else None
+        price = mid if mid is not None else (ask if ask > 0 else (bid if bid > 0 else None))
+        if price is not None:
+            return {
+                "contract": ct,
+                "bid": bid if bid > 0 else None,
+                "ask": ask if ask > 0 else None,
+                "mid": mid,
+                "price": price,
+                "timestamp": ts,
+                "source": "snapshot",
+            }
+        lt = results.get("last_trade") or results.get("lastTrade") or {}
+        p = _safe_float(lt.get("price") or lt.get("p"))
+        if p is not None and p > 0:
+            return {
+                "contract": ct,
+                "bid": None,
+                "ask": None,
+                "mid": None,
+                "price": p,
+                "timestamp": lt.get("sip_timestamp") or lt.get("t"),
+                "source": "snapshot_trade",
+            }
         return None
 
     def find_nearest_option_contract(

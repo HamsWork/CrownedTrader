@@ -881,8 +881,57 @@ def get_signal_template(signal):
                             suffix = ""
                     else:
                         suffix = ""
+                
+                # Trailing stop suffix with change tracking
+                trailing_stop_trigger = str(data_copy.get(f"tp{level}_trailing_stop_trigger") or "").strip().lower() or "off"
+                if trailing_stop_trigger == "none":
+                    trailing_stop_trigger = "off"
+                trailing_stop_per_raw = str(data_copy.get(f"tp{level}_trailing_stop_per") or "").strip()
+                trailing_stop_suffix = ""
+                
+                # Get previous level's original trailing stop state for comparison (for TP2+)
+                original_trigger = "off"
+                original_per = "0"
+                had_original_state = False
+                previous_level_trailing_stop_on = False
+                if level > 1:
+                    prev_level = level - 1
+                    # Check previous level's original state
+                    original_trailing_state = data_copy.get("_original_trailing_stop_state") or {}
+                    original_state = original_trailing_state.get(str(prev_level))
+                    had_original_state = original_state is not None
+                    if had_original_state:
+                        original_trigger = str(original_state.get("trigger") or "").strip().lower() or "off"
+                        original_per = str(original_state.get("per") or "").strip().replace("%", "") or "0"
+                    
+                    # Check previous level's current trailing stop status
+                    prev_level_trailing_stop_trigger = str(data_copy.get(f"tp{prev_level}_trailing_stop_trigger") or "").strip().lower() or "off"
+                    if prev_level_trailing_stop_trigger == "none":
+                        prev_level_trailing_stop_trigger = "off"
+                    previous_level_trailing_stop_on = prev_level_trailing_stop_trigger == "on"
+                
+                # Normalize current per for comparison
+                current_per_normalized = trailing_stop_per_raw.replace("%", "").strip() if trailing_stop_per_raw else ""
+                
+                if trailing_stop_trigger == "on" and trailing_stop_per_raw:
+                    trailing_stop_per_str = trailing_stop_per_raw if trailing_stop_per_raw.endswith("%") else f"{trailing_stop_per_raw}%"
+                    if not had_original_state or original_trigger == "off" or not original_trigger:
+                        # New trailing stop added (no original state or was off)
+                        trailing_stop_suffix = f" and set {trailing_stop_per_str} trailing stop"
+                    elif original_trigger == "on" and original_per != current_per_normalized:
+                        # Trailing stop changed (was on, percent changed)
+                        trailing_stop_suffix = f" and change trailing stop percent to {trailing_stop_per_str}"
+                    else:
+                        # Trailing stop unchanged (show normally)
+                        trailing_stop_suffix = f" and trailing stop {trailing_stop_per_str}"
+                elif trailing_stop_trigger == "off":
+                    # Check if trailing stop was removed - show "remove trailing stop" if previous level has trailing stop ON
+                    if previous_level_trailing_stop_on:
+                        # Previous level has trailing stop ON, so this level removing it should show "remove trailing stop"
+                        trailing_stop_suffix = " and remove trailing stop"
+                    # If previous level doesn't have trailing stop ON, don't show anything (was never set)
 
-                tps.append(_ensure_period(f"Take Profit ({level}): At {at_str}{take_str}{suffix}"))
+                tps.append(_ensure_period(f"Take Profit ({level}): At {at_str}{take_str}{suffix}{trailing_stop_suffix}"))
 
             sl_per = str(data_copy.get("sl_per") or "").strip()
             sl_per_str = sl_per if (sl_per and sl_per.endswith("%")) else (f"{sl_per}%" if sl_per else "")
@@ -892,44 +941,45 @@ def get_signal_template(signal):
             except Exception:
                 sl_price_str = "0.00"
             
-            # Collect stop loss levels from "raise stop loss to" settings in TP plan
-            stop_loss_levels_from_tp = []
-            entry_price_raw = data_copy.get("entry_price") or data_copy.get("current_price") or data_copy.get("price") or ""
+            # Match dashboard preview: entry/base price and is_sell for initial SL
+            is_shares = str(data_copy.get("is_shares") or "").strip().lower() in ("true", "1", "yes")
+            opt_type_raw = str(data_copy.get("option_type") or "").strip().lower()
+            is_sell = is_shares and ("put" in opt_type_raw or "short" in opt_type_raw)
+            if is_shares:
+                entry_price_raw = data_copy.get("current_price") or data_copy.get("stock_price") or data_copy.get("entry_price") or data_copy.get("price") or ""
+                base_price_raw = data_copy.get("current_price") or data_copy.get("stock_price") or ""
+            else:
+                entry_price_raw = data_copy.get("option_price") or data_copy.get("price") or data_copy.get("entry_price") or ""
+                base_price_raw = data_copy.get("option_price") or data_copy.get("price") or ""
             try:
                 entry_price = float(str(entry_price_raw).strip()) if entry_price_raw else 0.0
             except (ValueError, TypeError):
                 entry_price = 0.0
+            try:
+                base_price = float(str(base_price_raw).strip()) if base_price_raw else entry_price
+            except (ValueError, TypeError):
+                base_price = entry_price
             
-            # Compute initial stop loss price from percentage when price is zero or missing
+            # Collect stop loss levels from "raise stop loss to" settings in TP plan (with source percent for display)
+            stop_loss_levels_from_tp = []  # list of (price, source_percent_str or None)
             try:
                 _sl_per_num = float(str(sl_per).replace("%", "").strip()) if sl_per else None
             except (ValueError, TypeError):
                 _sl_per_num = None
-            _effective_initial_sl = None  # display/compute: explicit price or from %
+            _effective_initial_sl = None
             if sl_price_raw is not None and str(sl_price_raw).strip() != "":
                 try:
                     _effective_initial_sl = float(str(sl_price_raw).strip())
                 except (ValueError, TypeError):
                     pass
             if _effective_initial_sl is None and _sl_per_num is not None and entry_price > 0:
-                _effective_initial_sl = entry_price * (1 + _sl_per_num / 100.0)
+                # Match preview: sell = entry*(1+sl_per/100), buy = entry*(1-sl_per/100)
+                _effective_initial_sl = entry_price * (1 + _sl_per_num / 100.0) if is_sell else entry_price * (1 - _sl_per_num / 100.0)
             if _effective_initial_sl is not None:
                 sl_price_str = f"{_effective_initial_sl:.2f}"
             
             # Get TP prices for calculating stop loss levels
             tp_prices = {}
-            # Determine if this is a shares trade
-            is_shares = str(data_copy.get("is_shares") or "").strip().lower() in ("true", "1", "yes")
-            # Get base price for calculations
-            base_price_raw = None
-            if is_shares:
-                base_price_raw = data_copy.get("current_price") or data_copy.get("stock_price") or entry_price_raw
-            else:
-                base_price_raw = data_copy.get("option_price") or data_copy.get("price") or entry_price_raw
-            try:
-                base_price = float(str(base_price_raw).strip()) if base_price_raw else entry_price
-            except (ValueError, TypeError):
-                base_price = entry_price
             
             # Calculate TP prices in order (needed for "raise to TP{n-1}")
             # First pass: get stored prices
@@ -976,102 +1026,131 @@ def get_signal_template(signal):
                     except (ValueError, TypeError):
                         pass
             
-            # Collect stop loss levels from raise stop loss to settings
+            # Collect stop loss levels from raise stop loss to settings (with source percent to match preview)
+            def _fmt_pct_sl(raw):
+                try:
+                    n = float(str(raw or "").replace("%", "").strip())
+                    return f"+{n:.1f}%" if n >= 0 else f"{n:.1f}%"
+                except (ValueError, TypeError):
+                    return None
             for i in range(1, (last_tp or 0) + 1):
                 raise_sl_to = str(data_copy.get(f"tp{i}_raise_sl_to") or "").strip().lower()
-                
-                # Skip if raise_sl_to is not set (empty, "off", etc.)
                 if not raise_sl_to or raise_sl_to == "off":
                     continue
-                
+                source_percent = None
+                level_price = None
                 if raise_sl_to == "entry":
                     if i == 1 and entry_price > 0:
-                        # TP1: raise to entry price
-                        stop_loss_levels_from_tp.append(entry_price)
+                        level_price = entry_price
+                        source_percent = "+0%"
                     elif i > 1 and tp_prices.get(i - 1):
-                        # TP2+: raise to previous TP price
-                        stop_loss_levels_from_tp.append(tp_prices[i - 1])
+                        level_price = tp_prices[i - 1]
+                        tp_per_raw = data_copy.get(f"tp{i - 1}_per")
+                        tp_mode_raw = str(data_copy.get(f"tp{i - 1}_mode") or "").strip().lower()
+                        is_stock_mode = tp_mode_raw in ("stock", "stock_price", "underlying", "share_price")
+                        if is_stock_mode and entry_price > 0:
+                            pct = ((level_price - entry_price) / entry_price) * 100
+                            source_percent = f"+{pct:.1f}%" if pct >= 0 else f"{pct:.1f}%"
+                        else:
+                            source_percent = _fmt_pct_sl(tp_per_raw)
+                        if source_percent is None and entry_price > 0:
+                            pct = ((level_price - entry_price) / entry_price) * 100
+                            source_percent = f"+{pct:.1f}%" if pct >= 0 else f"{pct:.1f}%"
+                    if level_price is not None:
+                        stop_loss_levels_from_tp.append((level_price, source_percent))
                 elif raise_sl_to == "custom":
                     mode_raw = str(data_copy.get(f"tp{i}_mode") or "").strip().lower()
                     is_stock = mode_raw in ("stock", "stock_price", "underlying", "share_price")
-                    
                     custom_stock = str(data_copy.get(f"tp{i}_raise_sl_custom_stock") or "").strip()
                     custom_per = str(data_copy.get(f"tp{i}_raise_sl_custom_per") or "").strip()
                     custom_price = str(data_copy.get(f"tp{i}_raise_sl_custom") or "").strip()
-                    
                     if is_stock and custom_stock:
                         try:
                             stock_val = float(custom_stock)
                             if stock_val > 0 and entry_price > 0:
-                                stop_loss_levels_from_tp.append(entry_price + stock_val)
+                                stop_loss_levels_from_tp.append((entry_price + stock_val, None))
                         except (ValueError, TypeError):
                             pass
                     elif custom_price:
                         try:
                             price_val = float(custom_price)
                             if price_val > 0 and entry_price > 0:
-                                stop_loss_levels_from_tp.append(entry_price + price_val)
+                                stop_loss_levels_from_tp.append((entry_price + price_val, None))
                         except (ValueError, TypeError):
                             pass
                     elif custom_per:
                         try:
                             per_val = float(str(custom_per).replace("%", "").strip())
                             if per_val > 0 and entry_price > 0:
-                                stop_loss_levels_from_tp.append(entry_price * (1 + per_val / 100))
+                                stop_loss_levels_from_tp.append((entry_price * (1 + per_val / 100), None))
                         except (ValueError, TypeError):
                             pass
             
-            # Combine manual sl_levels with calculated levels from TP plan
-            all_stop_loss_levels = []
-            
-            # Add initial stop loss price (explicit or computed from percentage, including 0)
+            # Build SL entries (price, percent_str, is_initial) to match preview order and format
+            sl_level_entries = []
+            def _add_sl_entry(price, percent_str, is_initial):
+                if price is None or price <= 0:
+                    return
+                for e in sl_level_entries:
+                    if abs(e["price"] - price) < 0.01:
+                        return
+                sl_level_entries.append({"price": price, "percent_str": percent_str, "is_initial": is_initial})
             if _effective_initial_sl is not None:
-                all_stop_loss_levels.append(_effective_initial_sl)
-            
-            # Parse manual sl_levels
+                _add_sl_entry(_effective_initial_sl, sl_per_str or None, is_initial=True)
             sl_levels_raw = str(data_copy.get("sl_levels") or "").strip()
-            if sl_levels_raw:
-                manual_levels = []
-                for level_str in sl_levels_raw.split(";"):
-                    level_str = level_str.strip()
-                    if not level_str:
-                        continue
+            for level_str in sl_levels_raw.split(";"):
+                level_str = level_str.strip()
+                if not level_str:
+                    continue
+                try:
+                    num = float(level_str.replace("$", "").replace(",", "").strip())
+                    if num > 0:
+                        _add_sl_entry(num, None, is_initial=False)
+                except (ValueError, TypeError):
+                    pass
+            for level_price, source_pct in stop_loss_levels_from_tp:
+                if level_price > 0:
+                    _add_sl_entry(level_price, source_pct, is_initial=False)
+            # Sort by percent ascending (match preview): initial SL with positive % treated as negative for sort
+            def _numeric_percent(ent):
+                pct_str = ent.get("percent_str")
+                if pct_str:
                     try:
-                        num = float(level_str.replace("$", "").replace(",", "").strip())
-                        if num > 0:
-                            manual_levels.append(num)
+                        p = float(str(pct_str).replace("%", "").replace("+", "").strip())
+                        if ent.get("is_initial") and p > 0:
+                            return -p
+                        return p
                     except (ValueError, TypeError):
                         pass
-                # Add manual levels (avoid duplicates)
-                for level in manual_levels:
-                    is_duplicate = any(abs(existing - level) < 0.01 for existing in all_stop_loss_levels)
-                    if not is_duplicate:
-                        all_stop_loss_levels.append(level)
-            
-            # Add calculated levels from TP plan (avoid duplicates)
-            for level in stop_loss_levels_from_tp:
-                if level > 0:
-                    # Check if level is already in the list (within 0.01 tolerance)
-                    is_duplicate = any(abs(existing - level) < 0.01 for existing in all_stop_loss_levels)
-                    if not is_duplicate:
-                        all_stop_loss_levels.append(level)
-            
-            # Sort levels (highest to lowest for stop losses)
-            all_stop_loss_levels.sort(reverse=True)
-            
-            # Format stop loss levels with price and percentage relative to entry price
-            sl_levels_formatted = ""
-            if all_stop_loss_levels:
+                if entry_price > 0:
+                    return ((ent["price"] - entry_price) / entry_price) * 100
+                return 0.0
+            sl_level_entries.sort(key=_numeric_percent)
+            # Format: price(percent); minus only for initial SL (match preview)
+            def _format_sl_percent_display(pstr, is_initial):
+                if not pstr:
+                    return pstr
+                s = str(pstr).strip()
+                if not is_initial:
+                    return s
+                if s.startswith("-"):
+                    return s
+                return "-" + s.replace("+", "", 1).lstrip() if s.replace("+", "").strip() else s
+            if sl_level_entries:
                 formatted_levels = []
-                for level in all_stop_loss_levels:
-                    price_str = f"{level:.2f}"
-                    if entry_price > 0:
-                        percent = ((level - entry_price) / entry_price) * 100
-                        percent_str = f"{percent:+.1f}%"
-                    else:
-                        percent_str = "0%"
-                    formatted_levels.append(f"{price_str}({percent_str})")
+                for e in sl_level_entries:
+                    price_str = f"{e['price']:.2f}"
+                    pct = e.get("percent_str")
+                    if not pct and entry_price > 0:
+                        percent = ((e["price"] - entry_price) / entry_price) * 100
+                        pct = f"+{percent:.1f}%" if percent >= 0 else f"{percent:.1f}%"
+                    elif not pct:
+                        pct = "0%"
+                    pct = _format_sl_percent_display(pct, e.get("is_initial", False))
+                    formatted_levels.append(f"{price_str}({pct})")
                 sl_levels_formatted = ", ".join(formatted_levels)
+            else:
+                sl_levels_formatted = ""
 
             # Show Trade Plan even if option price isn't computed yet (defaults to 0.00)
             if targets or tps or sl_per_str or sl_price_str or sl_levels_formatted:
@@ -1094,15 +1173,19 @@ def get_signal_template(signal):
                 if sl_levels_formatted:
                     stop_loss_name = f"🛑 Stop Loss: {sl_levels_formatted}"
                 elif sl_price_str and sl_price_str != "0.00":
-                    # Calculate percentage for single stop loss price
+                    # Prefer original sl_per_str if available (matches Live Preview format and prevents incorrect recalculation)
                     try:
                         sl_price = float(sl_price_str)
-                        if entry_price > 0:
+                        if sl_per_str:
+                            # Use original percentage string when available
+                            percent_str = f"({sl_per_str})"
+                        elif entry_price > 0:
+                            # Only recalculate percentage from price if sl_per_str is not available
                             percent = ((sl_price - entry_price) / entry_price) * 100
-                            percent_str = f"{percent:+.1f}%"
+                            percent_str = f"({percent:+.1f}%)"
                         else:
-                            percent_str = f"({sl_per_str})" if sl_per_str else ""
-                        stop_loss_name = f"🛑 Stop Loss: {sl_price_str}({percent_str})" if percent_str else f"🛑 Stop Loss: {sl_price_str}"
+                            percent_str = ""
+                        stop_loss_name = f"🛑 Stop Loss: {sl_price_str}{percent_str}" if percent_str else f"🛑 Stop Loss: {sl_price_str}"
                     except (ValueError, TypeError):
                         stop_loss_name = f"🛑 Stop Loss: {sl_price_str}{f'({sl_per_str})' if sl_per_str else ''}"
                 elif sl_per_str:
@@ -1120,29 +1203,7 @@ def get_signal_template(signal):
                         }
                     )
                 
-                # Trailing Stop: show when trigger is not "none"
-                trailing_stop_trigger = str(data_copy.get("trailing_stop_trigger") or "").strip().lower() or "none"
-                trailing_stop_per_raw = str(data_copy.get("trailing_stop_per") or "").strip()
-                if trailing_stop_trigger != "none" and trailing_stop_per_raw:
-                    trailing_stop_per_str = trailing_stop_per_raw if trailing_stop_per_raw.endswith("%") else f"{trailing_stop_per_raw}%"
-                    trigger_labels = {
-                        "entry": "Entry",
-                        "tp1": "Take Profit 1",
-                        "tp2": "Take Profit 2",
-                        "tp3": "Take Profit 3",
-                        "tp4": "Take Profit 4",
-                        "tp5": "Take Profit 5",
-                        "tp6": "Take Profit 6",
-                        "custom": "Custom"
-                    }
-                    trigger_label = trigger_labels.get(trailing_stop_trigger, trailing_stop_trigger)
-                    injected.append(
-                        {
-                            "name": f"📉 Trailing Stop: {trailing_stop_per_str} (trigger: {trigger_label})",
-                            "value": "",
-                            "inline": False,
-                        }
-                    )
+                # Trailing stop is now shown inline with each TP level in the Take Profit Plan, no separate section needed
                 
                 # Time Horizon (for leaps/swings only; under Stop Loss in Trade Plan)
                 time_horizon_raw = str(data_copy.get("time_horizon") or "").strip()
@@ -1482,7 +1543,19 @@ def saved_trade_plans(request):
                         raise_sl_suffix = ""
                 else:
                     raise_sl_suffix = " and raise the stop loss to entry price" if v else ""
-            tp_plan_lines.append(f"Take Profit ({i + 1}): At {at_str}{take_str}{raise_sl_suffix}.")
+            
+            # Trailing stop suffix with change tracking (for saved trade plans preview)
+            # Note: For saved trade plans, we don't have original state, so just show current state
+            trailing_stop_trigger = str(lev.get("trailing_stop_trigger") or "").strip().lower() or "off"
+            if trailing_stop_trigger == "none":
+                trailing_stop_trigger = "off"
+            trailing_stop_per_raw = str(lev.get("trailing_stop_per") or "").strip()
+            trailing_stop_suffix = ""
+            if trailing_stop_trigger == "on" and trailing_stop_per_raw:
+                trailing_stop_per_str = trailing_stop_per_raw if trailing_stop_per_raw.endswith("%") else f"{trailing_stop_per_raw}%"
+                trailing_stop_suffix = f" and trailing stop {trailing_stop_per_str}"
+            
+            tp_plan_lines.append(f"Take Profit ({i + 1}): At {at_str}{take_str}{raise_sl_suffix}{trailing_stop_suffix}.")
         sl_display = f"{sl_per}%" if sl_per and not str(sl_per).endswith("%") else (sl_per or "")
         embed_fields = []
         if targets_parts:
@@ -1557,6 +1630,16 @@ def new_trade_plan(request):
     except Exception:
         presets = []
 
+    # Check if preset_id is provided in query params (for editing)
+    preset_id = request.GET.get('preset_id', '').strip()
+    preset_name = None
+    if preset_id:
+        try:
+            preset_obj = UserTradePlanPreset.objects.get(id=preset_id, user=request.user)
+            preset_name = preset_obj.name
+        except (UserTradePlanPreset.DoesNotExist, ValueError):
+            preset_id = ''  # Invalid preset_id, treat as new
+
     return render(request, "signals/dashboard.html", {
         "form": form,
         "recent_signals": recent_signals,
@@ -1564,6 +1647,8 @@ def new_trade_plan(request):
         "discord_channels": discord_channels,
         "trade_plan_presets": presets,
         "trade_plan_only": True,
+        "preset_id": preset_id,
+        "preset_name": preset_name,
     })
 
 
@@ -1924,6 +2009,13 @@ def trade_plan_api(request):
             raise_sl_custom = str(item.get("raise_sl_custom") or "").strip()
             raise_sl_custom_per = str(item.get("raise_sl_custom_per") or "").strip()
             raise_sl_custom_stock = str(item.get("raise_sl_custom_stock") or "").strip()
+            # Trailing stop fields
+            trailing_stop_trigger = str(item.get("trailing_stop_trigger") or "").strip().lower()
+            if trailing_stop_trigger == "none":
+                trailing_stop_trigger = "off"
+            if trailing_stop_trigger not in ("on", "off"):
+                trailing_stop_trigger = "off"
+            trailing_stop_per = str(item.get("trailing_stop_per") or "").strip()
             level_dict = {"mode": mode or "percent", "per": per, "stock_price": stock_price, "takeoff": takeoff}
             if raise_sl_to:
                 level_dict["raise_sl_to"] = raise_sl_to
@@ -1933,6 +2025,10 @@ def trade_plan_api(request):
                 level_dict["raise_sl_custom_per"] = raise_sl_custom_per
             if raise_sl_custom_stock:
                 level_dict["raise_sl_custom_stock"] = raise_sl_custom_stock
+            # Always include trailing stop fields (even if "off")
+            level_dict["trailing_stop_trigger"] = trailing_stop_trigger
+            if trailing_stop_per:
+                level_dict["trailing_stop_per"] = trailing_stop_per
             cleaned_levels.append(level_dict)
         # Normalize takeoff: last TP = 100%, others = 50%.
         if cleaned_levels:
@@ -2267,8 +2363,9 @@ def _get_auto_strategy_executed_full_sl(data, entry, sl_price, override_price=No
     return "\n".join(lines)
 
 
-def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=None, next_steps=None, risk_management=None, strategy_executed=None, partial_exit=False):
-    """Build Discord embed. partial_exit=True: TP only, add Risk Management (auto), no Strategy Executed. partial_exit=False (Full Exit): add Strategy Executed below Status (auto), no Risk Management."""
+def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=None, next_steps=None, risk_management=None, strategy_executed=None, partial_exit=False, display_tp_level=None):
+    """Build Discord embed. partial_exit=True: TP only, add Risk Management (auto), no Strategy Executed. partial_exit=False (Full Exit): add Strategy Executed below Status (auto), no Risk Management.
+    display_tp_level: when set, use for embed title only so Full and Partial modals show the same Take Profit Level (current zone); tp_level still used for fields/content."""
     from django.utils import timezone
     symbol = (pos.symbol or "").strip().upper() or "TRADE"
     data = pos.signal.data if (pos.signal and isinstance(getattr(pos.signal, "data", None), dict)) else {}
@@ -2342,10 +2439,12 @@ def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=Non
         entry_str = f"${_fmt_money(entry)}" if entry > 0 else "-"
         tp_hit_str = f"${_fmt_money(tp_price)}" if tp_price > 0 else "-"
         profit_str = _fmt_pct1(tp_per)
-        embed["title"] = f"🎯 {symbol} Take Profit {tp_level} HIT — {date_str}"
+        # Use display_tp_level for title and TP Hit field so Full Exit and Partial Exit modals show the same Take Profit Level (current zone)
+        title_level = display_tp_level if display_tp_level is not None and display_tp_level > 0 else tp_level
+        embed["title"] = f"🎯 {symbol} Take Profit {title_level} HIT — {date_str}"
         embed["fields"].extend([
             {"name": "✅ Entry", "value": entry_str, "inline": True},
-            {"name": f"🎯 TP{tp_level} Hit", "value": tp_hit_str, "inline": True},
+            {"name": f"🎯 TP{title_level} Hit", "value": tp_hit_str, "inline": True},
             {"name": "💸 Profit", "value": profit_str, "inline": True},
         ])
         embed["description"] = f"🟢 Trade Performance:\nTicker: {symbol}{company_part}"
@@ -2354,7 +2453,7 @@ def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=Non
             mgmt_lines.append(f"🎯 {next_line}")
         # Partial exit: Status TP Zone Reached + Position Management + Risk Management
         if partial_exit:
-            status_line = f"🚨 Status: TP{tp_level} Zone Reached 🚨"
+            status_line = f"🚨 Status: TP{title_level} Zone Reached 🚨"
             desc_after = status_line + "\n\n" + "\n".join(mgmt_lines)
             if next_steps and isinstance(next_steps, str) and next_steps.strip():
                 desc_after += "\n\n📌 **Next steps:** " + next_steps.strip()
@@ -2440,8 +2539,11 @@ def _get_position_current_price(pos, bypass_cache=False):
 def _apply_position_exit(pos, kind, current_price=None, next_steps=None, risk_management=None, strategy_executed=None, partial_exit=False):
     """
     Apply a TP or SL exit. partial_exit=True: Partial Exit (TP, Risk Management). partial_exit=False: Full Exit (Strategy Executed below Status). Returns True on success.
+    For Full Exit after a partial (e.g. after TP1): Strategy Executed uses the level we're at (tp_hit_level), not the next target (next_tp).
     """
     next_tp = (pos.tp_hit_level or 0) + 1
+    # Full Exit at TP: use current level we're at (tp_hit_level) when we've already hit a TP (partial done), else next_tp
+    tp_level_for_full = (pos.tp_hit_level or 0) if (pos.tp_hit_level or 0) >= 1 else next_tp
     override = None
     if current_price is not None:
         try:
@@ -2449,7 +2551,7 @@ def _apply_position_exit(pos, kind, current_price=None, next_steps=None, risk_ma
         except (TypeError, ValueError):
             pass
     embed = _build_position_update_embed(
-        pos, kind=kind, tp_level=next_tp if kind == "tp" else None, override_price=override,
+        pos, kind=kind, tp_level=(tp_level_for_full if kind == "tp" and not partial_exit else (next_tp if kind == "tp" else None)), override_price=override,
         next_steps=next_steps, risk_management=risk_management, strategy_executed=strategy_executed, partial_exit=partial_exit
     )
     desc_after = embed.pop("description_after", None)
@@ -2550,8 +2652,9 @@ def position_management(request):
         realized = float(p.realized_pnl) if p.realized_pnl is not None else 0
         realized_pct = (100 * realized / (entry * qty)) if entry and qty else None
         next_tp = (p.tp_hit_level or 0) + 1
-        _tp_embed = _build_position_update_embed(p, kind="tp", tp_level=next_tp, partial_exit=False) if (not p.sl_hit and next_tp) else {}
-        _tp_embed_partial = _build_position_update_embed(p, kind="tp", tp_level=next_tp, partial_exit=True) if (not p.sl_hit and next_tp) else {}
+        tp_level_for_full = (p.tp_hit_level or 0) if (p.tp_hit_level or 0) >= 1 else next_tp
+        _tp_embed = _build_position_update_embed(p, kind="tp", tp_level=tp_level_for_full, partial_exit=False) if (not p.sl_hit and (tp_level_for_full or next_tp)) else {}
+        _tp_embed_partial = _build_position_update_embed(p, kind="tp", tp_level=next_tp, partial_exit=True, display_tp_level=tp_level_for_full) if (not p.sl_hit and next_tp) else {}
         _sl_embed = _build_position_update_embed(p, kind="sl", tp_level=None, partial_exit=False) if not p.sl_hit else {}
         import json as _json
         # Keep description_after in preview JSON for modal; add disclaimer to match sent embeds
@@ -3012,16 +3115,18 @@ def position_preview(request, position_id):
         except (TypeError, ValueError):
             pass
     next_tp = (pos.tp_hit_level or 0) + 1
+    # Full Exit at TP: use current level we're at (tp_hit_level) when we've already hit a TP, else next_tp
+    tp_level_for_full = (pos.tp_hit_level or 0) if (pos.tp_hit_level or 0) >= 1 else next_tp
     if partial:
         embed = _build_position_update_embed(
-            pos, kind="tp", tp_level=next_tp, override_price=override_price, partial_exit=True
+            pos, kind="tp", tp_level=next_tp, override_price=override_price, partial_exit=True, display_tp_level=tp_level_for_full
         ) if (not pos.sl_hit and next_tp) else {}
     else:
         kind = (request.GET.get("kind") or "tp").strip().lower()
         if kind not in ("tp", "sl"):
             kind = "tp"
         embed = _build_position_update_embed(
-            pos, kind=kind, tp_level=next_tp if kind == "tp" else None,
+            pos, kind=kind, tp_level=tp_level_for_full if kind == "tp" else None,
             override_price=override_price, partial_exit=False
         )
     embed = _ensure_embed_disclaimer(dict(embed)) if embed else {}
@@ -3167,19 +3272,7 @@ def us_tickers(request):
         {"symbol": "DIA", "name": "SPDR Dow Jones Industrial Average ETF"},
         {"symbol": "VOO", "name": "Vanguard S&P 500 ETF"},
     ]
-    # Popular crypto symbols (for cache flow when searching) - use USD suffix format
-    POPULAR_CRYPTOS = [
-        {"symbol": "BTCUSD", "name": "Bitcoin"},
-        {"symbol": "ETHUSD", "name": "Ethereum"},
-        {"symbol": "SOLUSD", "name": "Solana"},
-        {"symbol": "ADAUSD", "name": "Cardano"},
-        {"symbol": "XRPUSD", "name": "Ripple"},
-        {"symbol": "DOGEUSD", "name": "Dogecoin"},
-        {"symbol": "MATICUSD", "name": "Polygon"},
-        {"symbol": "AVAXUSD", "name": "Avalanche"},
-        {"symbol": "LINKUSD", "name": "Chainlink"},
-        {"symbol": "UNIUSD", "name": "Uniswap"},
-    ]
+    
     tickers_all = list(get_us_tickers() or [])
     seen = {str(t.get("symbol") or "").strip().upper() for t in tickers_all if isinstance(t, dict)}
     for etf in POPULAR_ETFS:
@@ -3187,14 +3280,6 @@ def us_tickers(request):
         if sym and sym not in seen:
             tickers_all.append(etf)
             seen.add(sym)
-    
-    # Add popular cryptos to cache if searching (they'll be filtered by query below)
-    if q and include_crypto:
-        for crypto in POPULAR_CRYPTOS:
-            sym = str(crypto.get("symbol") or "").strip().upper()
-            if sym and sym not in seen:
-                tickers_all.append(crypto)
-                seen.add(sym)
     tickers = tickers_all
 
     if q:
@@ -3414,15 +3499,21 @@ def option_quote(request):
         strike = float(strike_raw)
     except ValueError:
         return JsonResponse({"error": "invalid strike"}, status=400)
+    if strike <= 0 or strike > 999999.999:
+        return JsonResponse({"error": "strike must be positive and under 1000000"}, status=400)
 
-    # Parse YYYY-MM-DD -> YYMMDD
+    # Parse YYYY-MM-DD -> YYMMDD (OCC format)
     try:
         exp_dt = datetime.strptime(expiration, "%Y-%m-%d")
     except ValueError:
         return JsonResponse({"error": "expiration must be YYYY-MM-DD"}, status=400)
-
+    # Polygon/OCC option ticker: O: + root + YYMMDD + C|P + strike(8 digits, strike*1000)
+    # e.g. O:AAPL211119C00085000 = AAPL, 2021-11-19, Call, $85
     exp_yyMMdd = exp_dt.strftime("%y%m%d")
-    strike_formatted = f"{int(round(strike * 1000)):08d}"
+    strike_int = int(round(strike * 1000))  # OCC: 8 digits = price * 1000
+    if strike_int < 0 or strike_int > 99999999:
+        return JsonResponse({"error": "strike out of range for option contract"}, status=400)
+    strike_formatted = f"{strike_int:08d}"
     cp = "C" if side == "call" else "P"
     contract = f"O:{symbol}{exp_yyMMdd}{cp}{strike_formatted}"
 
@@ -3430,8 +3521,25 @@ def option_quote(request):
     if not polygon_key:
         return JsonResponse({"error": "POLYGON_API_KEY is not set", "source": "polygon"}, status=502)
 
-    client = PolygonClient(polygon_key)
-    q = client.get_option_quote(contract)
+    def _round_quote_val(v):
+        if v is None:
+            return None
+        try:
+            return round(float(v), 3)
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        client = PolygonClient(polygon_key)
+        q = client.get_option_quote(contract)
+    except Exception as e:
+        logger.exception("option_quote: get_option_quote failed for %s", contract)
+        return JsonResponse(
+            {"error": "option quote request failed", "source": "polygon", "detail": str(e)},
+            status=502,
+        )
+
+    print("test 1", q)
     if q and q.get("price") is not None:
         return JsonResponse(
             {
@@ -3440,22 +3548,37 @@ def option_quote(request):
                 "strike": strike,
                 "side": side,
                 "contract": contract,
-                "price": round(float(q.get("price")), 3),
-                "bid": (round(float(q.get("bid")), 3) if q.get("bid") is not None else None),
-                "ask": (round(float(q.get("ask")), 3) if q.get("ask") is not None else None),
-                "mid": (round(float(q.get("mid")), 3) if q.get("mid") is not None else None),
+                "price": _round_quote_val(q.get("price")),
+                "bid": _round_quote_val(q.get("bid")),
+                "ask": _round_quote_val(q.get("ask")),
+                "mid": _round_quote_val(q.get("mid")),
                 "timestamp": q.get("timestamp"),
                 "source": "polygon",
             }
         )
 
-    # If the exact strike isn't a listed contract (common when strike defaults to stock price),
-    # snap to the nearest listed strike and quote that contract instead.
-    nearest = client.find_nearest_option_contract(underlying=symbol, expiration=expiration, side=side, target_strike=strike)
+    # Exact strike not listed: snap to nearest listed contract and quote that.
+    try:
+        nearest = client.find_nearest_option_contract(
+            underlying=symbol, expiration=expiration, side=side, target_strike=strike
+        )
+    except Exception as e:
+        logger.warning("option_quote: find_nearest_option_contract failed: %s", e)
+        nearest = None
+
+    print("test 2", nearest)
     if nearest and nearest.get("contract"):
         resolved_contract = nearest["contract"]
         resolved_strike = nearest.get("strike")
-        q2 = client.get_option_quote(resolved_contract)
+        try:
+            resolved_strike = round(float(resolved_strike), 3) if resolved_strike is not None else None
+        except (TypeError, ValueError):
+            resolved_strike = None
+        try:
+            q2 = client.get_option_quote(resolved_contract)
+        except Exception as e:
+            logger.warning("option_quote: get_option_quote for resolved contract failed: %s", e)
+            q2 = None
         if q2 and q2.get("price") is not None:
             return JsonResponse(
                 {
@@ -3466,18 +3589,17 @@ def option_quote(request):
                     "requested_contract": contract,
                     "strike": resolved_strike,
                     "contract": resolved_contract,
-                    "price": round(float(q2.get("price")), 3),
-                    "bid": (round(float(q2.get("bid")), 3) if q2.get("bid") is not None else None),
-                    "ask": (round(float(q2.get("ask")), 3) if q2.get("ask") is not None else None),
-                    "mid": (round(float(q2.get("mid")), 3) if q2.get("mid") is not None else None),
+                    "price": _round_quote_val(q2.get("price")),
+                    "bid": _round_quote_val(q2.get("bid")),
+                    "ask": _round_quote_val(q2.get("ask")),
+                    "mid": _round_quote_val(q2.get("mid")),
                     "timestamp": q2.get("timestamp"),
                     "source": "polygon",
                     "resolved": True,
                 }
             )
 
-    # Quote unavailable: return 200 with price=null so the UI can show "Unavailable" instead of "Bad Gateway".
-    # polygon_error (e.g. http 403 = options not in plan) is included for debugging.
+    # Quote unavailable: return 200 with price=null so the UI can show "Unavailable" instead of 5xx.
     polygon_err = getattr(client, "last_error", None)
     logger.warning(
         "Option quote unavailable: contract=%s polygon_error=%s",
