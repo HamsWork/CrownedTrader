@@ -576,6 +576,19 @@
       });
     })();
     </script>
+    <script>
+    (function() {
+      var q = window.location.search || '';
+      if (q.indexOf('ibkr_failed=1') !== -1) {
+        var msg = 'Order could not be sent to Interactive Brokers. Check the message above and ensure TWS/Gateway is running and API is enabled.';
+        if (typeof alert === 'function') alert(msg);
+        try {
+          var path = window.location.pathname || '/';
+          window.history.replaceState({}, '', path);
+        } catch (e) {}
+      }
+    })();
+    </script>
 
     {% block extra_js %}{% endblock %}
 </body>

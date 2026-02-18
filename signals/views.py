@@ -1879,11 +1879,11 @@ def dashboard(request):
                             entry_price = Decimal(str(round(stock_price, 2)))
                     # Shares: QTY = number of shares (1), multiplier 1 → display_qty 1. Options: quantity = contracts, multiplier 100 → display_qty = quantity*100.
                     if instrument == Position.INSTRUMENT_SHARES:
-                        position_quantity = 100
-                        position_multiplier = 1
-                    else:
-                        position_multiplier = 100
                         position_quantity = 1
+                        position_multiplier = 100
+                    else:
+                        position_multiplier = 1
+                        position_quantity = 100
                         try:
                             q = signal_data.get('quantity')
                             if q is not None and str(q).strip() != '':
@@ -1892,7 +1892,7 @@ def dashboard(request):
                             pass
                     position_mode = (request.POST.get("position_mode") or "").strip().lower()
                     mode = Position.MODE_AUTO if position_mode == "auto" else Position.MODE_MANUAL
-                    Position.objects.create(
+                    created = Position.objects.create(
                         user=request.user,
                         signal=signal_instance,
                         status=Position.STATUS_OPEN,
@@ -1908,12 +1908,25 @@ def dashboard(request):
                         entry_price=entry_price,
                     )
                     # Set mode from form: "auto" = automatic tracking (system checks TP/SL and posts exit)
-                    position_mode = (request.POST.get("position_mode") or "").strip().lower()
                     if position_mode == "auto":
-                        created = Position.objects.filter(user=request.user, signal=signal_instance).order_by("-id").first()
-                        if created:
-                            created.mode = Position.MODE_AUTO
-                            created.save(update_fields=["mode"])
+                        created.mode = Position.MODE_AUTO
+                        created.save(update_fields=["mode"])
+                    # Push entry order to IBKR if integration enabled
+                    ibkr_ok = True
+                    ibkr_error = None
+                    try:
+                        from signals.ibkr import push_position_entry
+                        ok, err = push_position_entry(created)
+                        ibkr_ok = ok
+                        ibkr_error = err
+                        if ok:
+                            logger.info('IBKR push entry successful for position %s', created.id)
+                        else:
+                            logger.warning('IBKR push entry failed for position %s: %s', created.id, err)
+                    except Exception as ibkr_e:
+                        ibkr_ok = False
+                        ibkr_error = str(ibkr_e)
+                        logger.warning('IBKR push entry failed for position %s: %s', created.id, ibkr_e)
                 except Exception as e:
                     logger.warning('Could not create position for signal %s: %s', signal_instance.id, e)
                 success = send_to_discord(signal_instance, file_attachment=chart_file)
@@ -1928,7 +1941,12 @@ def dashboard(request):
                         request,
                         'Signal saved but failed to send to Discord. Please ensure your user profile has a Discord webhook configured.'
                     )
-                
+                if not ibkr_ok and ibkr_error:
+                    messages.warning(
+                        request,
+                        'Order could not be sent to Interactive Brokers: %s' % (ibkr_error[:200] if ibkr_error else 'Check TWS/Gateway.')
+                    )
+                    return redirect('dashboard' + '?ibkr_failed=1')
                 return redirect('dashboard')
     else:
         form = SignalForm(user=request.user)
@@ -2723,12 +2741,16 @@ def _apply_position_exit(pos, kind, current_price=None, next_steps=None, risk_ma
                 pass
         else:
             takeoff_pct = 100.0
-        total_units = (pos.quantity or 1) * (pos.multiplier or 100)
+        from signals.ibkr import get_display_qty
+        total_units = get_display_qty(pos)
+
+
         closed_u = pos.closed_units or 0
         remaining = max(0, total_units - closed_u)
         add_units = int(round(remaining * takeoff_pct / 100.0))
         pos.closed_units = closed_u + add_units
         tp_price = None
+        exit_qty = pos.quantity * add_units / 100
         try:
             tp_price_val = data.get(f"tp{next_tp}_price")
             if tp_price_val is not None:
@@ -2761,12 +2783,33 @@ def _apply_position_exit(pos, kind, current_price=None, next_steps=None, risk_ma
                     pos.exit_price = pos.entry_price
             update_fields.extend(["status", "exit_price", "closed_at"])
         pos.save(update_fields=update_fields)
+        # Push exit to IBKR (quantity in order terms: shares or contracts)
+        try:
+            from signals.ibkr import push_position_exit, _display_units_to_order_qty
+            exit_price = override if (override is not None and override > 0) else (tp_price if tp_price else None)
+            ok, err = push_position_exit(pos, exit_qty, price_override=exit_price)
+            if not ok:
+                logger.warning('IBKR push exit failed for position %s: %s', pos.id, err)
+        except Exception as ibkr_e:
+            logger.warning('IBKR push exit failed for position %s: %s', pos.id, ibkr_e)
     else:
+        # Full exit: SL or Trailing Stop
         pos.sl_hit = True
         pos.status = Position.STATUS_CLOSED
-        pos.exit_price = pos.entry_price
         pos.closed_at = now
+        if override is not None and override > 0:
+            pos.exit_price = Decimal(str(round(override, 2)))
+        else:
+            pos.exit_price = pos.entry_price
         pos.save(update_fields=["sl_hit", "status", "exit_price", "closed_at", "updated_at"])
+        # Push full exit to IBKR
+        try:
+            from signals.ibkr import push_position_exit
+            ok, err = push_position_exit(pos, exit_qty, price_override=float(pos.exit_price) if pos.exit_price else None)
+            if not ok:
+                logger.warning('IBKR push exit failed for position %s: %s', pos.id, err)
+        except Exception as ibkr_e:
+            logger.warning('IBKR push exit failed for position %s: %s', pos.id, ibkr_e)
     return True
 
 
@@ -2783,10 +2826,11 @@ def position_management(request):
     closed_paginator = Paginator(closed_qs, 5)
     closed_page = closed_paginator.get_page(request.GET.get("closed_page", 1))
 
+    from signals.ibkr import get_display_qty as _get_display_qty
     open_positions = []
     for p in open_page.object_list:
         entry = float(p.entry_price) if p.entry_price is not None else 0
-        qty = p.quantity * p.multiplier
+        qty = _get_display_qty(p)
         closed_u = p.closed_units or 0
         closed_pct = (100 * closed_u / qty) if qty else 0
         mark = _get_position_current_price(p)
@@ -2885,7 +2929,7 @@ def position_management(request):
     for p in closed_qs:
         entry = float(p.entry_price) if p.entry_price is not None else 0
         exit_p = float(p.exit_price) if p.exit_price is not None else 0
-        qty = p.quantity * p.multiplier
+        qty = _get_display_qty(p)
         pnl_pct = (100 * (exit_p - entry) / entry) if entry and exit_p else None
         closed_positions.append({
             "id": p.id,
@@ -2921,10 +2965,11 @@ def positions_live(request):
         user=request.user,
         status=Position.STATUS_OPEN,
     ).select_related("signal").order_by("-opened_at")
+    from signals.ibkr import get_display_qty
     positions = []
     for p in open_qs:
         entry = float(p.entry_price) if p.entry_price is not None else 0
-        qty = (p.quantity or 1) * (p.multiplier or 100)
+        qty = get_display_qty(p)
         # Use bypass_cache=True for live updates to get fresh prices
         mark_val = _get_position_current_price(p, bypass_cache=True)
         pnl_pct = (100 * (mark_val - entry) / entry) if entry and mark_val is not None else None
@@ -3088,7 +3133,20 @@ def close_position(request, position_id):
     pos.exit_price = exit_price
     pos.closed_at = timezone.now()
     pos.save(update_fields=["status", "exit_price", "closed_at", "updated_at"])
-    return JsonResponse({"ok": True})
+    ibkr_error = None
+    try:
+        from signals.ibkr import push_position_exit, _position_quantity
+        ok, err = push_position_exit(pos, _position_quantity(pos), price_override=float(exit_price))
+        if not ok:
+            ibkr_error = err
+            logger.warning('IBKR push exit failed for position %s: %s', pos.id, err)
+    except Exception as ibkr_e:
+        ibkr_error = str(ibkr_e)
+        logger.warning('IBKR push exit failed for position %s: %s', pos.id, ibkr_e)
+    resp = {"ok": True}
+    if ibkr_error:
+        resp["ibkr_error"] = ibkr_error[:500]
+    return JsonResponse(resp)
 
 
 @login_required
@@ -3174,10 +3232,10 @@ def post_position_update(request, position_id):
         pos.signal.save(update_fields=["data"])
         return JsonResponse({"ok": True})
     
-    # Handle exit updates (TP/SL)
+    # Handle exit updates (TP/SL/TS)
     kind = (payload.get("kind") or "tp").strip().lower()
-    if kind not in ("tp", "sl"):
-        return JsonResponse({"error": "kind must be tp or sl"}, status=400)
+    if kind not in ("tp", "sl", "ts"):
+        return JsonResponse({"error": "kind must be tp, sl, or ts"}, status=400)
     partial_exit = payload.get("partial_exit") in (True, "true", "1", 1)
     
     # For partial exit, save parameters to signal.data before building embed (so Discord message uses latest values)

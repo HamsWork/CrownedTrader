@@ -142,6 +142,17 @@ POLYGON_QUOTE_CACHE_SECONDS = int(os.environ.get('POLYGON_QUOTE_CACHE_SECONDS', 
 # (0 = disabled; rely on cron + manage.py check_auto_positions instead)
 AUTO_TRACKING_BACKGROUND_INTERVAL_SECONDS = int(os.environ.get('AUTO_TRACKING_BACKGROUND_INTERVAL_SECONDS', '60'))
 
+# Interactive Brokers (IBKR) integration
+# Set IBKR_ENABLED=1 to push trades to TWS/IB Gateway when posting/exiting
+IBKR_ENABLED = os.environ.get('IBKR_ENABLED', '0').strip() in ('1', 'true', 'yes')
+IBKR_HOST = os.environ.get('IBKR_HOST', '127.0.0.1')
+IBKR_PORT = int(os.environ.get('IBKR_PORT', '7497'))  # 7497 TWS paper, 7496 TWS live, 4002 IB Gateway paper, 4001 live
+IBKR_CLIENT_ID = int(os.environ.get('IBKR_CLIENT_ID', '1'))
+# Connect with retry on server start: interval between attempts (seconds); retries until connected
+IBKR_CONNECT_RETRY_INTERVAL_SECONDS = int(os.environ.get('IBKR_CONNECT_RETRY_INTERVAL_SECONDS', '30'))
+# When pushing entry/exit, wait up to this many seconds for the persistent connection (e.g. server just started)
+IBKR_WAIT_FOR_CONNECTION_SECONDS = int(os.environ.get('IBKR_WAIT_FOR_CONNECTION_SECONDS', '30'))
+
 # Additional settings
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 

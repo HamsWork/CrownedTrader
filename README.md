@@ -101,6 +101,35 @@ Use `--dry-run` to log what would be done without sending to Discord or updating
    python manage.py check_auto_positions --dry-run
    ```
 
+### Interactive Brokers (IBKR) integration
+
+When enabled, the app can **push trades to TWS or IB Gateway** when you post a trade or exit a position, and you can **sync positions** between the system and IBKR.
+
+1. **Requirements**  
+   - TWS or IB Gateway running with API enabled (Settings → API → Enable, and allow the host/port).
+   - Python package: `ib_insync` (in `requirements.txt`).
+
+2. **Enable push trading**  
+   In `.env`:
+   ```env
+   IBKR_ENABLED=1
+   IBKR_HOST=127.0.0.1
+   IBKR_PORT=7497
+   IBKR_CLIENT_ID=1
+   ```
+   - Port: `7497` TWS paper, `7496` TWS live, `4002` IB Gateway paper, `4001` live.  
+   - When the server starts, it connects to IBKR (retrying every 30s until connected) and keeps the connection alive. If the connection drops, it retries until reconnected.
+   - Optional: `IBKR_CONNECT_RETRY_INTERVAL_SECONDS=30` (delay between reconnect attempts).
+   - When a trade is posted (dashboard), an entry order (BUY) is sent to IBKR. When you do a full or partial exit from Position Management, the corresponding exit order (SELL) is sent.
+
+3. **Sync positions (system vs IBKR)**  
+   Run periodically or on demand:
+   ```bash
+   python manage.py sync_ibkr
+   python manage.py sync_ibkr --user myusername
+   ```
+   This fetches positions from IBKR and reports any drift vs system positions (no orders are placed).
+
 ## Configuration
 
 ### Discord Bot Messages
@@ -130,6 +159,12 @@ SECRET_KEY=your-secret-key-here
 
 # Optional - Debug mode
 DEBUG=True
+
+# Optional - Interactive Brokers (push trades + sync)
+# IBKR_ENABLED=1
+# IBKR_HOST=127.0.0.1
+# IBKR_PORT=7497
+# IBKR_CLIENT_ID=1
 ```
 
 ## Project Structure
