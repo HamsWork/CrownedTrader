@@ -1991,7 +1991,7 @@ function createTickerSearchControl(variable) {
     return { wrap, input };
 }
 
-function createSelectDropdownControlFromSelect(selectEl, { placeholder = '' } = {}) {
+function createSelectDropdownControlFromSelect(selectEl, { placeholder = '', readOnly = false } = {}) {
     const wrap = document.createElement('div');
     wrap.className = 'ticker-search';
 
@@ -2002,6 +2002,10 @@ function createSelectDropdownControlFromSelect(selectEl, { placeholder = '' } = 
     input.spellcheck = false;
     input.placeholder = placeholder || 'Select...';
     input.dataset.ignoreDynamic = '1'; // Important: don't include in signalData JSON
+    if (readOnly) {
+        input.readOnly = true;
+        input.style.cursor = 'pointer';
+    }
 
     const dropdown = document.createElement('div');
     dropdown.className = 'ticker-search-dropdown';
@@ -2095,16 +2099,17 @@ function createSelectDropdownControlFromSelect(selectEl, { placeholder = '' } = 
 
     input.addEventListener('focus', () => {
         if (selectEl.disabled) return;
-        // Show all options on open (unlike ticker search). Filter only after typing.
         renderItems(options.filter(o => o.value !== ''));
         openDropdown();
     });
 
-    input.addEventListener('input', () => {
-        if (selectEl.disabled) return;
-        renderItems(filteredOptions(input.value));
-        openDropdown();
-    });
+    if (!readOnly) {
+        input.addEventListener('input', () => {
+            if (selectEl.disabled) return;
+            renderItems(filteredOptions(input.value));
+            openDropdown();
+        });
+    }
 
     input.addEventListener('keydown', (e) => {
         if (!dropdown.classList.contains('open')) {
@@ -2179,6 +2184,20 @@ function upgradeSelectToTickerDropdown(selectEl, { placeholder = '' } = {}) {
         selectEl._refreshDropdownOptions = control.refreshOptionsFromSelect;
     }
     // Hide original select but keep it for form submission.
+    selectEl.style.display = 'none';
+    selectEl.insertAdjacentElement('afterend', control.wrap);
+    return control;
+}
+
+/** Same visual as Ticker dropdown but non-inputtable: click to open, choose from list only. */
+function upgradeSelectToTickerDropdownReadOnly(selectEl, { placeholder = '' } = {}) {
+    if (!selectEl || selectEl.dataset.upgradedDropdown === '1') return null;
+    selectEl.dataset.upgradedDropdown = '1';
+
+    const control = createSelectDropdownControlFromSelect(selectEl, { placeholder, readOnly: true });
+    if (control && control.refreshOptionsFromSelect) {
+        selectEl._refreshDropdownOptions = control.refreshOptionsFromSelect;
+    }
     selectEl.style.display = 'none';
     selectEl.insertAdjacentElement('afterend', control.wrap);
     return control;
@@ -6159,8 +6178,11 @@ function createDynamicFields(signalTypeId) {
                 // Recompute default Stock price ($) targets from stock base when in Stock price mode
                 updateDefaultTpStockTargets();
             }
-            // If switching back to options mode, reset option-related inputs to defaults.
+            // If switching back to options mode, set Manual Option Contract to off and reset option-related inputs.
             if (!this.checked) {
+                const manualSwitch = document.getElementById('manualOptionContractSwitch');
+                if (manualSwitch) manualSwitch.checked = false;
+                if (typeof updateManualOptionContractFieldsVisibility === 'function') updateManualOptionContractFieldsVisibility();
                 const sym = getCurrentTickerSymbol();
                 const cached = sym ? tickerMetaCache[sym] : null;
                 const optTypeEl = findFieldByName('option_type');
@@ -6246,10 +6268,11 @@ function createDynamicFields(signalTypeId) {
     wireAutoResizeTextareas(document.getElementById('dynamicFields'));
     wireAutoResizeTextareas(document.getElementById('optionalFieldsVariablesContainer'));
 
-    // Upgrade any <select> controls inside dynamic fields to match ticker dropdown styling
+    // Same beautiful dropdown style as Ticker for dynamic-field selects (selection only, no typing).
     document.querySelectorAll('#dynamicFields select, #optionalFieldsVariablesContainer select').forEach((sel) => {
         if (sel.dataset.tpTargetTypeSelect === '1') return;
-        upgradeSelectToTickerDropdown(sel);
+        if (sel.dataset.upgradedDropdown === '1') return;
+        upgradeSelectToTickerDropdownReadOnly(sel);
     });
     
     // Update preview after fields are created
@@ -6830,13 +6853,6 @@ document.addEventListener('DOMContentLoaded', function() {
         try { updatePreview(); } catch (_) {}
     }
 
-    // Upgrade top-level selects to match ticker dropdown styling
-    if (signalTypeSelect) upgradeSelectToTickerDropdown(signalTypeSelect, { placeholder: 'Select signal type' });
-    const discordChannelSelect = document.getElementById('discord_channel');
-    if (discordChannelSelect && !isTradePlanOnlyPage) upgradeSelectToTickerDropdown(discordChannelSelect, { placeholder: 'Select channel' });
-    const tradeTypeSelect = document.getElementById('trade_type');
-    if (tradeTypeSelect) upgradeSelectToTickerDropdown(tradeTypeSelect, { placeholder: 'Select trade type' });
-    
     console.log('signalTypeSelect found:', !!signalTypeSelect);
     console.log('signalTypesData keys:', Object.keys(signalTypesData));
     
@@ -6879,6 +6895,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (typeof maybeAutoPickBestOption === 'function') maybeAutoPickBestOption().catch(function() {});
             }
         }
+
+        // Same beautiful dropdown style as Ticker (selection only, no typing)
+        if (signalTypeSelect) upgradeSelectToTickerDropdownReadOnly(signalTypeSelect, { placeholder: 'Select signal type' });
+        const discordChannelSelect = document.getElementById('discord_channel');
+        if (discordChannelSelect && !isTradePlanOnlyPage) upgradeSelectToTickerDropdownReadOnly(discordChannelSelect, { placeholder: 'Select channel' });
+        const tradeTypeSelect = document.getElementById('trade_type');
+        if (tradeTypeSelect) upgradeSelectToTickerDropdownReadOnly(tradeTypeSelect, { placeholder: 'Select trade type' });
 
         // Message template wiring happens inside setupTradePlanOnlyLayout()
         

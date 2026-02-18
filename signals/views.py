@@ -2289,10 +2289,10 @@ def _get_auto_risk_management(data, entry, takeoff, tp_level):
 
 def _get_auto_strategy_executed_full_tp(data, entry, tp_level, override_price=None):
     """
-    Build Strategy Executed text for Full Exit (TP): Full Exit is always 100% at the current TP level.
-    No Trailing Stop. Example:
-      ✅ TP3 Exit (100%) : 10.72 (+30.0%)
-      🟢 Average exit: $10.72 (+30.0% blended)
+    Build Strategy Executed text for Full Exit (TP):
+    1. Show TP levels until current: TP1 Exit (X%), TP2 Exit (X%), ... TP{current} Exit (100%)
+    2. Show Next TP Level (if any)
+    3. Show Average exit (weighted blended price and %)
     """
     def _to_float(v):
         try:
@@ -2307,30 +2307,60 @@ def _get_auto_strategy_executed_full_tp(data, entry, tp_level, override_price=No
         except Exception:
             return "0.00"
 
+    def _tp_price(n):
+        raw = data.get(f"tp{n}_stock_price") or data.get(f"tp{n}_price")
+        return _to_float(raw)
+
     level = int(tp_level)
-    if level < 1:
+    if level < 1 or not entry or entry <= 0:
         return f"Full exit at TP{tp_level}."
 
-    price = _to_float(data.get(f"tp{level}_price"))
-    if override_price is not None:
-        try:
-            override_f = float(override_price)
-            if override_f > 0:
-                price = override_f
-        except (TypeError, ValueError):
-            pass
-    if not price or not entry:
-        return f"Full exit at TP{level}."
+    lines = []
+    weights = []
+    prices = []
+    remainder = 1.0
 
-    pct = (price - entry) / entry * 100 if entry and entry > 0 else _to_float(data.get(f"tp{level}_per"))
-    lines = [f"✅ TP{level} Exit (100%) : {_fmt_money(price)} ({pct:+.1f}%)"]
-    icon = "🔴" if pct < 0 else "🟢"
-    lines.append(f"{icon} Average exit: ${_fmt_money(price)} ({pct:+.1f}% blended)")
+    for n in range(1, level + 1):
+        # Correct takeoff % for this level: from data (tp{n}_takeoff_per) or 50% default; last level is 100% (full exit)
+        pct_exit = 100.0 if n == level else (_to_float(data.get(f"tp{n}_takeoff_per")) or 50.0)
+        weight = remainder * (pct_exit / 100.0)
+        remainder = remainder * (1.0 - pct_exit / 100.0)
+        price_n = _tp_price(n)
+        # Last level = Full Exit: use actual exit price (override), not target; we did not necessarily hit the TP target
+        if n == level:
+            if override_price is not None:
+                try:
+                    override_f = float(override_price)
+                    if override_f > 0:
+                        price_n = override_f
+                except (TypeError, ValueError):
+                    pass
+            pct = (price_n - entry) / entry * 100 if entry and entry > 0 else 0.0
+            lines.append(f"✅ Full Exit (100%) : {_fmt_money(price_n)} ({pct:+.1f}%)")
+        else:
+            if price_n <= 0:
+                price_n = _tp_price(n)
+            pct = (price_n - entry) / entry * 100 if entry and entry > 0 else _to_float(data.get(f"tp{n}_per"))
+            lines.append(f"✅ TP{n} Exit ({int(round(pct_exit))}%) : {_fmt_money(price_n)} ({pct:+.1f}%)")
+        weights.append(weight)
+        prices.append(price_n)
+
+    # Next TP level: same format as above, take off 100%
+    next_level = level + 1
+    next_price = _tp_price(next_level)
+    if next_price and next_price > 0:
+        next_pct = (next_price - entry) / entry * 100 if entry and entry > 0 else _to_float(data.get(f"tp{next_level}_per"))
+        lines.append(f"🎯 TP{next_level} Exit (100%) : {_fmt_money(next_price)} ({next_pct:+.1f}%)")
+
+    avg_price = sum(p * w for p, w in zip(prices, weights)) / sum(weights) if weights and sum(weights) > 0 else (prices[-1] if prices else 0)
+    blended_pct = (avg_price - entry) / entry * 100 if entry and entry > 0 else 0.0
+    icon = "🔴" if blended_pct < 0 else "🟢"
+    lines.append(f"{icon} Average exit: ${_fmt_money(avg_price)} ({blended_pct:+.1f}% blended)")
     return "\n".join(lines)
 
 
 def _get_auto_strategy_executed_full_sl(data, entry, sl_price, override_price=None):
-    """Build Strategy Executed text for Full Exit (SL): stop loss exit and blended %."""
+    """Build Strategy Executed text for Full Exit (SL): show Stop Loss level, then Average exit."""
     def _to_float(v):
         try:
             s = str(v or "").strip().replace("%", "")
@@ -2363,10 +2393,48 @@ def _get_auto_strategy_executed_full_sl(data, entry, sl_price, override_price=No
     return "\n".join(lines)
 
 
-def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=None, next_steps=None, risk_management=None, strategy_executed=None, partial_exit=False, display_tp_level=None):
+def _get_auto_strategy_executed_full_ts(data, entry, ts_price, override_price=None):
+    """Build Strategy Executed text for Full Exit (Trailing Stop): show Trailing Stop level, then Average exit."""
+    def _to_float(v):
+        try:
+            s = str(v or "").strip().replace("%", "")
+            return float(s) if s else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _fmt_money(v):
+        try:
+            return f"{float(v):.2f}"
+        except Exception:
+            return "0.00"
+
+    price = ts_price
+    if override_price is not None:
+        try:
+            override_f = float(override_price)
+            if override_f > 0:
+                price = override_f
+        except (TypeError, ValueError):
+            pass
+
+    if not price or not entry:
+        return "Full exit at trailing stop."
+
+    pct = (price - entry) / entry * 100
+    lines = [f"✅ Trailing Stop Exit (100%) : {_fmt_money(price)} ({pct:+.1f}%)"]
+    icon = "🔴" if pct < 0 else "🟢"
+    lines.append(f"{icon} Average exit: ${_fmt_money(price)} ({pct:+.1f}% blended)")
+    return "\n".join(lines)
+
+
+def _build_position_update_embed(pos, *, kind, override_price=None, next_steps=None, risk_management=None, strategy_executed=None, partial_exit=False):
     """Build Discord embed. partial_exit=True: TP only, add Risk Management (auto), no Strategy Executed. partial_exit=False (Full Exit): add Strategy Executed below Status (auto), no Risk Management.
-    display_tp_level: when set, use for embed title only so Full and Partial modals show the same Take Profit Level (current zone); tp_level still used for fields/content."""
+    tp_level is derived from position: next target (tp_hit_level+1) for partial; for full, current zone if already hit a TP else next target."""
     from django.utils import timezone
+    next_tp = (pos.tp_hit_level or 0) + 1
+    tp_level_for_full = (pos.tp_hit_level or 0) if (pos.tp_hit_level or 0) >= 1 else next_tp
+    tp_level = (next_tp if partial_exit else tp_level_for_full) if kind == "tp" else None
+
     symbol = (pos.symbol or "").strip().upper() or "TRADE"
     data = pos.signal.data if (pos.signal and isinstance(getattr(pos.signal, "data", None), dict)) else {}
     data = data if isinstance(data, dict) else {}
@@ -2408,7 +2476,7 @@ def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=Non
     entry = _to_float(entry_raw if (entry_raw != "" and entry_raw is not None) else pos.entry_price)
     now = timezone.localtime(timezone.now())
     date_str = now.strftime("%a %b %d")
-    color = 0x10B981 if kind == "tp" else 0xEF4444
+    color = 0x10B981 if kind == "tp" else (0xF59E0B if kind == "ts" else 0xEF4444)
     embed = {"color": color}
     if is_shares:
         price_str = _fmt_money(entry) if entry > 0 else "-"
@@ -2439,8 +2507,8 @@ def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=Non
         entry_str = f"${_fmt_money(entry)}" if entry > 0 else "-"
         tp_hit_str = f"${_fmt_money(tp_price)}" if tp_price > 0 else "-"
         profit_str = _fmt_pct1(tp_per)
-        # Use display_tp_level for title and TP Hit field so Full Exit and Partial Exit modals show the same Take Profit Level (current zone)
-        title_level = display_tp_level if display_tp_level is not None and display_tp_level > 0 else tp_level
+        # Title/TP Hit label: next target level (next_tp)
+        title_level = next_tp if next_tp > 0 else (tp_level or 0)
         embed["title"] = f"🎯 {symbol} Take Profit {title_level} HIT — {date_str}"
         embed["fields"].extend([
             {"name": "✅ Entry", "value": entry_str, "inline": True},
@@ -2469,7 +2537,72 @@ def _build_position_update_embed(pos, *, kind, tp_level=None, override_price=Non
             strategy_text = strategy_executed if strategy_executed and isinstance(strategy_executed, str) and strategy_executed.strip() else _get_auto_strategy_executed_full_tp(data, entry, tp_level, override_price)
             desc_after += "\n\n🔍 Strategy Executed:\n" + strategy_text
         embed["description_after"] = desc_after
+    elif kind == "ts":
+        # Trailing Stop exit
+        # Get trailing stop percentage from data (check TP levels first, then global)
+        trailing_stop_per = None
+        
+        # Check TP levels for trailing stop configuration (start from highest TP level that was hit)
+        tp_hit_level = pos.tp_hit_level or 0
+        for tp_level in range(max(1, tp_hit_level), 0, -1):  # Check from highest TP down to TP1
+            tp_trigger = str(data.get(f"tp{tp_level}_trailing_stop_trigger") or "").strip().lower()
+            if tp_trigger == "on":
+                tp_per = _to_float(data.get(f"tp{tp_level}_trailing_stop_per"))
+                if tp_per > 0:
+                    trailing_stop_per = tp_per
+                    break
+        
+        # If no TP-level trailing stop found, check all TP levels from 1-9
+        if trailing_stop_per is None:
+            for tp_level in range(1, 10):  # Check up to TP9
+                tp_trigger = str(data.get(f"tp{tp_level}_trailing_stop_trigger") or "").strip().lower()
+                if tp_trigger == "on":
+                    tp_per = _to_float(data.get(f"tp{tp_level}_trailing_stop_per"))
+                    if tp_per > 0:
+                        trailing_stop_per = tp_per
+                        break
+        
+        # If no TP-level trailing stop found, check global (legacy)
+        if trailing_stop_per is None:
+            global_trigger = str(data.get("trailing_stop_trigger") or "").strip().lower()
+            if global_trigger == "on":
+                trailing_stop_per = _to_float(data.get("trailing_stop_per"))
+        
+        # Calculate trailing stop price
+        # If override_price is provided, use it (user manually set price)
+        # Otherwise, calculate from current price and trailing stop percentage
+        if override_f is not None and override_f > 0:
+            ts_price = override_f
+        else:
+            current_price = _get_position_current_price(pos)
+            if current_price is None:
+                current_price = entry  # Fallback to entry if no current price
+            
+            # Calculate trailing stop price: highest price * (1 - trailing_stop_per/100)
+            # For preview, use current price as highest (in production, you'd track highest price)
+            highest_price = current_price if current_price > entry else entry
+            if trailing_stop_per and trailing_stop_per > 0:
+                ts_price = highest_price * (1 - trailing_stop_per / 100)
+            else:
+                ts_price = current_price  # Fallback if no trailing stop configured
+        
+        ts_per = ((ts_price - entry) / entry * 100) if entry > 0 else 0
+        entry_str = f"${_fmt_money(entry)}" if entry > 0 else "-"
+        ts_hit_str = f"${_fmt_money(ts_price)}" if ts_price > 0 else "-"
+        profit_str = _fmt_pct1(ts_per)
+        embed["title"] = f"🎯 {symbol} Trailing Stop HIT — {date_str}"
+        embed["fields"].extend([
+            {"name": "✅ Entry", "value": entry_str, "inline": True},
+            {"name": "🎯 Trailing Stop Hit", "value": ts_hit_str, "inline": True},
+            {"name": "💸 Profit", "value": profit_str, "inline": True},
+        ])
+        embed["description"] = f"🟢 Trade Performance:\nTicker: {symbol}{company_part}"
+        desc_after_ts = "🚨 Status: Trailing Stop Triggered 🚨"
+        strategy_text = strategy_executed if strategy_executed and isinstance(strategy_executed, str) and strategy_executed.strip() else _get_auto_strategy_executed_full_ts(data, entry, ts_price, override_price)
+        desc_after_ts += "\n\n🔍 Strategy Executed:\n" + strategy_text
+        embed["description_after"] = desc_after_ts
     else:
+        # Stop Loss exit
         _sl_raw = (data.get("sl_stock_price") or data.get("sl_price")) if is_shares else data.get("sl_price")
         sl_price = _to_float(_sl_raw)
         if override_f is not None and override_f > 0:
@@ -2551,7 +2684,7 @@ def _apply_position_exit(pos, kind, current_price=None, next_steps=None, risk_ma
         except (TypeError, ValueError):
             pass
     embed = _build_position_update_embed(
-        pos, kind=kind, tp_level=(tp_level_for_full if kind == "tp" and not partial_exit else (next_tp if kind == "tp" else None)), override_price=override,
+        pos, kind=kind, override_price=override,
         next_steps=next_steps, risk_management=risk_management, strategy_executed=strategy_executed, partial_exit=partial_exit
     )
     desc_after = embed.pop("description_after", None)
@@ -2579,13 +2712,17 @@ def _apply_position_exit(pos, kind, current_price=None, next_steps=None, risk_ma
     if kind == "tp":
         pos.tp_hit_level = next_tp
         data = (pos.signal.data if pos.signal and isinstance(getattr(pos.signal, "data", None), dict) else {}) or {}
-        takeoff_pct = 50.0
-        try:
-            t = data.get(f"tp{next_tp}_takeoff_per")
-            if t is not None:
-                takeoff_pct = float(str(t).strip().replace("%", "")) if str(t).strip() else 50.0
-        except (TypeError, ValueError):
-            pass
+        # Full exit: close 100% of remainder. Partial exit: use next TP's takeoff %
+        if partial_exit:
+            takeoff_pct = 50.0
+            try:
+                t = data.get(f"tp{next_tp}_takeoff_per")
+                if t is not None:
+                    takeoff_pct = float(str(t).strip().replace("%", "")) if str(t).strip() else 50.0
+            except (TypeError, ValueError):
+                pass
+        else:
+            takeoff_pct = 100.0
         total_units = (pos.quantity or 1) * (pos.multiplier or 100)
         closed_u = pos.closed_units or 0
         remaining = max(0, total_units - closed_u)
@@ -2598,6 +2735,9 @@ def _apply_position_exit(pos, kind, current_price=None, next_steps=None, risk_ma
                 tp_price = float(str(tp_price_val).strip())
         except (TypeError, ValueError):
             pass
+        # Full exit: use actual exit price (override) when provided
+        if not partial_exit and override is not None and override > 0:
+            tp_price = override
         entry = float(pos.entry_price) if pos.entry_price is not None else 0
         update_fields = ["tp_hit_level", "closed_units", "updated_at"]
         if tp_price is not None and entry and add_units > 0:
@@ -2608,14 +2748,17 @@ def _apply_position_exit(pos, kind, current_price=None, next_steps=None, risk_ma
         if pos.closed_units >= total_units:
             pos.status = Position.STATUS_CLOSED
             pos.closed_at = now
-            try:
-                tp_price_val = data.get(f"tp{next_tp}_price")
-                if tp_price_val is not None:
-                    pos.exit_price = float(str(tp_price_val).strip())
-                else:
+            if override is not None and override > 0:
+                pos.exit_price = override
+            else:
+                try:
+                    tp_price_val = data.get(f"tp{next_tp}_price")
+                    if tp_price_val is not None:
+                        pos.exit_price = float(str(tp_price_val).strip())
+                    else:
+                        pos.exit_price = pos.entry_price
+                except (TypeError, ValueError):
                     pos.exit_price = pos.entry_price
-            except (TypeError, ValueError):
-                pos.exit_price = pos.entry_price
             update_fields.extend(["status", "exit_price", "closed_at"])
         pos.save(update_fields=update_fields)
     else:
@@ -2653,14 +2796,16 @@ def position_management(request):
         realized_pct = (100 * realized / (entry * qty)) if entry and qty else None
         next_tp = (p.tp_hit_level or 0) + 1
         tp_level_for_full = (p.tp_hit_level or 0) if (p.tp_hit_level or 0) >= 1 else next_tp
-        _tp_embed = _build_position_update_embed(p, kind="tp", tp_level=tp_level_for_full, partial_exit=False) if (not p.sl_hit and (tp_level_for_full or next_tp)) else {}
-        _tp_embed_partial = _build_position_update_embed(p, kind="tp", tp_level=next_tp, partial_exit=True, display_tp_level=tp_level_for_full) if (not p.sl_hit and next_tp) else {}
-        _sl_embed = _build_position_update_embed(p, kind="sl", tp_level=None, partial_exit=False) if not p.sl_hit else {}
+        _tp_embed = _build_position_update_embed(p, kind="tp", partial_exit=False) if (not p.sl_hit and (tp_level_for_full or next_tp)) else {}
+        _tp_embed_partial = _build_position_update_embed(p, kind="tp", partial_exit=True) if (not p.sl_hit and next_tp) else {}
+        _sl_embed = _build_position_update_embed(p, kind="sl", partial_exit=False) if not p.sl_hit else {}
+        _ts_embed = _build_position_update_embed(p, kind="ts", partial_exit=False) if not p.sl_hit else {}
         import json as _json
         # Keep description_after in preview JSON for modal; add disclaimer to match sent embeds
         preview_tp = _ensure_embed_disclaimer(dict(_tp_embed)) if _tp_embed else {}
         preview_tp_partial = _ensure_embed_disclaimer(dict(_tp_embed_partial)) if _tp_embed_partial else {}
         preview_sl = _ensure_embed_disclaimer(dict(_sl_embed)) if _sl_embed else {}
+        preview_ts = _ensure_embed_disclaimer(dict(_ts_embed)) if _ts_embed else {}
         
         # Extract current trade plan values for Edit Parameters modal
         data = (p.signal.data if p.signal and isinstance(getattr(p.signal, "data", None), dict) else {}) or {}
@@ -2727,6 +2872,7 @@ def position_management(request):
             "preview_tp_embed": _json.dumps(preview_tp, ensure_ascii=False) if preview_tp else "",
             "preview_tp_partial_embed": _json.dumps(preview_tp_partial, ensure_ascii=False) if preview_tp_partial else "",
             "preview_sl_embed": _json.dumps(preview_sl, ensure_ascii=False) if preview_sl else "",
+            "preview_ts_embed": _json.dumps(preview_ts, ensure_ascii=False) if preview_ts else "",
             "current_takeoff_percent": current_takeoff_percent,
             "next_target_percent": next_target_percent,
             "next_target_value": next_target_value,
@@ -3119,15 +3265,14 @@ def position_preview(request, position_id):
     tp_level_for_full = (pos.tp_hit_level or 0) if (pos.tp_hit_level or 0) >= 1 else next_tp
     if partial:
         embed = _build_position_update_embed(
-            pos, kind="tp", tp_level=next_tp, override_price=override_price, partial_exit=True, display_tp_level=tp_level_for_full
+            pos, kind="tp", override_price=override_price, partial_exit=True
         ) if (not pos.sl_hit and next_tp) else {}
     else:
         kind = (request.GET.get("kind") or "tp").strip().lower()
-        if kind not in ("tp", "sl"):
+        if kind not in ("tp", "sl", "ts"):
             kind = "tp"
         embed = _build_position_update_embed(
-            pos, kind=kind, tp_level=tp_level_for_full if kind == "tp" else None,
-            override_price=override_price, partial_exit=False
+            pos, kind=kind, override_price=override_price, partial_exit=False
         )
     embed = _ensure_embed_disclaimer(dict(embed)) if embed else {}
     
@@ -3539,7 +3684,6 @@ def option_quote(request):
             status=502,
         )
 
-    print("test 1", q)
     if q and q.get("price") is not None:
         return JsonResponse(
             {
@@ -3556,48 +3700,6 @@ def option_quote(request):
                 "source": "polygon",
             }
         )
-
-    # Exact strike not listed: snap to nearest listed contract and quote that.
-    try:
-        nearest = client.find_nearest_option_contract(
-            underlying=symbol, expiration=expiration, side=side, target_strike=strike
-        )
-    except Exception as e:
-        logger.warning("option_quote: find_nearest_option_contract failed: %s", e)
-        nearest = None
-
-    print("test 2", nearest)
-    if nearest and nearest.get("contract"):
-        resolved_contract = nearest["contract"]
-        resolved_strike = nearest.get("strike")
-        try:
-            resolved_strike = round(float(resolved_strike), 3) if resolved_strike is not None else None
-        except (TypeError, ValueError):
-            resolved_strike = None
-        try:
-            q2 = client.get_option_quote(resolved_contract)
-        except Exception as e:
-            logger.warning("option_quote: get_option_quote for resolved contract failed: %s", e)
-            q2 = None
-        if q2 and q2.get("price") is not None:
-            return JsonResponse(
-                {
-                    "symbol": symbol,
-                    "expiration": expiration,
-                    "side": side,
-                    "requested_strike": strike,
-                    "requested_contract": contract,
-                    "strike": resolved_strike,
-                    "contract": resolved_contract,
-                    "price": _round_quote_val(q2.get("price")),
-                    "bid": _round_quote_val(q2.get("bid")),
-                    "ask": _round_quote_val(q2.get("ask")),
-                    "mid": _round_quote_val(q2.get("mid")),
-                    "timestamp": q2.get("timestamp"),
-                    "source": "polygon",
-                    "resolved": True,
-                }
-            )
 
     # Quote unavailable: return 200 with price=null so the UI can show "Unavailable" instead of 5xx.
     polygon_err = getattr(client, "last_error", None)

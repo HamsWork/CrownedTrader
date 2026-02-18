@@ -704,6 +704,7 @@
             <textarea class="pm-hidden" data-preview-tp-for="{{ p.id }}">{{ p.preview_tp_embed }}</textarea>
             <textarea class="pm-hidden" data-preview-tp-partial-for="{{ p.id }}">{{ p.preview_tp_partial_embed }}</textarea>
             <textarea class="pm-hidden" data-preview-sl-for="{{ p.id }}">{{ p.preview_sl_embed }}</textarea>
+            <textarea class="pm-hidden" data-preview-ts-for="{{ p.id }}">{{ p.preview_ts_embed }}</textarea>
             <button class="pm-action" type="button" data-partial-exit="{{ p.id }}" data-partial-symbol="{{ p.symbol|default:'' }}" data-partial-entry="{{ p.entry_str|default:'' }}" data-partial-qty="{{ p.display_qty|default:'' }}" data-partial-mark="{{ p.mark_str|default:'' }}" data-takeoff-percent="{{ p.current_takeoff_percent|default:'' }}" data-next-target-percent="{{ p.next_target_percent|default:'' }}" data-next-target-value="{{ p.next_target_value|default:'' }}" data-raise-sl-to="{{ p.current_raise_sl_to|default:'off' }}" data-raise-sl-custom-per="{{ p.current_raise_sl_custom_per|default:'' }}" data-raise-sl-custom-price="{{ p.current_raise_sl_custom_price|default:'' }}" data-raise-sl-custom-stock="{{ p.current_raise_sl_custom_stock|default:'' }}">Partial Exit</button>
             <button class="pm-action" type="button" data-post-exit="{{ p.id }}" data-exit-symbol="{{ p.symbol|default:'' }}" data-exit-entry="{{ p.entry_str|default:'' }}">Full Exit</button>
             {% endif %}
@@ -803,6 +804,10 @@
         <label class="pm-radio">
           <input type="radio" name="pmExitKind" value="sl" />
           <span>Stop Loss</span>
+        </label>
+        <label class="pm-radio">
+          <input type="radio" name="pmExitKind" value="ts" />
+          <span>Trailing Stop</span>
         </label>
       </div>
       <div class="pm-current-price-row">
@@ -962,6 +967,7 @@
   function getPreviewText(id, kind, partial) {
     let sel;
     if (kind === 'sl') sel = `[data-preview-sl-for="${id}"]`;
+    else if (kind === 'ts') sel = `[data-preview-ts-for="${id}"]`;
     else if (partial) sel = `[data-preview-tp-partial-for="${id}"]`;
     else sel = `[data-preview-tp-for="${id}"]`;
     const el = document.querySelector(sel);
@@ -1217,30 +1223,36 @@
     }
     renderExitPreview();
     startExitLivePriceInterval();
-    // Fetch fresh preview from server so Take Profit level matches position status (e.g. TP1 Hit -> modal shows TP1)
-    (async function () {
-      if (!id) return;
-      try {
-        const [tpRes, slRes] = await Promise.all([
-          fetch('/positions/' + id + '/preview/?kind=tp', { credentials: 'same-origin' }),
-          fetch('/positions/' + id + '/preview/?kind=sl', { credentials: 'same-origin' })
-        ]);
-        if (activeExitPositionId !== String(id)) return;
-        const tpEl = document.querySelector('[data-preview-tp-for="' + id + '"]');
-        const slEl = document.querySelector('[data-preview-sl-for="' + id + '"]');
-        if (tpRes.ok && tpEl) {
-          const tpEmbed = await tpRes.json().catch(function() { return null; });
-          if (tpEmbed && typeof tpEmbed === 'object') tpEl.value = JSON.stringify(tpEmbed);
+      // Fetch fresh preview from server so Take Profit level matches position status (e.g. TP1 Hit -> modal shows TP1)
+      (async function () {
+        if (!id) return;
+        try {
+          const [tpRes, slRes, tsRes] = await Promise.all([
+            fetch('/positions/' + id + '/preview/?kind=tp', { credentials: 'same-origin' }),
+            fetch('/positions/' + id + '/preview/?kind=sl', { credentials: 'same-origin' }),
+            fetch('/positions/' + id + '/preview/?kind=ts', { credentials: 'same-origin' })
+          ]);
+          if (activeExitPositionId !== String(id)) return;
+          const tpEl = document.querySelector('[data-preview-tp-for="' + id + '"]');
+          const slEl = document.querySelector('[data-preview-sl-for="' + id + '"]');
+          const tsEl = document.querySelector('[data-preview-ts-for="' + id + '"]');
+          if (tpRes.ok && tpEl) {
+            const tpEmbed = await tpRes.json().catch(function() { return null; });
+            if (tpEmbed && typeof tpEmbed === 'object') tpEl.value = JSON.stringify(tpEmbed);
+          }
+          if (slRes.ok && slEl) {
+            const slEmbed = await slRes.json().catch(function() { return null; });
+            if (slEmbed && typeof slEmbed === 'object') slEl.value = JSON.stringify(slEmbed);
+          }
+          if (tsRes.ok && tsEl) {
+            const tsEmbed = await tsRes.json().catch(function() { return null; });
+            if (tsEmbed && typeof tsEmbed === 'object') tsEl.value = JSON.stringify(tsEmbed);
+          }
+          if (activeExitPositionId === String(id)) renderExitPreview();
+        } catch (e) {
+          console.warn('Failed to refresh exit preview:', e);
         }
-        if (slRes.ok && slEl) {
-          const slEmbed = await slRes.json().catch(function() { return null; });
-          if (slEmbed && typeof slEmbed === 'object') slEl.value = JSON.stringify(slEmbed);
-        }
-        if (activeExitPositionId === String(id)) renderExitPreview();
-      } catch (e) {
-        console.warn('Failed to refresh exit preview:', e);
-      }
-    })();
+      })();
   }
 
   function closeExitModal() {

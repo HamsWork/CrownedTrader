@@ -325,8 +325,8 @@ class PolygonClient:
     def get_option_quote(self, contract_ticker: str, bypass_cache: bool = False) -> Optional[Dict[str, Any]]:
         """
         Get current option quote for a Polygon options contract ticker (e.g. O:AAPL260119C00150000).
-        Uses /v3/snapshot/options/{underlyingAsset}/{optionContract} first, then falls back to
-        /v2/last/nbbo and last trade. Returns dict with contract, bid, ask, mid, price, timestamp, source.
+        Uses /v3/snapshot/options/{underlyingAsset}/{optionContract} only. Returns dict with
+        contract, bid, ask, mid, price, timestamp, source.
 
         Args:
             bypass_cache: If True, bypasses cache to get fresh data (for live updates)
@@ -353,51 +353,6 @@ class PolygonClient:
                         if not bypass_cache:
                             _cache_set(cache_key, out)
                         return out
-
-        # Fallback: v2 last NBBO
-        data = self._get(f"/v2/last/nbbo/{ct}", timeout=8)
-        raw = data.get("results") if data and data.get("status") == "OK" else None
-        if raw is not None:
-            results = raw[0] if isinstance(raw, list) and raw else (raw if isinstance(raw, dict) else {})
-        else:
-            results = {}
-
-        if results:
-            bid_f = _safe_float(results.get("p")) or 0.0
-            ask_f = _safe_float(results.get("P")) or 0.0
-            mid = (bid_f + ask_f) / 2.0 if (bid_f > 0 and ask_f > 0) else None
-            price = mid if mid is not None else (ask_f if ask_f > 0 else (bid_f if bid_f > 0 else None))
-            if price is not None:
-                out = {
-                    "contract": ct,
-                    "bid": bid_f if bid_f > 0 else None,
-                    "ask": ask_f if ask_f > 0 else None,
-                    "mid": mid,
-                    "price": price,
-                    "timestamp": results.get("t"),
-                    "source": "nbbo",
-                }
-                if not bypass_cache:
-                    _cache_set(cache_key, out)
-                return out
-
-        # Fallback: last trade
-        trade = self.get_last_trade(ct, bypass_cache=bypass_cache)
-        if trade:
-            p = _safe_float(trade.get("p"))
-            if p is not None and p > 0:
-                out = {
-                    "contract": ct,
-                    "bid": None,
-                    "ask": None,
-                    "mid": None,
-                    "price": p,
-                    "timestamp": trade.get("t"),
-                    "source": "trade",
-                }
-                if not bypass_cache:
-                    _cache_set(cache_key, out)
-                return out
 
         if self.last_error is None:
             self.last_error = {"kind": "no_quote", "ticker": ct}
