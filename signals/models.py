@@ -229,6 +229,13 @@ class Position(models.Model):
 
     entry_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     exit_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    highest_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Peak price seen for trailing-stop logic (auto tracking).",
+    )
 
     opened_at = models.DateTimeField(auto_now_add=True)
     closed_at = models.DateTimeField(null=True, blank=True)

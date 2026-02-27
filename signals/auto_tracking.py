@@ -73,9 +73,14 @@ def run_auto_tracking_check(dry_run=False):
             
             if trailing_stop_active:
                 # Calculate trailing stop price: highest price * (1 - trailing_stop_per/100)
-                # For now, use current price as highest (in production, you'd track highest price)
-                # TODO: Add highest_price field to Position model to track peak price
-                highest_price = current_price  # Simplified: use current price as highest
+                # Track and persist the highest price seen on the Position for correct trailing behavior.
+                highest_price = float(pos.highest_price) if getattr(pos, "highest_price", None) is not None else current_price
+                if current_price > highest_price:
+                    highest_price = current_price
+                    if not dry_run:
+                        # Persist new peak so future checks use it even after restart.
+                        pos.highest_price = highest_price
+                        pos.save(update_fields=["highest_price"])
                 trailing_stop_price = highest_price * (1 - trailing_stop_per / 100)
                 
                 # Check if price has dropped below trailing stop

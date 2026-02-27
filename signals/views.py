@@ -2305,7 +2305,7 @@ def _get_auto_risk_management(data, entry, takeoff, tp_level):
     return ""
 
 
-def _get_auto_strategy_executed_full_tp(data, entry, tp_level, override_price=None):
+def _get_auto_strategy_executed_full_tp(data, entry, tp_level, override_price=None, is_shares=False):
     """
     Build Strategy Executed text for Full Exit (TP):
     1. Show TP levels until current: TP1 Exit (X%), TP2 Exit (X%), ... TP{current} Exit (100%)
@@ -2326,7 +2326,12 @@ def _get_auto_strategy_executed_full_tp(data, entry, tp_level, override_price=No
             return "0.00"
 
     def _tp_price(n):
-        raw = data.get(f"tp{n}_stock_price") or data.get(f"tp{n}_price")
+        # For shares, prefer stock-specific target price if present, else generic TP price.
+        # For options, use the option TP price only.
+        if is_shares:
+            raw = data.get(f"tp{n}_stock_price") or data.get(f"tp{n}_price")
+        else:
+            raw = data.get(f"tp{n}_price")
         return _to_float(raw)
 
     level = int(tp_level)
@@ -2377,8 +2382,12 @@ def _get_auto_strategy_executed_full_tp(data, entry, tp_level, override_price=No
     return "\n".join(lines)
 
 
-def _get_auto_strategy_executed_full_sl(data, entry, sl_price, override_price=None):
-    """Build Strategy Executed text for Full Exit (SL): show Stop Loss level, then Average exit."""
+def _get_auto_strategy_executed_full_sl(data, entry, sl_price, tp_hit_level, override_price=None):
+    """
+    Build Strategy Executed text for Full Exit (SL).
+    If any TP levels were hit before the stop loss (tp_hit_level > 0), show those TP exits first,
+    then show the final Stop Loss exit and the blended average.
+    """
     def _to_float(v):
         try:
             s = str(v or "").strip().replace("%", "")
@@ -2404,10 +2413,56 @@ def _get_auto_strategy_executed_full_sl(data, entry, sl_price, override_price=No
     if not price or not entry:
         return "Full exit at stop loss."
 
-    pct = (price - entry) / entry * 100
-    lines = [f"✅ Stop Loss Exit (100%) : {_fmt_money(price)} ({pct:+.1f}%)"]
-    icon = "🔴" if pct < 0 else "🟢"
-    lines.append(f"{icon} Average exit: ${_fmt_money(price)} ({pct:+.1f}% blended)")
+    # If no TP levels were hit, just show a simple SL exit.
+    level = int(tp_hit_level or 0)
+    if level < 1:
+        pct = (price - entry) / entry * 100
+        lines = [f"✅ Stop Loss Exit (100%) : {_fmt_money(price)} ({pct:+.1f}%)"]
+        icon = "🔴" if pct < 0 else "🟢"
+        lines.append(f"{icon} Average exit: ${_fmt_money(price)} ({pct:+.1f}% blended)")
+        return "\n".join(lines)
+
+    def _tp_price(n):
+        raw = data.get(f"tp{n}_price") or data.get(f"tp{n}_stock_price")
+        return _to_float(raw)
+
+    lines = []
+    weights = []
+    prices = []
+    remainder = 1.0
+
+    # First, show all prior TP exits that were hit.
+    for n in range(1, level + 1):
+        pct_exit = _to_float(data.get(f"tp{n}_takeoff_per")) or 50.0
+        weight = remainder * (pct_exit / 100.0)
+        remainder = remainder * (1.0 - pct_exit / 100.0)
+        price_n = _tp_price(n)
+        if price_n <= 0:
+            price_n = _tp_price(n)
+        pct_n = (price_n - entry) / entry * 100 if entry and entry > 0 else _to_float(data.get(f"tp{n}_per"))
+        lines.append(f"✅ TP{n} Exit ({int(round(pct_exit))}%) : {_fmt_money(price_n)} ({pct_n:+.1f}%)")
+        weights.append(weight)
+        prices.append(price_n)
+
+    # Remaining size exits at Stop Loss price.
+    remaining_weight = max(0.0, remainder)
+    pct_sl = (price - entry) / entry * 100
+    lines.append(
+        f"✅ Stop Loss Exit ({int(round(remaining_weight * 100))}%) : {_fmt_money(price)} ({pct_sl:+.1f}%)"
+    )
+    weights.append(remaining_weight)
+    prices.append(price)
+
+    # Blended average across TP exits and final SL.
+    total_weight = sum(weights) if weights else 0.0
+    avg_price = (
+        sum(p * w for p, w in zip(prices, weights)) / total_weight
+        if weights and total_weight > 0
+        else price
+    )
+    blended_pct = (avg_price - entry) / entry * 100 if entry and entry > 0 else 0.0
+    icon = "🔴" if blended_pct < 0 else "🟢"
+    lines.append(f"{icon} Average exit: ${_fmt_money(avg_price)} ({blended_pct:+.1f}% blended)")
     return "\n".join(lines)
 
 
@@ -2552,7 +2607,11 @@ def _build_position_update_embed(pos, *, kind, override_price=None, next_steps=N
             desc_after = status_line
             if next_steps and isinstance(next_steps, str) and next_steps.strip():
                 desc_after += "\n\n📌 **Next steps:** " + next_steps.strip()
-            strategy_text = strategy_executed if strategy_executed and isinstance(strategy_executed, str) and strategy_executed.strip() else _get_auto_strategy_executed_full_tp(data, entry, tp_level, override_price)
+            strategy_text = (
+                strategy_executed
+                if strategy_executed and isinstance(strategy_executed, str) and strategy_executed.strip()
+                else _get_auto_strategy_executed_full_tp(data, entry, tp_level, override_price, is_shares=is_shares)
+            )
             desc_after += "\n\n🔍 Strategy Executed:\n" + strategy_text
         embed["description_after"] = desc_after
     elif kind == "ts":
@@ -2637,7 +2696,11 @@ def _build_position_update_embed(pos, *, kind, override_price=None, next_steps=N
         ])
         embed["description"] = f"🟢 Trade Performance:\nTicker: {symbol}{company_part}"
         desc_after_sl = "🚨 Status: Stop Loss Triggered 🚨"
-        strategy_text = strategy_executed if strategy_executed and isinstance(strategy_executed, str) and strategy_executed.strip() else _get_auto_strategy_executed_full_sl(data, entry, sl_price, override_price)
+        strategy_text = (
+            strategy_executed
+            if strategy_executed and isinstance(strategy_executed, str) and strategy_executed.strip()
+            else _get_auto_strategy_executed_full_sl(data, entry, sl_price, pos.tp_hit_level, override_price)
+        )
         desc_after_sl += "\n\n🔍 Strategy Executed:\n" + strategy_text
         embed["description_after"] = desc_after_sl
     return embed
