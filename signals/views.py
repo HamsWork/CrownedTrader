@@ -1879,8 +1879,8 @@ def dashboard(request):
                             entry_price = Decimal(str(round(stock_price, 2)))
                     # Shares: QTY = number of shares (1), multiplier 1 → display_qty 1. Options: quantity = contracts, multiplier 100 → display_qty = quantity*100.
                     if instrument == Position.INSTRUMENT_SHARES:
-                        position_quantity = 1
-                        position_multiplier = 100
+                        position_quantity = 100
+                        position_multiplier = 1
                     else:
                         position_multiplier = 1
                         position_quantity = 100
@@ -1946,7 +1946,7 @@ def dashboard(request):
                         request,
                         'Order could not be sent to Interactive Brokers: %s' % (ibkr_error[:200] if ibkr_error else 'Check TWS/Gateway.')
                     )
-                    return redirect('dashboard' + '?ibkr_failed=1')
+                    return redirect(reverse('dashboard') + '?ibkr_failed=1')
                 return redirect('dashboard')
     else:
         form = SignalForm(user=request.user)
@@ -2750,7 +2750,7 @@ def _apply_position_exit(pos, kind, current_price=None, next_steps=None, risk_ma
         add_units = int(round(remaining * takeoff_pct / 100.0))
         pos.closed_units = closed_u + add_units
         tp_price = None
-        exit_qty = pos.quantity * add_units / 100
+        exit_qty = int(pos.quantity * add_units / 100)
         try:
             tp_price_val = data.get(f"tp{next_tp}_price")
             if tp_price_val is not None:
